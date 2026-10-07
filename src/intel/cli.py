@@ -298,5 +298,26 @@ def weekly_status() -> None:
         typer.echo(f"  {r['run_id']}  {r['status']:8s} {r.get('failed_step') or ''}")
 
 
+@app.command()
+def control(
+    port: int = typer.Option(8765, help="Local port (127.0.0.1 only)"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the page in the browser"),
+) -> None:
+    """Control Room: a local page with a Run button and the live pipeline diagram (this Mac only)."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from intel.control import create_control_app
+
+    url = f"http://127.0.0.1:{port}/"
+    app_ = create_control_app(get_settings(), Path.cwd(), port)
+    if open_browser:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    typer.echo(f"Control Room on {url} (Ctrl+C to stop)")
+    uvicorn.run(app_, host="127.0.0.1", port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()

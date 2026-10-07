@@ -15,6 +15,7 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 import pandas as pd
@@ -291,14 +292,17 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         if origin and origin.split("://", 1)[-1] != request.headers.get("host"):
             raise HTTPException(403, "cross-site request refused")
 
-    def _page(request: Request, title: str, body: str) -> HTMLResponse:
+    def _page(request: Request, title: str, body: str, scripts: bool = False) -> HTMLResponse:
         token = request.cookies.get("intel_csrf") or secrets.token_urlsafe(24)
         page = PAGE.format(title=H(title), body=body.replace("{csrf}", H(token)))
         resp = HTMLResponse(page)
         resp.set_cookie("intel_csrf", token, httponly=True, samesite="strict", secure=request.url.scheme == "https")
         resp.headers["Cache-Control"] = "no-store"
         resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+        csp = "default-src 'none'; style-src 'unsafe-inline' 'self'; form-action 'self'"
+        if scripts:  # only pages that need the live diagram may run our own (same-origin) script
+            csp += "; script-src 'self'; connect-src 'self'"
+        resp.headers["Content-Security-Policy"] = csp
         return resp
 
     @app.get("/posts", response_class=HTMLResponse)
@@ -309,7 +313,50 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     @app.get("/training", response_class=HTMLResponse)
     def training_page(request: Request):
         deployed = {"sha": s.intel_git_sha, "started_at": state.get("started_at")}
-        return _page(request, "Training", training_html(training_overview(s.intel_db_dsn), deployed))
+        diagram = (
+            '<link rel=stylesheet href="/static/pipeline.css"><div id=pipeline class=pl-wrap '
+            'data-def="/api/pipeline" data-state="/api/training-state"></div>'
+            '<script src="/static/pipeline.js"></script>'
+        )
+        return _page(
+            request, "Training", diagram + training_html(training_overview(s.intel_db_dsn), deployed), scripts=True
+        )
+
+    @app.get("/static/{name}")
+    def static_asset(name: str):
+        from fastapi.responses import FileResponse
+
+        types = {"pipeline.js": "text/javascript", "pipeline.css": "text/css"}
+        if name not in types:
+            raise HTTPException(404)
+        return FileResponse(Path(__file__).parents[1] / "static" / name, media_type=types[name])
+
+    @app.get("/api/pipeline")
+    def api_pipeline():
+        from intel.pipeline import definition
+
+        return definition()
+
+    @app.get("/api/training-state")
+    def api_training_state():
+        o = training_overview(s.intel_db_dsn)
+        p = o["progress"]
+        return {
+            "progress": p,
+            "running": bool(p and p["state"] == "running" and not o["stalled"]),
+            "stalled": bool(o["stalled"]),
+            "due_text": o["this_week"],
+            "history": [
+                {
+                    "run_id": r["run_id"],
+                    "status": r["status"],
+                    "failed_step": r["failed_step"],
+                    "new": (r["report"].get("challenger") or {}).get("balanced_accuracy"),
+                    "current": (r["report"].get("champion") or {}).get("balanced_accuracy"),
+                }
+                for r in o["runs"]
+            ],
+        }
 
     @app.get("/try", response_class=HTMLResponse)
     def try_page(request: Request):

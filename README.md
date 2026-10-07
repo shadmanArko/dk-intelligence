@@ -41,6 +41,13 @@ The `intel` user can only forward to the database port, only from the Mac's Tail
 `data/` is git-ignored. Pulls are immutable: a run writes `<id>.partial/`, renames it when complete, and
 updates `data/pulls/LATEST`. The newest `INTEL_KEEP_PULLS` pulls are kept. Training always names the pull it used.
 
+## Control Room (Mac)
+Double-click **`DK Control Room.command`** (or `uv run intel control`): a local page (127.0.0.1 only) with a
+**▶ Run training now** button and the live pipeline diagram: every box lights up while it runs, click any box for
+what it does and what happened (rows pulled, candidates, each judge check, ...), plus the live log and run history.
+Runs started there (or with `Run Sunday training.command`) run in the background: closing a window never stops them.
+The diagram comes from `src/intel/pipeline.py`; add a step or a node there and it appears everywhere.
+
 ## Schedule and dashboards
 - **Mac:** launchd `com.dhakakacchi.intel.weekly` (`scripts/com.dhakakacchi.intel.weekly.plist`) runs
   `scripts/weekly.sh --if-due` at login, every hour and on Sundays 12:00. A run starts once per week; if the Mac

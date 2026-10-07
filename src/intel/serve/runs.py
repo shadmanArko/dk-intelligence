@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from intel.serve.db import connect, kv_get, kv_set, log_event
 
@@ -194,7 +194,9 @@ def report_tick(dsn: str, tg, public_url: str | None, now: dt.datetime | None = 
 
 # ---------- live progress of the Sunday run (weekly-<run_id>.status.json, re-uploaded after every step) ----------
 
-STEP_KEYS = ("wait", "pull", "market", "ledger", "train", "package", "upload")
+from intel.pipeline import STEPS as _PIPELINE_STEPS  # noqa: E402
+
+STEP_KEYS = tuple(_PIPELINE_STEPS)
 STALLED_AFTER = dt.timedelta(hours=2)
 
 
@@ -205,6 +207,7 @@ class StepState(BaseModel):
     started_at: dt.datetime | None = None
     finished_at: dt.datetime | None = None
     note: str | None = Field(default=None, max_length=300)
+    details: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=40)
 
 
 class StatusFile(BaseModel):
@@ -217,7 +220,17 @@ class StatusFile(BaseModel):
     started_at: dt.datetime
     updated_at: dt.datetime
     current_step: str | None = Field(default=None, max_length=20)
-    steps: dict[Literal["wait", "pull", "market", "ledger", "train", "package", "upload"], StepState]
+    steps: dict[str, StepState]
+
+    @field_validator("steps")
+    @classmethod
+    def _known_steps(cls, v: dict) -> dict:
+        from intel.pipeline import STEPS
+
+        unknown = set(v) - set(STEPS)
+        if unknown:
+            raise ValueError(f"unknown steps {sorted(unknown)}")
+        return v
 
 
 def scan_status(dsn: str, inbox: Path) -> bool:

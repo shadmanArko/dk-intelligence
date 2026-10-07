@@ -217,3 +217,32 @@ def test_vps_progress_stall_page_and_telegram(intel, tmp_path):  # noqa: F811
         page = c.get("/training").text
         assert "Run 20261011T100000Z" in page and "Pull the warehouse" in page and "abc1234" in page
         assert c.get("/ready").json()["version"] == "abc1234"
+
+
+def test_vps_diagram_endpoints_and_details(intel, tmp_path):  # noqa: F811
+    from fastapi.testclient import TestClient
+
+    from intel.serve.app import create_app
+    from intel.serve.runs import scan_status
+    from intel.settings import Settings
+    from intel.weekly import Progress
+
+    inbox = tmp_path / "inbox"
+    p = Progress("20261011T100000Z", inbox)
+    p.start("pull")
+    p.done("pull", "40 tables", {"tables": 40, "rows": 11622, "checksums": "verified"})
+    assert scan_status(intel, inbox)
+    bad = json.loads((inbox / "weekly-20261011T100000Z.status.json").read_text())
+    bad["seq"] = 99
+    bad["steps"]["hack"] = {"label": "x", "status": "done"}
+    (inbox / "weekly-20261011T100000Z.status.json").write_text(json.dumps(bad))
+    assert scan_status(intel, inbox) is False  # unknown step rejected
+    s = Settings(_env_file=None, intel_db_dsn=intel, intel_inbox_dir=inbox, intel_store_dir=tmp_path / "store")
+    with TestClient(create_app(s, start_workers=False)) as c:
+        page = c.get("/training")
+        assert "id=pipeline" in page.text and "script-src 'self'" in page.headers["content-security-policy"]
+        assert "script-src" not in c.get("/").headers["content-security-policy"]  # other pages stay script-free
+        st = c.get("/api/training-state").json()
+        assert st["progress"]["steps"]["pull"]["details"]["rows"] == 11622 and st["running"] is True
+        assert c.get("/static/pipeline.css").status_code == 200 and c.get("/static/x.py").status_code == 404
+        assert len(c.get("/api/pipeline").json()["nodes"]) >= 10

@@ -4,7 +4,7 @@
 # By hand: double-click "Run Sunday training.command" in the repo, or: scripts/weekly.sh --live
 set -uo pipefail
 cd "$(dirname "$0")/.."
-export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH" MLFLOW_DISABLE_AGENT_HINT=1
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH" MLFLOW_DISABLE_AGENT_HINT=1 PYTHONUNBUFFERED=1
 LIVE=0; ARGS=()
 for a in "$@"; do if [ "$a" = "--live" ]; then LIVE=1; else ARGS+=("$a"); fi; done
 

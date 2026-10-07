@@ -19,9 +19,10 @@ from pathlib import Path
 
 import httpx
 
+from intel.pipeline import STEPS as PIPELINE_STEPS
 from intel.settings import Settings
 
-STEPS = ("wait", "pull", "market", "ledger", "train", "package", "upload")
+STEPS = tuple(PIPELINE_STEPS)
 
 
 class StepFailed(RuntimeError):
@@ -37,7 +38,7 @@ def mip_refresh_running() -> bool:
     return r.returncode == 0
 
 
-def wait_for_mip(max_wait_s: int, log, poll_s: int = 300) -> None:
+def wait_for_mip(max_wait_s: int, log, poll_s: int = 300) -> int:
     waited = 0
     while mip_refresh_running():
         if waited >= max_wait_s:
@@ -46,6 +47,7 @@ def wait_for_mip(max_wait_s: int, log, poll_s: int = 300) -> None:
             log("data platform weekly refresh is running; waiting for it to finish")
         time.sleep(poll_s)
         waited += poll_s
+    return waited
 
 
 def fetch_ledger(api_url: str, out_dir: Path, client: httpx.Client | None = None) -> tuple[list[dict], Path]:
@@ -67,15 +69,7 @@ def _scores(t: dict | None) -> dict | None:
     return {k: t.get(k) for k in ("balanced_accuracy", "roc_auc", "brier", "n")}
 
 
-STEP_LABELS = {
-    "wait": "Wait for the data refresh",
-    "pull": "Pull the warehouse",
-    "market": "Market snapshot",
-    "ledger": "Download the live ledger",
-    "train": "Train and judge",
-    "package": "Package the model",
-    "upload": "Upload to the VPS",
-}
+STEP_LABELS = {k: v[0] for k, v in PIPELINE_STEPS.items()}
 RETRY_AFTER = dt.timedelta(hours=6)
 
 
@@ -116,8 +110,8 @@ class Progress:
         self.state["current_step"] = step
         self._save()
 
-    def done(self, step: str, note: str | None = None) -> None:
-        self.state["steps"][step].update(status="done", finished_at=_now(), note=note)
+    def done(self, step: str, note: str | None = None, details: dict | None = None) -> None:
+        self.state["steps"][step].update(status="done", finished_at=_now(), note=note, details=details or {})
         self._save()
 
     def skip(self, step: str, note: str) -> None:
@@ -237,8 +231,12 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
     step = "wait"
     try:
         prog.start("wait")
-        wait_for_mip(wait_max_s, log)
-        prog.done("wait")
+        waited = wait_for_mip(wait_max_s, log)
+        prog.done(
+            "wait",
+            f"waited {waited // 60} min" if waited else "data refresh not running",
+            {"waited_minutes": waited // 60},
+        )
 
         step = "pull"
         prog.start("pull")
@@ -248,7 +246,23 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
         if verify_pull(pull):
             raise RuntimeError("pull verification failed")
         rep["pull_id"] = pull.name
-        prog.done("pull", pull.name)
+        m = json.loads((pull / "manifest.json").read_text())
+        t = m["tables"]
+        prog.done(
+            "pull",
+            f"{len(t)} tables, {m['total_rows']:,} rows",
+            {
+                "source": "VPS warehouse (read-only role, SSH tunnel over Tailscale)",
+                "snapshot": pull.name,
+                "tables": len(t),
+                "rows": m["total_rows"],
+                "posts": t.get("social_post", {}).get("rows"),
+                "metric snapshots": t.get("social_metrics_snapshot", {}).get("rows"),
+                "website events": t.get("raw_posthog_events", {}).get("rows"),
+                "orders": t.get("orders", {}).get("rows"),
+                "checksums": "verified",
+            },
+        )
 
         step = "market"
         prog.start("market")
@@ -262,7 +276,18 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             rep["market_fallback"] = True
             log(f"market snapshot failed ({type(e).__name__}); using {market.name}")
         rep["market_id"] = market.name
-        prog.done("market", market.name + (" (older snapshot)" if rep["market_fallback"] else ""))
+        mm = json.loads((market / "manifest.json").read_text())
+        prog.done(
+            "market",
+            market.name + (" (older snapshot)" if rep["market_fallback"] else ""),
+            {
+                "source": "Market data platform on this Mac (read-only role)",
+                "snapshot": market.name,
+                "performance rules": mm["tables"].get("content_feature_performance", {}).get("rows"),
+                "occasion days": mm["tables"].get("occasion_day", {}).get("rows"),
+                "fallback to older snapshot": rep["market_fallback"],
+            },
+        )
 
         step = "ledger"
         prog.start("ledger")
@@ -270,7 +295,18 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
         if s.intel_api_url:
             ledger, _ = fetch_ledger(s.intel_api_url, d / "ledger")
             log(f"ledger: {len(ledger)} predictions")
-        prog.done("ledger", f"{len(ledger or [])} predictions")
+        rows = ledger or []
+        with7 = sum(1 for x in rows if ((x.get("outcomes") or {}).get("7d") or {}).get("label") is not None)
+        prog.done(
+            "ledger",
+            f"{len(rows)} predictions, {with7} with 7-day results",
+            {
+                "source": "VPS intel-api over Tailscale",
+                "predictions": len(rows),
+                "with 7-day results": with7,
+                "posts": len({x["post_id"] for x in rows}),
+            },
+        )
 
         step = "train"
         prog.start("train")
@@ -288,10 +324,38 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             failed_gates=j.get("failed", []),
             live=next((g["detail"] for g in j["gates"] if g["gate"] == "live_evidence"), None),
         )
+        ch = r["challenger"]
         prog.done(
             "train",
-            f"{j['verdict']}: new {rep['challenger']['balanced_accuracy']} vs "
-            f"current {rep['champion']['balanced_accuracy']}",
+            f"best: {ch['model']}",
+            {
+                "training posts": r["split"]["train"],
+                "test posts (newest, unseen)": r["split"]["test"],
+                "test period from": r["split"]["cutoff"][:10],
+                "candidates (CV score)": ", ".join(
+                    f"{c['name']} {c['cv_balanced_accuracy@0.5']}" for c in r.get("leaderboard_cv", [])
+                )
+                or "–",
+                "chosen": f"{ch['model']} {ch['params']}",
+                "features": ch["features"],
+                "threshold": ch["threshold"],
+            },
+        )
+
+        step = "judge"
+        prog.start("judge")
+        icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}
+        prog.done(
+            "judge",
+            f"{j['verdict']}: new {rep['challenger']['balanced_accuracy']} vs current "
+            f"{rep['champion']['balanced_accuracy']}",
+            {
+                "verdict": j["verdict"],
+                "new model (balanced accuracy)": rep["challenger"]["balanced_accuracy"],
+                "current model": rep["champion"]["balanced_accuracy"],
+                "gain": j.get("gain"),
+                **{f"{icon.get(g['status'], '?')} {g['gate']}": g["detail"] for g in j["gates"]},
+            },
         )
 
         if j["verdict"] == "pass":
@@ -301,12 +365,16 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             if verify_package(tgz):
                 raise RuntimeError("package verification failed")
             rep["package"] = tgz.name
-            prog.done("package", tgz.name)
+            prog.done(
+                "package",
+                tgz.name,
+                {"file": tgz.name, "size KB": round(tgz.stat().st_size / 1024), "checksums": "verified"},
+            )
             if upload:
                 step = "upload"
                 prog.start("upload")
                 upload_file(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
-                prog.done("upload")
+                prog.done("upload", "arrived intact", {"target": "VPS inbox (upload-only)", "remote checksum": "match"})
             rep["status"] = "pass"
         else:
             prog.skip("package", "not better: nothing to package")
@@ -322,12 +390,17 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rep, indent=2, default=str) + "\n")
     if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key:
+        prog.start("report")
         try:
             _upload_report(out, s)
             rep["report_uploaded"] = True
+            prog.done("report", "sent; Telegram message follows", {"result": rep["status"]})
         except Exception as e:
             rep["report_uploaded"] = False
+            prog.fail("report", f"could not upload: {e}")
             log(f"could not upload the run report: {e}")
+    else:
+        prog.skip("report", "dry run: not uploaded")
     prog.finish(rep["status"])
     return rep
 

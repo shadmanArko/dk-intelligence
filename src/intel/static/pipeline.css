@@ -1,0 +1,60 @@
+/* DK Intelligence pipeline view: shared by the Mac Control Room and the VPS Training page. */
+:root {
+  --bg: #fbf8f3; --fg: #2a2118; --muted: #7a6c5d; --card: #fff; --line: #e8dfd2; --acc: #9b3d12;
+  --ok: #2f7d32; --ok-bg: #e8f3e8; --run: #b26a00; --run-bg: #fff3dc; --bad: #b3261e; --bad-bg: #fbe9e7;
+  --svc: #3b5b8c; --svc-bg: #eaf0f8; --pend: #b9ad9f; --lane: #f3ede4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --fg: #f1e9df; --muted: #a8998a; --card: #251f1a; --line: #3a3129; --acc: #e08b5a;
+    --ok: #7cc47f; --ok-bg: #1f3220; --run: #f0b35a; --run-bg: #3a2c14; --bad: #f2867e; --bad-bg: #3d1f1c;
+    --svc: #8fb0e0; --svc-bg: #1d2838; --pend: #6d6358; --lane: #221c17;
+  }
+}
+.pl-wrap { font: 15px/1.5 system-ui, sans-serif; color: var(--fg); }
+.pl-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 8px 0 12px; }
+.pl-head h2 { margin: 0; font-size: 1.2rem; }
+.pl-status { padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); font-weight: 600; }
+.pl-status.running { color: var(--run); background: var(--run-bg); border-color: var(--run); }
+.pl-status.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+.pl-status.bad { color: var(--bad); background: var(--bad-bg); border-color: var(--bad); }
+.pl-run { margin-left: auto; background: var(--acc); color: #fff; border: 0; border-radius: 10px; padding: 12px 22px;
+  font-size: 1rem; font-weight: 700; cursor: pointer; }
+.pl-run:disabled { opacity: .5; cursor: default; }
+.pl-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+.pl-bar > div { height: 100%; background: var(--ok); width: 0; transition: width .6s; }
+.pl-graph { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.pl-graph svg { display: block; min-width: 980px; width: 100%; height: auto; }
+.lane rect { fill: var(--lane); }
+.lane text { fill: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.node { cursor: pointer; }
+.node rect { fill: var(--card); stroke: var(--pend); stroke-width: 1.5; }
+.node .t { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.node .s { font-size: 11px; fill: var(--muted); }
+.node .i { font-size: 15px; }
+.node.done rect { stroke: var(--ok); fill: var(--ok-bg); }
+.node.running rect { stroke: var(--run); fill: var(--run-bg); stroke-width: 2.5; animation: pulse 1.2s ease-in-out infinite; }
+.node.failed rect { stroke: var(--bad); fill: var(--bad-bg); stroke-width: 2.5; }
+.node.skipped rect { stroke-dasharray: 5 4; opacity: .6; }
+.node.service rect { stroke: var(--svc); fill: var(--svc-bg); }
+.node.stalled rect { stroke: var(--run); fill: var(--run-bg); stroke-width: 2.5; stroke-dasharray: 3 3; }
+.node.waiting rect { stroke: var(--acc); stroke-width: 2.5; stroke-dasharray: 6 3; }
+.node.selected rect { stroke-width: 3.5; }
+@keyframes pulse { 50% { stroke-opacity: .35; } }
+.edge { fill: none; stroke: var(--pend); stroke-width: 1.8; }
+.edge.done { stroke: var(--ok); }
+.edge.flow { stroke: var(--run); stroke-width: 2.5; stroke-dasharray: 8 6; animation: flow .8s linear infinite; }
+.edge.loop { stroke: var(--svc); stroke-dasharray: 3 5; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+.pl-cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 820px) { .pl-cols { grid-template-columns: 1fr; } }
+.pl-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+.pl-card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.pl-card table { border-collapse: collapse; width: 100%; }
+.pl-card td { border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: top; overflow-wrap: anywhere; }
+.pl-card td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+.pl-muted { color: var(--muted); }
+.pl-log { max-height: 320px; overflow: auto; font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 0; }
+.pl-hist li { margin: 2px 0; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
