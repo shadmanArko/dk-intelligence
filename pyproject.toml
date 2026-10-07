@@ -1,0 +1,36 @@
+[project]
+name = "dk-intelligence"
+version = "0.1.0"
+description = "Dhaka Kacchi intelligence: models trained on the Mac, served and measured on the VPS"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "psycopg[binary]>=3.2,<4",
+    "pyarrow>=21,<23",
+    "pydantic-settings>=2.6,<3",
+    "typer>=0.15,<1",
+]
+
+[project.scripts]
+intel = "intel.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8.3,<9", "ruff>=0.8,<1"]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/intel"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101", "S603", "S607", "S608"]   # asserts in tests; ssh subprocess with fixed args; SQL built with psycopg.sql
