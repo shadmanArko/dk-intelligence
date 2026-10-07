@@ -87,3 +87,18 @@ def test_resolve_pull_latest(tmp_path):
     _fake_pull(tmp_path, "20261001T000000Z")
     (tmp_path / "LATEST").write_text("20261001T000000Z\n")
     assert resolve_pull(tmp_path).name == "20261001T000000Z"
+
+
+def test_bot_token_never_reaches_logs(caplog):
+    import logging
+
+    from intel.serve.app import configure_logging
+
+    configure_logging()
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+    fake = "https://api.telegram.org/bot1234567890:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/getUpdates"
+    rec = logging.LogRecord("x", logging.WARNING, __file__, 1, "request %s failed", (fake,), None)
+    from intel.serve.app import _redact_tokens
+
+    _redact_tokens(rec)
+    assert "AAAAAAAA" not in rec.getMessage() and "bot<redacted>" in rec.getMessage()

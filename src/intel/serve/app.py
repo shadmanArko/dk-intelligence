@@ -10,6 +10,7 @@ import datetime as dt
 import html
 import json
 import logging
+import re
 import secrets
 import threading
 import time
@@ -29,6 +30,7 @@ from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
+TOKEN_RE = re.compile(r"bot\d{6,12}:[A-Za-z0-9_-]{30,}")
 H = html.escape
 
 
@@ -421,10 +423,28 @@ overflow-x:auto;white-space:pre-wrap}}.gates li.pass::marker{{content:"✅ "}}.g
 </style></head><body>{body}</body></html>"""
 
 
+def configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    # httpx/httpcore log every request URL at INFO, and Telegram puts the bot token IN the URL. Never let them.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+    logging.getLogger().addFilter(_redact_tokens)
+    for h in logging.getLogger().handlers:
+        h.addFilter(_redact_tokens)
+
+
+def _redact_tokens(record: logging.LogRecord) -> bool:
+    """Last line of defence: mask anything shaped like a Telegram bot token in any log line."""
+    msg = record.getMessage()
+    if TOKEN_RE.search(msg):
+        record.msg, record.args = TOKEN_RE.sub("bot<redacted>", msg), None
+    return True
+
+
 def main() -> None:
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     uvicorn.run(create_app(), host="0.0.0.0", port=8000, proxy_headers=True, forwarded_allow_ips="127.0.0.1")  # noqa: S104
 
 
