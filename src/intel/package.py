@@ -189,7 +189,7 @@ def verify_package(tgz: Path) -> list[str]:
 
 def rsync_command(files: list[Path], target: str, key: Path, dry_run_checksum: bool = False) -> list[str]:
     ssh = f"ssh -i {key} -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15"
-    cmd = ["rsync", "-e", ssh, "--chmod=F644", "--itemize-changes"]
+    cmd = ["rsync", "-e", ssh, "--itemize-changes"]  # works with macOS openrsync too (no --chmod there)
     cmd += ["--dry-run", "--checksum"] if dry_run_checksum else ["--checksum"]
     return [*cmd, *map(str, files), f"{target}:"]
 
