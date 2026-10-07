@@ -275,3 +275,58 @@ To run it now: double-click <b>Run Sunday training</b> in the dk-intelligence fo
 <th>Received</th></tr>{hist}</table>
 <h2>VPS code</h2><p>Deployed version <code>{H(deployed["sha"])}</code>, running since {_t(deployed["started_at"])}.
 Deploys happen automatically after every push to main: <a href="{GITHUB_ACTIONS}" target=_blank rel=noopener>GitHub Actions</a>.</p>"""
+
+
+def _pct(x) -> str:
+    return "–" if x is None else f"{x:.0%}"
+
+
+def insights_html(bundle: dict | None) -> str:
+    if not bundle:
+        return (
+            "<h1>Insights</h1><p class=muted>No insights approved yet. The competitor review miner runs every Sunday on "
+            "the Mac; its first version needs your 200-sentence check (Control Room → Review check), then your "
+            "approval in Telegram.</p>"
+        )
+    ins, chk = bundle["insights"], bundle.get("check") or {}
+    rows = "".join(
+        f"<tr><td><b>{H(a['label'])}</b></td><td>{_pct(a['share_of_reviews'])}</td>"
+        f"<td class={'bad' if a['negative_rate'] >= 0.4 else ''}>{_pct(a['negative_rate'])}</td><td>{a['negative']}</td>"
+        f"<td>{'<br>'.join('“' + H(x) + '”' for x in a['complaints'][:2])}</td>"
+        f"<td>{H(a.get('our_angle') or '')}</td></tr>"
+        for a in ins["overall"]
+    )
+    bir = (
+        "".join(
+            f"<tr><td>{H(b['label'])}</td><td>{b['mentions']}</td><td>{_pct(b['negative_rate'])}</td>"
+            f"<td>{'<br>'.join('“' + H(x) + '”' for x in b.get('complaints', [])[:2])}</td></tr>"
+            for b in ins.get("biryani_mentions", [])
+        )
+        or "<tr><td colspan=4 class=muted>too few mentions</td></tr>"
+    )
+    dist = "".join(
+        f"<tr><td>{H(d['district'])}</td><td>{d['listings']}</td><td>{d['reviews']}</td>"
+        f"<td>{', '.join(H(c['label']) + ' ' + _pct(c['negative_rate']) for c in d['top_complaints'])}</td></tr>"
+        for d in ins["districts"]
+    )
+    comp = "".join(
+        f"<tr><td>{H(c['name'] or '?')}</td><td>{H(c['district'] or '–')}</td><td>{c['reviews']}</td><td>{c['rating']}</td>"
+        f"<td class=bad>{', '.join(H(w['label']) + ' ' + _pct(w['negative_rate']) for w in c['weak']) or '–'}</td>"
+        f"<td class=ok>{', '.join(H(w['label']) for w in c['strong']) or '–'}</td></tr>"
+        for c in ins["competitors"][:40]
+    )
+    return f"""<h1>Insights: what Berlin biryani customers complain about</h1>
+<p class=muted>{ins["reviews"]:,} Lieferando reviews of {ins["listings"]} Berlin places that sell biryani,
+{ins["period"][0]} to {ins["period"][1]}. Version <code>{H(bundle["version"])}</code>. Reading checked by you:
+aspect precision {chk.get("aspect_precision")}, recall {chk.get("aspect_recall")}, tone accuracy
+{chk.get("polarity_accuracy")} ({chk.get("checked")} sentences). "Our angle" lines are suggestions: use one only if it is
+true for us.</p>
+<h2>All topics, by number of complaints</h2>
+<table><tr><th>Topic</th><th>In reviews</th><th>Negative when mentioned</th><th>Complaints</th><th>Example</th>
+<th>Our angle (check before use)</th></tr>{rows}</table>
+<h2>When customers mention biryani by name</h2>
+<table><tr><th>Topic</th><th>Mentions</th><th>Negative</th><th>Example</th></tr>{bir}</table>
+<h2>By district (where the restaurants are)</h2>
+<table><tr><th>District</th><th>Places</th><th>Reviews</th><th>Top complaints</th></tr>{dist}</table>
+<h2>Competitors: weaker / stronger than the Berlin average</h2>
+<table><tr><th>Place</th><th>District</th><th>Reviews</th><th>★</th><th>Weak at</th><th>Strong at</th></tr>{comp}</table>"""

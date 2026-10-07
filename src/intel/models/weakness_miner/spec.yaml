@@ -1,0 +1,14 @@
+name: weakness_miner
+version_prefix: wm
+kind: insights
+question: "What do Berlin customers praise and complain about at the places that sell biryani (by competitor and district)?"
+data: market snapshot biryani_reviews / biryani_listings (Lieferando review texts > 20 chars)
+method: folded phrase dictionary (aspects.yaml) per clause + clause polarity (cue words with negation, review rating as fallback)
+gates:
+  min_reviews: 5000
+  min_checked: 150               # owner-checked clauses before the first approval
+  min_aspect_precision: 0.80     # of predicted aspects, share the owner confirmed
+  min_polarity_accuracy: 0.80
+  max_top5_change: 3             # stability: at most 3 of the top-5 complaints may change week to week
+  max_package_mb: 5
+schedule: weekly (Sunday, Mac)

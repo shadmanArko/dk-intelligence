@@ -36,6 +36,11 @@ MODEL_SOURCES = {
         "models/content_scorer/spec.yaml",
         "champions/harness_v1/features.py",
     ],
+    "weakness_miner": [
+        "models/weakness_miner/spec.yaml",
+        "models/weakness_miner/aspects.yaml",
+        "models/weakness_miner/mine.py",
+    ],
     "reach_scorer": [
         "models/content_scorer/features.py",
         "models/content_scorer/predict.py",
@@ -112,6 +117,9 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         "name": name,
         "version": report["version"],
         "purpose": {"pass": "candidate", "baseline": "baseline"}.get(verdict, "pipeline-test"),
+        "kind": spec.get("kind", "scorer"),
+        "top_complaints": report.get("top_complaints"),
+        "check": report.get("check"),
         "question": spec["question"],
         "created_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "data": {"pull_id": report["pull_id"], "market_id": report["market_id"], "split": report["split"]},

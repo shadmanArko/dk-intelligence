@@ -29,7 +29,7 @@ from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.runs import report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
-from intel.serve.views import BERLIN, ledger_rows, posts_html, training_html, try_form_html
+from intel.serve.views import BERLIN, insights_html, ledger_rows, posts_html, training_html, try_form_html
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
@@ -69,9 +69,10 @@ class Models:
         with self._lock:
             return self.loaded.get(name)
 
-    def names(self) -> list[str]:
+    def names(self, kind: str = "scorer") -> list[str]:
+        """Active models of a kind: 'scorer' (answers posts) or 'insights' (analysis shown on pages)."""
         with self._lock:
-            return sorted(self.loaded)
+            return sorted(n for n, m in self.loaded.items() if m["bundle"].get("kind", "scorer") == kind)
 
 
 # ---------- background workers ----------
@@ -378,6 +379,11 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             ],
         }
 
+    @app.get("/insights", response_class=HTMLResponse)
+    def insights_page(request: Request):
+        m = state["models"].get("weakness_miner")
+        return _page(request, "Insights", insights_html(m["bundle"] if m else None))
+
     @app.get("/try", response_class=HTMLResponse)
     def try_page(request: Request):
         return _page(request, "Try a draft", try_form_html())
@@ -559,7 +565,7 @@ nav b{{margin-right:auto}}textarea,input{{width:100%;box-sizing:border-box;paddi
 border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}}label{{display:inline-block;margin:0 12px 8px 0}}
 label input{{width:auto}}
 </style></head><body><nav><b>DK Intelligence</b><a href="/">Approvals</a><a href="/posts">Posts</a>
-<a href="/try">Try a draft</a><a href="/training">Training</a></nav>{body}</body></html>"""
+<a href="/try">Try a draft</a><a href="/insights">Insights</a><a href="/training">Training</a></nav>{body}</body></html>"""
 
 
 def configure_logging() -> None:

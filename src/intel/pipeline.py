@@ -39,6 +39,12 @@ STEPS: dict[str, tuple[str, str]] = {
         "candidates per question are trained on all posts except the newest 20% and chosen by time-ordered "
         "cross-validation.",
     ),
+    "mine": (
+        "Mine competitor reviews",
+        "Reads ~13.7k Lieferando reviews of the Berlin places that sell biryani, splits them into clauses and finds "
+        "14 topics (delivery time, rice, meat, portion, wrong items, ...) with praise or complaint, per competitor "
+        "and district. Every decision is a readable dictionary phrase; your 200-sentence check measures accuracy.",
+    ),
     "judge": (
         "Judge against the current model",
         "For each question, seven automatic checks on the newest posts, never seen in training, against what we use "
@@ -99,6 +105,15 @@ NODES: list[dict] = [
     {"id": "pull", "label": "Warehouse pull", "lane": "mac", "col": 1, "row": 1, "step": "pull"},
     {"id": "ledger", "label": "Ledger download", "lane": "mac", "col": 1, "row": 2, "step": "ledger"},
     {"id": "train", "label": "Train candidates", "lane": "mac", "col": 2, "row": 1, "step": "train"},
+    {
+        "id": "mine",
+        "label": "Review miner",
+        "sub": "competitor weaknesses",
+        "lane": "mac",
+        "col": 2,
+        "row": 0,
+        "step": "mine",
+    },
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
@@ -134,6 +149,8 @@ EDGES: list[tuple[str, str]] = [
     ("pull", "train"),
     ("ledger", "train"),
     ("train", "judge"),
+    ("market", "mine"),
+    ("mine", "judge"),
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),

@@ -74,7 +74,21 @@ def _pct(x) -> str:
     return "–" if x is None else f"{x:.3f}"
 
 
+def _insights_text(meta: dict, approval_id: int, public_url: str | None) -> str:
+    c = meta.get("check") or {}
+    tops = ", ".join(meta.get("top_complaints") or []) or "–"
+    link = f'\n\n<a href="{H(public_url)}/packages/{approval_id}">Open details</a>' if public_url else ""
+    return (
+        f"🔎 <b>New insights passed the checks</b>\n\n<b>{H(meta['name'])}</b> <code>{H(meta['version'])}</code>\n"
+        f"Your check: aspect precision {c.get('aspect_precision')}, recall {c.get('aspect_recall')}, "
+        f"tone accuracy {c.get('polarity_accuracy')} on {c.get('checked')} sentences\n"
+        f"Top complaints: {H(tops)}\nApproving shows them on the Insights page.{link}"
+    )
+
+
 def approval_text(meta: dict, approval_id: int, public_url: str | None) -> str:
+    if meta.get("kind") == "insights":
+        return _insights_text(meta, approval_id, public_url)
     s, c, j = meta["scores"]["challenger"], meta["scores"]["champion"], meta["judge"]
     head = (
         "🧪 <b>Baseline</b>: same recipe as today's predictor, retrained. No improvement claimed; approving it "

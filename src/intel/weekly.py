@@ -352,6 +352,41 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             )
         prog.done("train", f"{len(results)} models trained", train_details)
 
+        step = "mine"
+        prog.start("mine")
+        log("mining competitor reviews")
+        from intel.models.weakness_miner.run import run as mine_run
+
+        mdir = mine_run(market, d / "runs", d / "checks", log=log)
+        mr = json.loads((mdir / "report.json").read_text())
+        ins = json.loads((mdir / "insights.json").read_text())
+        results.append((mdir, mr))
+        rep["models"].append(
+            {
+                "name": "weakness_miner",
+                "version": mr["version"],
+                "verdict": mr["judge"]["verdict"],
+                "new": mr["check"]["aspect_precision"],
+                "current": None,
+                "failed_gates": mr["judge"].get("failed", []),
+            }
+        )
+        prog.done(
+            "mine",
+            f"{ins['reviews']:,} reviews, top complaint: {ins['overall'][0]['label']}",
+            {
+                "reviews": ins["reviews"],
+                "places": ins["listings"],
+                "clauses": ins["clauses"],
+                "clauses with a topic": ins["clauses_with_aspect"],
+                **{
+                    f"#{i + 1} complaint": f"{a['label']} ({a['negative']}, {a['negative_rate']:.0%} negative)"
+                    for i, a in enumerate(ins["overall"][:5])
+                },
+                "your check": f"{mr['check']['checked']} sentences checked",
+            },
+        )
+
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}

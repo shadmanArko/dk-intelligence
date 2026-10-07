@@ -151,17 +151,24 @@ def _batches(rows: Iterable[tuple], specs: list[ColumnSpec], schema: pa.Schema) 
         yield _batch(cols, specs, schema)
 
 
-def pull_table(conn: psycopg.Connection, table: str, out_dir: Path, schema: str = "public") -> TableResult:
+def pull_table(
+    conn: psycopg.Connection, table: str, out_dir: Path, schema: str = "public", query: str | None = None
+) -> TableResult:
+    """Copy a whole table, or (with `query`) the result of a fixed read-only SELECT saved as `table`.parquet."""
     path = out_dir / f"{table}.parquet"
-    expected = conn.execute(
-        sql.SQL("select count(*) from {}.{}").format(sql.Identifier(schema), sql.Identifier(table))
-    ).fetchone()[0]
+    source = (
+        sql.SQL(query)
+        if query
+        else sql.SQL("select * from {}.{}").format(sql.Identifier(schema), sql.Identifier(table))
+    )
+    expected = conn.execute(sql.SQL("select count(*) from ({}) q").format(source)).fetchone()[0]
     with conn.cursor(name=f"pull_{table}") as cur:  # server-side cursor: constant memory
         cur.itersize = BATCH_ROWS
-        cur.execute(sql.SQL("select * from {}.{}").format(sql.Identifier(schema), sql.Identifier(table)))
+        cur.execute(source)
         specs = column_specs(cur)
         arrow_schema = pa.schema(
-            [pa.field(s.name, s.arrow) for s in specs], metadata={"source": f"warehouse.{schema}.{table}"}
+            [pa.field(s.name, s.arrow) for s in specs],
+            metadata={"source": f"query:{table}" if query else f"{schema}.{table}"},
         )
         rows = 0
         with pq.ParquetWriter(path, arrow_schema, compression="zstd") as w:
@@ -191,7 +198,7 @@ def run_pull(
     keep: int = 12,
     schema: str = "public",
     log=print,
-    items: list[tuple[str, str]] | None = None,
+    items: list[tuple] | None = None,
     extra_files: dict[str, bytes] | None = None,
     application_name: str = "dk-intelligence-pull",
 ) -> Path:
@@ -219,8 +226,13 @@ def run_pull(
                         raise RuntimeError(f"not readable or not found: {', '.join(missing)}")
                     items = [(schema, t) for t in wanted]
                 results = []
-                for sch, t in items:
-                    r = pull_table(conn, t, tmp, sch)
+                for item in items:  # (schema, table) or ("query", name, sql)
+                    if item[0] == "query":
+                        _, t, q = item
+                        r = pull_table(conn, t, tmp, query=q)
+                    else:
+                        sch, t = item
+                        r = pull_table(conn, t, tmp, sch)
                     log(f"  {t:32s} {r.rows:>9,} rows")
                     results.append(r)
 
@@ -229,7 +241,8 @@ def run_pull(
             "pull_id": pull_id,
             "source": {
                 "database": db,
-                "schemas": sorted({sch for sch, _ in items}),
+                "schemas": sorted({i[0] for i in items if i[0] != "query"}),
+                "queries": sorted(i[1] for i in items if i[0] == "query"),
                 "role": user,
                 "server_version": server,
             },

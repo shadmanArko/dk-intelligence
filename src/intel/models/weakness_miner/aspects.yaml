@@ -1,0 +1,73 @@
+# Aspect dictionary for delivery-restaurant reviews (German + English). Matching: text is lower-cased and folded
+# (ä->ae, ö->oe, ü->ue, ß->ss, accents removed); a phrase matches whole words; a trailing * matches word prefixes.
+# Designed on a fixed 10% design slice of the reviews only; checked by the owner on a sample from the other 90%.
+aspects:
+  taste:
+    label: Taste
+    phrases: [lecker, geschmack*, schmeck*, gewuerzt, ungewuerzt, fad, fade, geschmacklos, langweilig, koestlich,
+              ungeniessbar, tasty, taste*, flavour*, flavor*, delicious, bland, yummy, tasteless]
+  spice_level:
+    label: Spice level
+    phrases: [scharf, schaerfe, mild, spicy, spice level, not spicy, nicht scharf, zu scharf, too spicy]
+  rice:
+    label: Rice
+    phrases: [reis, basmati, rice, biryani reis, verkocht, matschig, klebrig, mushy, sticky rice]
+  meat:
+    label: Meat
+    phrases: [fleisch, haehnchen, huhn, chicken, lamm, lamb, mutton, hammel, rind*, beef, ziege, goat, zaeh, zart,
+              tender, chewy, fleischstuecke, knochen, bones]
+  sauce_oil:
+    label: Sauce / oil
+    phrases: [soße, sosse, sauce*, oelig, fettig, oily, greasy, waessrig*, watery, sahnig, creamy, gravy]
+  portion:
+    label: Portion size
+    phrases: [portion*, menge, klein*, wenig, reichlich, satt, small, tiny, generous, quantity, amount, mini,
+              zu wenig, viel zu wenig]
+  price_value:
+    label: Price / value
+    phrases: [preis*, teuer, guenstig, billig, preis-leistung, preisleistung, euro, expensive, overpriced, cheap,
+              value, worth, wucher, kosten]
+  delivery_time:
+    label: Delivery time
+    phrases: [lieferzeit, gewartet, warten, wartezeit, stunde*, minuten, min, verspaet*, spaet, ewig, schnell,
+              puenktlich, zuegig, late, delay*, waited, waiting, hour*, minutes, quick, fast, on time, never arrived,
+              lange gedauert]
+  temperature:
+    label: Temperature on arrival
+    phrases: [kalt, lauwarm, warm, heiss, abgekuehlt, cold, lukewarm, hot, kaltgeliefert*]
+  order_accuracy:
+    label: Wrong / missing items
+    phrases: [falsch*, fehlte, fehlt, fehlend*, vergessen, nicht geliefert, nicht angekommen, nie angekommen,
+              kam nicht an, nicht bekommen, stattdessen, wrong, missing, forgot, not delivered, never received,
+              did not receive, didnt receive, instead of]
+  packaging:
+    label: Packaging
+    phrases: [verpack*, ausgelaufen, auslaufen, ausgekippt, sauerei, deckel, tuete, leak*, spill*, spilled,
+              packaging, packed, container, damaged]
+  hygiene_health:
+    label: Hygiene / health
+    phrases: [haar, haare, magen*, bauchschmerz*, uebel, krank, durchfall, roh, nicht durch, nicht frisch, alt,
+              verdorben, hygien*, sick, raw, food poisoning, stomach, undercooked, not fresh, hair]
+  service:
+    label: Service / communication
+    phrases: [freundlich, unfreundlich, telefon*, angerufen, niemand, antwort*, rueckerstattung, kontakt*, fahrer,
+              lieferant, zusteller, kurier*, service, rude, friendly, refund, driver, courier, support, chat*]
+  authenticity:
+    label: Authenticity
+    phrases: [authentisch, original, echt, wie in indien, wie zuhause, wie zu hause, wie in pakistan, authentic,
+              real indian, like home, homemade, hausgemacht]
+mentions:
+  biryani: [biryani, biriyani, briyani, biriani, kacchi]
+polarity:
+  positive: [lecker, geschmackvoll, gut, gute, guter, gutes, super, toll, top, perfekt, frisch, heiss, warm, schnell, zuegig,
+             puenktlich, freundlich, zart, fluffig, reichlich, ordentlich, empfehlenswert, empfehlen, koestlich,
+             authentisch, lieb, nett, netter, sauber, tasty, great, good, delicious, perfect, fresh, hot, quick,
+             fast, friendly, tender, fluffy, generous, excellent, amazing, nice, recommend, best, awesome, love]
+  negative: [schlecht, kalt, lauwarm, trocken, zaeh, fad, fade, ungeniessbar, enttaeuscht, enttaeuschend, falsch,
+             fehlte, vergessen, verspaetet, verspaetung, spaet, ewig, ausgelaufen, matschig, verkocht, ungewuerzt,
+             geschmacklos, waessrig, oelig, fettig, teuer, wenig, klein, unfreundlich, katastrophal, mies, eklig,
+             widerlich, katastrophe, desaster, enttaeuschung, frechheit, unverschaemt, leider, nie, niemals, roh, krank, haar, bad, cold, lukewarm, dry, bland, late, wrong,
+             missing, worst, terrible, disappointing, disappointed, awful, horrible, watery, oily, greasy, rude,
+             expensive, overpriced, small, raw, sick, spilled, leaking, never, poor]
+  negators: [nicht, kein, keine, keinen, keiner, nie, not, "no", never, without, ohne, nichts]   # "no" quoted: YAML reads bare no as false
+  intensifier_negative: [zu]        # "zu scharf", "zu wenig", "zu spaet": excess is a complaint
