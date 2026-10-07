@@ -36,7 +36,7 @@ def warehouse():
     a, b, c_ = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     with psycopg.connect(dsn, autocommit=True) as w:
         w.execute("""create table social_post (id uuid primary key, platform text, posted_at timestamptz,
-                     content_type text, caption text)""")
+                     content_type text, caption text, permalink text)""")
         w.execute("""create table social_metrics_snapshot (social_post_id uuid, captured_at timestamptz,
                      impressions bigint, reach bigint, likes bigint, comments bigint, shares bigint, saves bigint,
                      clicks bigint)""")
@@ -45,7 +45,9 @@ def warehouse():
             (b, "facebook", NOW - dt.timedelta(days=8), "reel", "Halal kacchi Saturday #berlin"),
             (c_, "instagram", NOW - dt.timedelta(hours=2), "reel", None),
         ]
-        w.cursor().executemany("insert into social_post values (%s,%s,%s,%s,%s)", posts)
+        w.cursor().executemany(
+            "insert into social_post (id, platform, posted_at, content_type, caption) values (%s,%s,%s,%s,%s)", posts
+        )
         snaps = [
             (a, START, 100, 90, 8, 1, 1),
             (b, posts[1][2] + dt.timedelta(hours=25), 50, 40, 10, 1, 1),
@@ -142,7 +144,11 @@ def test_too_late_snapshot_is_not_used(intel, warehouse):
     with psycopg.connect(wh, autocommit=True) as w:  # only snapshot of a new post is 5 days after posting
         pid = uuid.uuid4()
         posted = NOW - dt.timedelta(days=6)
-        w.execute("insert into social_post values (%s,'facebook',%s,'reel','x')", (pid, posted))
+        w.execute(
+            "insert into social_post (id, platform, posted_at, content_type, caption) "
+            "values (%s,'facebook',%s,'reel','x')",
+            (pid, posted),
+        )
         w.execute(
             "insert into social_metrics_snapshot values (%s,%s,1,1,50,0,0,0,0)", (pid, posted + dt.timedelta(days=5))
         )
@@ -150,3 +156,46 @@ def test_too_late_snapshot_is_not_used(intel, warehouse):
     with connect(intel) as c:
         got = c.execute("select horizon from post_outcome where post_id=%s", (pid,)).fetchall()
     assert got == []  # neither the 24h nor the 72h outcome may use a 5-day-old number
+
+
+def test_posts_page_and_try_a_draft(intel, warehouse, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from intel.serve.app import create_app
+    from intel.serve.views import reason_text
+    from intel.settings import Settings
+
+    wh, ids = warehouse
+    Measurer(intel, wh, START, Models(), "http://predictor:8000", http=harness()).run_once()
+    (tmp_path / "inbox").mkdir()
+    s = Settings(
+        _env_file=None,
+        intel_db_dsn=intel,
+        intel_warehouse_dsn=wh,
+        intel_inbox_dir=tmp_path / "inbox",
+        intel_store_dir=tmp_path / "store",
+    )
+    with TestClient(create_app(s, start_workers=False)) as c:
+        page = c.get("/posts").text
+        assert "Halal kacchi Saturday" in page  # caption read live from the warehouse
+        assert "Current predictor" in page and "✗ wrong" in page and "▲ above" in page
+        assert "after 7d" in page and "<b>0%</b> right of 1" in page
+        c.app.state.intel["models"].loaded["content_scorer"] = Models().m
+        form = c.get("/try")
+        token = c.cookies.get("intel_csrf")
+        r = c.post(
+            "/try",
+            data={
+                "csrf": token,
+                "platform": "instagram",
+                "content_type": "reel",
+                "when": "2026-10-10T18:00",
+                "caption": "Kacchi #berlin",
+            },
+        )
+        assert "chance to beat your typical" in r.text and form.status_code == 200
+        assert c.post("/try", data={"csrf": "x", "when": "2026-10-10T18:00"}).status_code == 403
+        bad = c.post("/try", data={"csrf": token, "when": "not a date"})
+        assert "Please check the inputs" in bad.text
+    assert reason_text("nominal__day_of_week_Saturday") == "Day: Saturday"
+    assert reason_text("numeric__caption_length") == "Caption length"

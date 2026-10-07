@@ -27,6 +27,7 @@ from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
+from intel.serve.views import BERLIN, ledger_rows, posts_html, try_form_html
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
@@ -277,6 +278,43 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
         return resp
 
+    @app.get("/posts", response_class=HTMLResponse)
+    def posts_page(request: Request):
+        summaries = {h: live_summary(s.intel_db_dsn, h) for h in ("24h", "72h", "7d")}
+        return _page(request, "Posts", posts_html(ledger_rows(s.intel_db_dsn, s.intel_warehouse_dsn), summaries))
+
+    @app.get("/try", response_class=HTMLResponse)
+    def try_page(request: Request):
+        return _page(request, "Try a draft", try_form_html())
+
+    @app.post("/try", response_class=HTMLResponse)
+    def try_submit(
+        request: Request,
+        csrf: str = Form(""),
+        platform: str = Form("instagram"),
+        content_type: str = Form("reel"),
+        when: str = Form(""),
+        caption: str = Form(""),
+    ):
+        _csrf(request, csrf)
+        form = {"platform": platform, "content_type": content_type, "when": when, "caption": caption}
+        try:
+            planned = dt.datetime.fromisoformat(when).replace(tzinfo=BERLIN)
+            body = PredictRequest(
+                platform=platform, content_type=content_type, caption=caption, planned_posted_at=planned
+            )
+        except ValueError as e:
+            return _page(request, "Try a draft", try_form_html(form=form, error=f"Please check the inputs: {e}"))
+        try:
+            result = _score(body)
+        except HTTPException as e:
+            return _page(request, "Try a draft", try_form_html(form=form, error=str(e.detail)))
+        try:
+            log_api_prediction(s.intel_db_dsn, body, result)
+        except Exception:
+            log.exception("could not log api prediction")
+        return _page(request, "Try a draft", try_form_html(result=result, form=form))
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
         reg = state["registry"]
@@ -302,7 +340,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             request,
             "DK Intelligence",
             f"""
-<h1>DK Intelligence</h1>
+<h1>Approvals</h1>
 <p class=muted>Last inbox check: {f"{scan:%H:%M:%S} UTC" if scan else "not yet"}</p>
 <h2>Waiting for your decision</h2>{pend_html}
 <h2>Models in use</h2><table><tr><th>Model</th><th>Version</th><th>Since (UTC)</th><th>How</th><th></th></tr>{rows}</table>
@@ -420,7 +458,13 @@ select{{padding:6px;border-radius:6px}}pre{{background:var(--card);border:1px so
 overflow-x:auto;white-space:pre-wrap}}.gates li.pass::marker{{content:"✅ "}}.gates li.fail::marker{{content:"❌ "}}
 .gates li.pending::marker{{content:"⏳ "}}.tag{{padding:1px 8px;border-radius:999px;border:1px solid var(--line)}}
 .tag.approved{{color:var(--ok)}}.tag.rejected,.tag.invalid,.tag.incompatible{{color:var(--bad)}}
-</style></head><body>{body}</body></html>"""
+.ok{{color:var(--ok)}}.bad{{color:var(--bad)}}.up{{color:var(--ok);white-space:nowrap}}.down{{color:var(--bad);white-space:nowrap}}
+nav{{display:flex;gap:16px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:8px;flex-wrap:wrap}}
+nav b{{margin-right:auto}}textarea,input{{width:100%;box-sizing:border-box;padding:8px;border-radius:6px;
+border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}}label{{display:inline-block;margin:0 12px 8px 0}}
+label input{{width:auto}}
+</style></head><body><nav><b>DK Intelligence</b><a href="/">Approvals</a><a href="/posts">Posts</a>
+<a href="/try">Try a draft</a></nav>{body}</body></html>"""
 
 
 def configure_logging() -> None:
