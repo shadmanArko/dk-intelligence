@@ -17,9 +17,9 @@ mkdir -p data/logs
 LOG="data/logs/weekly_$(date +%Y%m%d_%H%M).log"
 echo "== $(date -u +%FT%TZ) start ${ARGS[*]-}" >> "$LOG"
 if [ "$LIVE" = 1 ]; then
-  caffeinate -i uv run intel weekly ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee -a "$LOG"; code=${PIPESTATUS[0]}
+  caffeinate -is uv run intel weekly ${ARGS[@]+"${ARGS[@]}"} 2>&1 | tee -a "$LOG"; code=${PIPESTATUS[0]}
 else
-  caffeinate -i uv run intel weekly ${ARGS[@]+"${ARGS[@]}"} >> "$LOG" 2>&1; code=$?
+  caffeinate -is uv run intel weekly ${ARGS[@]+"${ARGS[@]}"} >> "$LOG" 2>&1; code=$?
 fi
 echo "== $(date -u +%FT%TZ) exit $code" >> "$LOG"
 if [ "$code" -ne 0 ]; then
