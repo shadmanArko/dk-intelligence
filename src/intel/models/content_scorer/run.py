@@ -20,7 +20,7 @@ from intel.judge import judge, paired_gain_ci
 
 from .features import MarketContext, build_features
 from .predict import predict
-from .train import train
+from .train import CHAMPION_COLS, Trained, train
 
 SPEC = yaml.safe_load((Path(__file__).with_name("spec.yaml")).read_text())
 INPUTS = ["platform", "content_type", "posted_at", "caption"]  # the ONLY columns features may see
@@ -37,7 +37,25 @@ def _data_gate(pull_dir: Path, n_posts: int) -> tuple[bool, str]:
     return now >= 0.8 * before, f"social_post rows {now} vs {before} in the previous pull"
 
 
-def run(pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None, log=print) -> Path:
+def _baseline(X: pd.DataFrame, y: pd.Series) -> Trained:
+    cols = CHAMPION_COLS
+    return Trained(
+        "champion_recipe",
+        {"C": champ.C},
+        "champion",
+        cols,
+        champ.recipe().fit(X[cols], y),
+        champ.THRESHOLD,
+        float("nan"),
+        [],
+    )
+
+
+def run(
+    pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None, log=print, baseline: bool = False
+) -> Path:
+    """`baseline=True`: package the CHAMPION's own recipe in this model format, refit on all matured posts. It claims
+    no improvement (verdict 'baseline'); it lets the new service start serving the same quality as today."""
     ds = build_content_dataset(pull_dir)
     matured = ds[ds["matured"]].reset_index(drop=True)
     tr, te, cutoff = time_split(matured, 0.2)
@@ -45,7 +63,7 @@ def run(pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None
     Xtr, Xte = build_features(tr[INPUTS], ctx), build_features(te[INPUTS], ctx)
 
     log(f"training on {len(tr)} posts, testing on {len(te)} (from {cutoff:%Y-%m-%d})")
-    model = train(Xtr, tr["label"])
+    model = _baseline(Xtr, tr["label"]) if baseline else train(Xtr, tr["label"])
     chall_p = model.pipeline.predict_proba(Xte[model.columns])[:, 1]
     chall = score(te["label"], chall_p, model.threshold, te["platform"])
 
@@ -55,7 +73,9 @@ def run(pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None
 
     now = dt.datetime.now(dt.UTC)
     data_hash = hashlib.sha256((pull_dir.name + market_dir.name).encode()).hexdigest()[:6]
-    version = f"cs-{now:%Y%m%dT%H%M}-{data_hash}"  # unique per run; data_hash = same pull + market
+    version = f"cs-{'base-' if baseline else ''}{now:%Y%m%dT%H%M}-{data_hash}"  # unique per run
+    if baseline:  # like the production champion: after the honest test, refit on every matured post
+        model.pipeline = champ.recipe().fit(build_features(matured[INPUTS], ctx)[model.columns], matured["label"])
     bundle = {
         "version": version,
         "pipeline": model.pipeline,
@@ -87,6 +107,9 @@ def run(pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None
             te["label"], (champ_p >= champ.THRESHOLD).astype(int), (chall_p >= model.threshold).astype(int)
         ),
     )
+    if baseline:
+        verdict["verdict"] = "baseline"
+        verdict["note"] = "champion recipe, refit on all matured posts; no improvement claimed"
     report = {
         "kind": "content_scorer_run",
         "version": version,
@@ -106,7 +129,7 @@ def run(pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None
         "judge": verdict,
         "leaderboard_cv": model.leaderboard,
     }
-    out = runs_dir / f"{now:%Y%m%dT%H%M%SZ}_content_scorer"
+    out = runs_dir / f"{now:%Y%m%dT%H%M%SZ}_content_scorer{'_baseline' if baseline else ''}"
     out.mkdir(parents=True)
     (out / "model.joblib").write_bytes(buf.getvalue())
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")

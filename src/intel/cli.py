@@ -157,6 +157,7 @@ def train_content_scorer(
     pull_id: str = typer.Option(None, help="Default: latest warehouse pull"),
     market_id: str = typer.Option(None, help="Default: latest market snapshot"),
     mlflow: bool = typer.Option(True, help="Log the run to MLflow (data/mlflow.db)"),
+    baseline: bool = typer.Option(False, help="Package the champion's recipe in the new format (no gain claimed)"),
 ) -> None:
     """M3: train the content scorer, judge it against the champion on the same split."""
     from intel.models.content_scorer.run import run
@@ -164,14 +165,17 @@ def train_content_scorer(
     s = get_settings()
     d = s.intel_data_dir
     uri = f"sqlite:///{(d / 'mlflow.db').resolve()}" if mlflow else None
-    out = run(resolve_pull(d / "pulls", pull_id), resolve_pull(d / "market", market_id), d / "runs", uri)
+    out = run(
+        resolve_pull(d / "pulls", pull_id), resolve_pull(d / "market", market_id), d / "runs", uri, baseline=baseline
+    )
     r = json.loads((out / "report.json").read_text())
     j = r["judge"]
     typer.echo(f"challenger {r['version']}: {r['challenger']['model']} {r['challenger']['params']}")
     for g in j["gates"]:
         color = {"pass": "green", "fail": "red", "pending": "yellow"}[g["status"]]
         typer.secho(f"  {g['status']:7s} {g['gate']:18s} {g['detail']}", fg=color)
-    typer.secho(f"verdict: {j['verdict'].upper()}  -> {out}", fg="green" if j["verdict"] == "pass" else "red")
+    ok = j["verdict"] in ("pass", "baseline")
+    typer.secho(f"verdict: {j['verdict'].upper()}  -> {out}", fg="green" if ok else "red")
 
 
 def _latest_run(kind: str) -> Path:
@@ -192,7 +196,7 @@ def package_build(
     s = get_settings()
     try:
         tgz = build_package(
-            Path(run) if run else _latest_run("content_scorer"), s.intel_data_dir / "packages", Path.cwd(), allow_fail
+            Path(run) if run else _latest_run("content_scorer*"), s.intel_data_dir / "packages", Path.cwd(), allow_fail
         )
     except ValueError as e:
         typer.secho(str(e), fg="red")

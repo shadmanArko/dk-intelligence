@@ -1,0 +1,50 @@
+# dk-intelligence on the VPS. Separate project, network and database from the harness stack: nothing here touches
+# the ordering database or the shared Postgres image. Total memory limit: 896 MB.
+name: dk-intelligence
+
+services:
+  intel-db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: intel
+      POSTGRES_USER: intel
+      POSTGRES_PASSWORD: ${INTEL_DB_PASSWORD:?set INTEL_DB_PASSWORD in deploy/.env}
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=20", "-c", "listen_addresses=*"]
+    volumes:
+      - intel_db:/var/lib/postgresql/data
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intel -d intel"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [intel]          # no published port
+
+  intel-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      INTEL_DB_DSN: postgresql://intel:${INTEL_DB_PASSWORD}@intel-db:5432/intel
+    group_add:
+      - "${INBOX_GID:?set INBOX_GID (getent group intelinbox) in deploy/.env}"
+    volumes:
+      - /opt/dhaka-kacchi/intel-data/inbox:/inbox:ro     # written only by the upload-only inbox user
+      - intel_store:/store
+    ports:
+      - "127.0.0.1:8710:8000"   # loopback only; `tailscale serve` publishes it to the tailnet
+    mem_limit: 512m
+    depends_on:
+      intel-db:
+        condition: service_healthy
+    networks: [intel]
+
+networks:
+  intel: {}
+
+volumes:
+  intel_db:
+  intel_store:

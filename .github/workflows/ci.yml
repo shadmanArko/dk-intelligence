@@ -27,3 +27,27 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -rs
+
+  # Door 3: after the tests pass on main, trigger the VPS deploy over a forced-command key that can ONLY run
+  # /opt/dhaka-kacchi/bin/run-intel-deploy.sh (git pull --ff-only + deploy/deploy.sh). The `script` below is
+  # ignored by the server; it only exists because the action requires one. Skips until the secrets are set.
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-vps-intel
+    steps:
+      - id: check
+        env:
+          KEY: ${{ secrets.INTEL_VPS_SSH_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "::notice::INTEL_VPS_* secrets not set, deploy skipped"; fi
+      - if: steps.check.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.INTEL_VPS_HOST }}
+          username: ${{ secrets.INTEL_VPS_USER }}
+          key: ${{ secrets.INTEL_VPS_SSH_KEY }}
+          command_timeout: 20m
+          script: echo "triggering dk-intelligence deploy"

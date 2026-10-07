@@ -4,16 +4,19 @@ version = "0.1.0"
 description = "Dhaka Kacchi intelligence: models trained on the Mac, served and measured on the VPS"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx>=0.28,<1",
     "joblib==1.6.0",
-    "mlflow>=3,<4",
     "numpy==2.5.3",
     "pandas==3.0.6",
     "psycopg[binary]>=3.2,<4",
     "pyarrow>=21,<23",
     "pydantic-settings>=2.6,<3",
+    "python-multipart>=0.0.20,<1",
     "pyyaml>=6,<7",
     "scikit-learn==1.9.1",
     "typer>=0.15,<1",
+    "uvicorn>=0.34,<1",
 ]
 
 [project.scripts]
@@ -21,6 +24,10 @@ intel = "intel.cli:app"
 
 [dependency-groups]
 dev = ["pytest>=8.3,<9", "ruff>=0.8,<1"]
+train = ["mlflow>=3,<4"]          # Mac only; the VPS image installs without it
+
+[tool.uv]
+default-groups = ["dev", "train"]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -40,3 +47,6 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 ignore = ["S101", "S603", "S607", "S608"]   # asserts in tests; ssh subprocess with fixed args; SQL built with psycopg.sql
+
+[tool.ruff.lint.per-file-ignores]
+"src/intel/serve/app.py" = ["E501"]   # inline HTML/CSS templates

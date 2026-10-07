@@ -22,6 +22,7 @@ import json
 import platform
 import subprocess
 import tarfile
+import zlib
 from pathlib import Path
 
 import sklearn
@@ -92,7 +93,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
     report = json.loads((run_dir / "report.json").read_text())
     name = report["kind"].removesuffix("_run")
     verdict = report["judge"]["verdict"]
-    if verdict != "pass" and not allow_fail:
+    if verdict not in ("pass", "baseline") and not allow_fail:
         raise ValueError(
             f"run {run_dir.name} has verdict {verdict!r}; refusing to package (use --allow-fail "
             "to build a pipeline-test package that can never be approved)"
@@ -104,7 +105,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         "format_version": 1,
         "name": name,
         "version": report["version"],
-        "purpose": "candidate" if verdict == "pass" else "pipeline-test",
+        "purpose": {"pass": "candidate", "baseline": "baseline"}.get(verdict, "pipeline-test"),
         "question": spec["question"],
         "created_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "data": {"pull_id": report["pull_id"], "market_id": report["market_id"], "split": report["split"]},
@@ -150,6 +151,14 @@ def verify_package(tgz: Path) -> list[str]:
     side = tgz.with_name(tgz.name + ".sha256")
     if not side.exists() or side.read_text().split()[0] != sha256_bytes(tgz.read_bytes()):
         problems.append("outer checksum missing or wrong")
+    try:
+        return problems + _verify_archive(tgz)
+    except (tarfile.TarError, EOFError, OSError, zlib.error, UnicodeDecodeError, ValueError) as e:
+        return [*problems, f"archive unreadable: {type(e).__name__}"]
+
+
+def _verify_archive(tgz: Path) -> list[str]:
+    problems: list[str] = []
     with tarfile.open(tgz, "r:gz") as tar:
         members = {m.name: m for m in tar.getmembers()}
         if any(
