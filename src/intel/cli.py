@@ -242,5 +242,27 @@ def package_upload(tgz: Path) -> None:
     typer.secho(f"uploaded {tgz.name}; remote checksums match", fg="green")
 
 
+@app.command()
+def weekly(
+    upload: bool = typer.Option(True, help="Upload the package (if it passed) and the run report to the VPS"),
+    wait_hours: int = typer.Option(8, help="Max hours to wait for the data platform's weekly refresh"),
+) -> None:
+    """M7: the Sunday run. Pull, market snapshot, ledger, train + judge, package/upload if better, report."""
+    from intel.weekly import run_weekly
+
+    r = run_weekly(get_settings(), upload=upload, wait_max_s=wait_hours * 3600)
+    color = {"pass": "green", "fail": "yellow", "baseline": "green"}.get(r["status"], "red")
+    where = f" at {r['failed_step']}: {r['error']}" if r["status"] == "error" else ""
+    typer.secho(f"weekly run {r['run_id']}: {r['status'].upper()}{where}", fg=color)
+    if r.get("challenger") and r.get("champion"):
+        typer.echo(
+            f"  new {r['challenger']['balanced_accuracy']} vs current {r['champion']['balanced_accuracy']} "
+            f"(failed: {', '.join(r['failed_gates']) or 'none'}); live: {r.get('live')}"
+        )
+    typer.echo(f"  report uploaded: {r.get('report_uploaded', False)}")
+    if r["status"] == "error":
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()

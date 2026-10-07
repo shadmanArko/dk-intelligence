@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     dk_warehouse_ssh: str | None = None
     dk_warehouse_ssh_key: Path | None = None
     mip_reader_dsn: str | None = None
+    intel_api_url: str | None = None  # tailnet URL of intel-api (ledger export for the live gate)
     dk_inbox_ssh: str | None = None  # upload-only inbox user on the VPS (door 2)
     dk_inbox_ssh_key: Path | None = None
     intel_data_dir: Path = Path("data")

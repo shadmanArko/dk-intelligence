@@ -26,6 +26,7 @@ from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
+from intel.serve.runs import report_tick, run_message, scan_run_reports
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.serve.views import BERLIN, ledger_rows, posts_html, try_form_html
 from intel.settings import Settings, get_settings
@@ -96,6 +97,10 @@ def inbox_loop(state: dict, stop: threading.Event) -> None:
     s: Settings = state["settings"]
     while not stop.is_set():
         try:
+            reports = scan_run_reports(s.intel_db_dsn, s.intel_inbox_dir)  # before packages: summary first
+            for rep in reports:
+                if state.get("telegram"):
+                    state["telegram"].send(run_message(rep))
             intakes = state["registry"].scan_inbox()
             notify_intake(state.get("telegram"), state["registry"], s.intel_public_url, intakes)
             for row in state["registry"].expire_due():
@@ -141,6 +146,16 @@ def measure_loop(state: dict, stop: threading.Event) -> None:
         stop.wait(s.intel_measure_interval_s)
 
 
+def report_loop(state: dict, stop: threading.Event) -> None:
+    s: Settings = state["settings"]
+    while not stop.is_set():
+        try:
+            report_tick(s.intel_db_dsn, state["telegram"], s.intel_public_url)
+        except Exception:
+            log.exception("report loop error")
+        stop.wait(300)
+
+
 # ---------- app ----------
 
 
@@ -174,6 +189,8 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             threads.append(threading.Thread(target=inbox_loop, args=(state, stop), daemon=True, name="inbox"))
             if s.intel_warehouse_dsn:
                 threads.append(threading.Thread(target=measure_loop, args=(state, stop), daemon=True, name="measure"))
+            if state.get("telegram"):
+                threads.append(threading.Thread(target=report_loop, args=(state, stop), daemon=True, name="reports"))
             if state.get("telegram") and s.telegram_polling:
                 threads.append(threading.Thread(target=telegram_loop, args=(state, stop), daemon=True, name="telegram"))
             for t in threads:

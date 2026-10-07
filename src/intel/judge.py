@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import balanced_accuracy_score
 
 
@@ -30,7 +31,7 @@ def judge(
     *,
     data_ok: tuple[bool, str],
     leakage_ok: tuple[bool, str],
-    live_posts: int,
+    live: tuple[bool | None, str],
     size_mb: float,
     latency_ms: float,
     gain_ci: tuple[float, float],
@@ -60,11 +61,7 @@ def judge(
             chall["brier"] <= champ["brier"] + g["max_brier_increase"],
             f"Brier {chall['brier']} vs {champ['brier']}",
         ),
-        gate(
-            "live_evidence",
-            None if live_posts < g["min_live_posts"] else True,
-            f"{live_posts} measured live posts (need {g['min_live_posts']}); ledger starts in M6",
-        ),
+        gate("live_evidence", *live),
         gate(
             "works",
             size_mb <= g["max_package_mb"] and latency_ms <= g["max_latency_ms"],
@@ -79,3 +76,28 @@ def judge(
         "gain_ci95": list(gain_ci),
         "gates": gates,
     }
+
+
+def live_gate(
+    test: pd.DataFrame, chall_pred, ledger_rows: list[dict] | None, min_posts: int
+) -> tuple[bool | None, str]:
+    """Live evidence on the SAME newest test posts: challenger vs the active model's logged predictions.
+
+    The active model's ledger predictions were made before the results existed (pre-registered); the challenger was
+    not trained on these test posts. Both are scored against the live 7-day label. Fewer than `min_posts` such posts
+    -> pending (not a failure)."""
+    if not ledger_rows:
+        return None, f"0 test posts have live 7-day results (need {min_posts})"
+    logged = {}
+    for r in ledger_rows:
+        o = (r.get("outcomes") or {}).get("7d") or {}
+        if r.get("model_name") == "content_scorer" and o.get("label") is not None:
+            logged[str(r["post_id"])] = (int(r["predicted_label"]), int(o["label"]))
+    ids = test["id"].astype(str).tolist()
+    pairs = [(int(p), *logged[i]) for i, p in zip(ids, chall_pred, strict=True) if i in logged]
+    n = len(pairs)
+    if n < min_posts:
+        return None, f"{n} test posts have live 7-day results (need {min_posts})"
+    chall_acc = sum(c == y for c, _, y in pairs) / n
+    logged_acc = sum(m == y for _, m, y in pairs) / n
+    return chall_acc >= logged_acc, f"on {n} live posts: new {chall_acc:.0%} right vs current model {logged_acc:.0%}"

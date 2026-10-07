@@ -98,7 +98,7 @@ def _judge(champ, chall, live=0):
         GATES,
         data_ok=(True, ""),
         leakage_ok=(True, ""),
-        live_posts=live,
+        live=(None, "pending") if live < 30 else (True, "ok"),
         size_mb=0.1,
         latency_ms=5,
         gain_ci=(0.0, 0.1),
@@ -134,3 +134,25 @@ def test_feast_days_use_berlin_date(ctx):
     late = posts("x", when="2026-05-26 23:30")  # 01:30 on 27 May in Berlin
     assert build_features(late, ctx).days_to_feast.iloc[0] == 0
     assert dt.date(2026, 5, 27).isoformat() in ctx.feast_days
+
+
+def test_live_gate_uses_only_logged_predictions_with_7d_labels():
+    from intel.judge import live_gate
+
+    test = pd.DataFrame({"id": [f"p{i}" for i in range(40)]})
+    rows = [
+        {
+            "post_id": f"p{i}",
+            "model_name": "content_scorer",
+            "predicted_label": 0,
+            "outcomes": {"7d": {"label": 1 if i % 2 else 0}},
+        }
+        for i in range(35)
+    ]
+    rows += [
+        {"post_id": "p0", "model_name": "harness_predictor", "predicted_label": 1, "outcomes": {"7d": {"label": 0}}}
+    ]
+    status, detail = live_gate(test, [1 if i % 2 else 0 for i in range(40)], rows, 30)
+    assert status is True and "on 35 live posts" in detail and "100%" in detail
+    assert live_gate(test, [0] * 40, rows[:10], 30)[0] is None
+    assert live_gate(test, [0] * 40, None, 30) == (None, "0 test posts have live 7-day results (need 30)")

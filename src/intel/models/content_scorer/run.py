@@ -16,7 +16,7 @@ import yaml
 from intel.champions import harness_v1 as champ
 from intel.datasets.content import build_content_dataset, time_split
 from intel.evaluate import score
-from intel.judge import judge, paired_gain_ci
+from intel.judge import judge, live_gate, paired_gain_ci
 
 from .features import MarketContext, build_features
 from .predict import predict
@@ -52,7 +52,13 @@ def _baseline(X: pd.DataFrame, y: pd.Series) -> Trained:
 
 
 def run(
-    pull_dir: Path, market_dir: Path, runs_dir: Path, mlflow_uri: str | None, log=print, baseline: bool = False
+    pull_dir: Path,
+    market_dir: Path,
+    runs_dir: Path,
+    mlflow_uri: str | None,
+    log=print,
+    baseline: bool = False,
+    ledger: list[dict] | None = None,
 ) -> Path:
     """`baseline=True`: package the CHAMPION's own recipe in this model format, refit on all matured posts. It claims
     no improvement (verdict 'baseline'); it lets the new service start serving the same quality as today."""
@@ -100,7 +106,7 @@ def run(
         SPEC["gates"],
         data_ok=_data_gate(pull_dir, len(ds)),
         leakage_ok=(True, f"features built only from {', '.join(INPUTS)}; label from metrics after posting"),
-        live_posts=0,
+        live=live_gate(te, (chall_p >= model.threshold).astype(int), ledger, SPEC["gates"]["min_live_posts"]),
         size_mb=size_mb,
         latency_ms=latency_ms,
         gain_ci=paired_gain_ci(
