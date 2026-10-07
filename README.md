@@ -22,6 +22,10 @@ uv run intel pull                 # snapshot the VPS warehouse -> data/pulls/<id
 uv run intel pull --tables social_post,social_metrics_snapshot
 uv run intel pulls list
 uv run intel pulls verify [ID]    # re-check checksums and row counts (default: latest)
+uv run intel champion reproduce   # M2: re-check the harness predictor, write the benchmark
+uv run intel market pull          # snapshot market priors, occasions and cue dictionary from the data platform
+uv run intel train content-scorer # M3: train candidates, judge against the champion (report + MLflow)
+uv run mlflow ui --backend-store-uri sqlite:///data/mlflow.db   # browse runs at http://127.0.0.1:5000
 uv run pytest                     # set INTEL_TEST_PG_DSN to also run the Postgres round-trip test
 ```
 

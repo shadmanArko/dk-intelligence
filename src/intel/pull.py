@@ -191,14 +191,19 @@ def run_pull(
     keep: int = 12,
     schema: str = "public",
     log=print,
+    items: list[tuple[str, str]] | None = None,
+    extra_files: dict[str, bytes] | None = None,
+    application_name: str = "dk-intelligence-pull",
 ) -> Path:
+    """Snapshot `tables` of `schema` (default: all readable). `items` = explicit (schema, table) pairs across
+    schemas instead (file name = table name). `extra_files` (name -> bytes) are stored and checksummed too."""
     pulls_dir.mkdir(parents=True, exist_ok=True)
     pull_id = new_pull_id()
     tmp = pulls_dir / f"{pull_id}.partial"
     final = pulls_dir / pull_id
     tmp.mkdir()
     try:
-        with psycopg.connect(dsn, connect_timeout=15, application_name="dk-intelligence-pull") as conn:
+        with psycopg.connect(dsn, connect_timeout=15, application_name=application_name) as conn:
             conn.read_only = True
             conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
             with conn.transaction():
@@ -206,28 +211,39 @@ def run_pull(
                 snap_at, server, db, user = conn.execute(
                     "select now(), current_setting('server_version'), current_database(), current_user"
                 ).fetchone()
-                available = list_tables(conn, schema)
-                wanted = tables or available
-                missing = sorted(set(wanted) - set(available))
-                if missing:
-                    raise RuntimeError(f"not readable or not found: {', '.join(missing)}")
+                if items is None:
+                    available = list_tables(conn, schema)
+                    wanted = tables or available
+                    missing = sorted(set(wanted) - set(available))
+                    if missing:
+                        raise RuntimeError(f"not readable or not found: {', '.join(missing)}")
+                    items = [(schema, t) for t in wanted]
                 results = []
-                for t in wanted:
-                    r = pull_table(conn, t, tmp, schema)
+                for sch, t in items:
+                    r = pull_table(conn, t, tmp, sch)
                     log(f"  {t:32s} {r.rows:>9,} rows")
                     results.append(r)
 
         manifest = {
             "format_version": FORMAT_VERSION,
             "pull_id": pull_id,
-            "source": {"database": db, "schema": schema, "role": user, "server_version": server},
+            "source": {
+                "database": db,
+                "schemas": sorted({sch for sch, _ in items}),
+                "role": user,
+                "server_version": server,
+            },
             "snapshot_at": snap_at.astimezone(dt.UTC).isoformat(),
             "created_by": f"dk-intelligence {__version__}",
             "tables": {r.table: {k: v for k, v in r.__dict__.items() if k != "table"} for r in results},
             "total_rows": sum(r.rows for r in results),
+            "files": sorted(extra_files or {}),
         }
+        for name, data in (extra_files or {}).items():
+            (tmp / name).write_bytes(data)
         (tmp / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
         sums = [f"{r.sha256}  {r.file}" for r in results]
+        sums += [f"{sha256_file(tmp / name)}  {name}" for name in sorted(extra_files or {})]
         sums.append(f"{sha256_file(tmp / 'manifest.json')}  manifest.json")
         (tmp / "SHA256SUMS").write_text("\n".join(sums) + "\n")
         tmp.rename(final)

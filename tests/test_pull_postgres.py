@@ -67,3 +67,14 @@ def test_unknown_table_fails_and_leaves_nothing(schema, tmp_path):
     with pytest.raises(RuntimeError, match="not readable or not found"):
         run_pull(DSN, tmp_path, tables=["nope"], schema=schema, log=lambda *_: None)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_items_across_schemas_and_extra_files(schema, tmp_path):
+    out = run_pull(
+        DSN, tmp_path, items=[(schema, "kitchen")], extra_files={"cues.yaml": b"cues: {}\n"}, log=lambda *_: None
+    )
+    assert verify_pull(out) == []
+    m = json.loads((out / "manifest.json").read_text())
+    assert list(m["tables"]) == ["kitchen"] and m["files"] == ["cues.yaml"] and m["source"]["schemas"] == [schema]
+    (out / "cues.yaml").write_text("tampered")
+    assert any("cues.yaml" in p for p in verify_pull(out))

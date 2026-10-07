@@ -1,0 +1,16 @@
+name: content_scorer
+version_prefix: cs
+question: "Will this Facebook / Instagram post beat this platform's usual engagement (expanding median)?"
+label: engagement (likes + comments + shares, latest snapshot) > platform expanding median   # same as champion
+platforms: [facebook, instagram]
+prediction_time: before posting (platform, format, planned time, caption only)
+champion: harness_v1
+metric: balanced_accuracy
+gates:
+  min_gain_balanced_accuracy: 0.02
+  max_platform_drop: 0.03
+  max_brier_increase: 0.005
+  min_live_posts: 30
+  max_package_mb: 50
+  max_latency_ms: 200
+schedule: weekly (Sunday, Mac)

@@ -14,6 +14,10 @@ from intel.tunnel import TunnelError, warehouse_tunnel
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Dhaka Kacchi intelligence")
 pulls_app = typer.Typer(no_args_is_help=True, help="Inspect warehouse pulls")
 app.add_typer(pulls_app, name="pulls")
+market_app = typer.Typer(no_args_is_help=True, help="Market knowledge snapshots from the data platform")
+app.add_typer(market_app, name="market")
+train_app = typer.Typer(no_args_is_help=True, help="Train models and judge them against the champion")
+app.add_typer(train_app, name="train")
 champion_app = typer.Typer(no_args_is_help=True, help="The current champion model")
 app.add_typer(champion_app, name="champion")
 
@@ -125,6 +129,45 @@ def champion_reproduce(pull_id: str = typer.Option(None, help="Default: latest p
         f"ci95={cs['balanced_accuracy_ci95']} auc={cs['roc_auc']} brier={cs['brier']}"
     )
     typer.echo(f"report -> {out}")
+
+
+@market_app.command("pull")
+def market_pull() -> None:
+    """Snapshot market priors, the occasion calendar and the cue dictionary from the data platform."""
+    from intel.market import run_market_pull
+
+    s = get_settings()
+    if not s.mip_reader_dsn:
+        typer.secho("MIP_READER_DSN is not set", fg="red")
+        raise typer.Exit(1)
+    out = run_market_pull(s.mip_reader_dsn, s.mip_dir, s.intel_data_dir / "market", s.intel_keep_pulls)
+    problems = verify_pull(out)
+    if problems:
+        typer.secho("verification FAILED: " + "; ".join(problems), fg="red")
+        raise typer.Exit(1)
+    typer.secho(f"market snapshot {out.name} verified -> {out}", fg="green")
+
+
+@train_app.command("content-scorer")
+def train_content_scorer(
+    pull_id: str = typer.Option(None, help="Default: latest warehouse pull"),
+    market_id: str = typer.Option(None, help="Default: latest market snapshot"),
+    mlflow: bool = typer.Option(True, help="Log the run to MLflow (data/mlflow.db)"),
+) -> None:
+    """M3: train the content scorer, judge it against the champion on the same split."""
+    from intel.models.content_scorer.run import run
+
+    s = get_settings()
+    d = s.intel_data_dir
+    uri = f"sqlite:///{(d / 'mlflow.db').resolve()}" if mlflow else None
+    out = run(resolve_pull(d / "pulls", pull_id), resolve_pull(d / "market", market_id), d / "runs", uri)
+    r = json.loads((out / "report.json").read_text())
+    j = r["judge"]
+    typer.echo(f"challenger {r['version']}: {r['challenger']['model']} {r['challenger']['params']}")
+    for g in j["gates"]:
+        color = {"pass": "green", "fail": "red", "pending": "yellow"}[g["status"]]
+        typer.secho(f"  {g['status']:7s} {g['gate']:18s} {g['detail']}", fg=color)
+    typer.secho(f"verdict: {j['verdict'].upper()}  -> {out}", fg="green" if j["verdict"] == "pass" else "red")
 
 
 if __name__ == "__main__":
