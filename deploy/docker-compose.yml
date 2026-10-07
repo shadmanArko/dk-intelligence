@@ -29,6 +29,7 @@ services:
     env_file: .env
     environment:
       INTEL_DB_DSN: postgresql://intel:${INTEL_DB_PASSWORD}@intel-db:5432/intel
+      HARNESS_PREDICTOR_URL: http://predictor:8000          # the production predictor, for shadow comparison
     group_add:
       - "${INBOX_GID:?set INBOX_GID (getent group intelinbox) in deploy/.env}"
     volumes:
@@ -40,10 +41,13 @@ services:
     depends_on:
       intel-db:
         condition: service_healthy
-    networks: [intel]
+    networks: [intel, harness]   # harness: read-only warehouse access + the production predictor (M6)
 
 networks:
   intel: {}
+  harness:
+    external: true   # the harness stack's network; `docker network ls` shows its exact name
+    name: ${HARNESS_NETWORK:?set HARNESS_NETWORK in deploy/.env (docker network ls)}
 
 volumes:
   intel_db:

@@ -165,6 +165,16 @@ class Bot:
         lines += [
             f"• {H(p['name'])} <code>{H(p['version'])}</code> (expires {p['expires_at']:%d %b})" for p in pend
         ] or ["• nothing"]
+        try:
+            from intel.serve.measure import live_summary
+
+            live = live_summary(self.reg.dsn, "7d")
+            lines.append(f"\n<b>Live ledger</b>\n• {live['posts']} posts scored, {live['outcomes']} outcomes recorded")
+            for n, m in sorted(live["models"].items()):
+                ba = m["balanced_accuracy"] if m["balanced_accuracy"] is not None else "–"
+                lines.append(f"• {H(n)}: {m['n']} posts at 7 days, accuracy {m['accuracy']:.2f}, balanced {ba}")
+        except Exception:
+            lines.append("\n(live ledger not available)")
         return "\n".join(lines)
 
     def _callback(self, q: dict) -> None:

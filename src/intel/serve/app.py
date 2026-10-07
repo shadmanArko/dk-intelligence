@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
+from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.settings import Settings, get_settings
@@ -121,6 +122,22 @@ def telegram_loop(state: dict, stop: threading.Event) -> None:
             stop.wait(10)
 
 
+def measure_loop(state: dict, stop: threading.Event) -> None:
+    s: Settings = state["settings"]
+    m = Measurer(s.intel_db_dsn, s.intel_warehouse_dsn, s.intel_ledger_start, state["models"], s.harness_predictor_url)
+    stop.wait(20)  # let the inbox loop load the active model first
+    while not stop.is_set():
+        try:
+            r = m.run_once()
+            state["last_measure"] = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
+            if r.new_posts or r.outcomes or r.errors:
+                log_event(s.intel_db_dsn, "measure_run", **r.__dict__)
+        except Exception:
+            log.exception("measure loop error")
+            state["last_measure"] = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "failed": True}
+        stop.wait(s.intel_measure_interval_s)
+
+
 # ---------- app ----------
 
 
@@ -152,6 +169,8 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         threads = []
         if start_workers:
             threads.append(threading.Thread(target=inbox_loop, args=(state, stop), daemon=True, name="inbox"))
+            if s.intel_warehouse_dsn:
+                threads.append(threading.Thread(target=measure_loop, args=(state, stop), daemon=True, name="measure"))
             if state.get("telegram") and s.telegram_polling:
                 threads.append(threading.Thread(target=telegram_loop, args=(state, stop), daemon=True, name="telegram"))
             for t in threads:
@@ -196,6 +215,10 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     @app.post("/v1/predict")
     def predict(body: PredictRequest):
         r = _score(body)
+        try:
+            log_api_prediction(s.intel_db_dsn, body, r)
+        except Exception:
+            log.exception("could not log api prediction")
         return {
             "label": "likely_at_or_above_typical" if r["label"] else "likely_below_typical",
             "probability": r["probability"],
@@ -207,6 +230,26 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     @app.post("/v1/score")
     def score(body: PredictRequest):
         return {"models": {"content_scorer": _score(body)}}
+
+    # ----- ledger (read-only; tailnet) -----
+    @app.get("/v1/ledger/summary")
+    def ledger_summary(horizon: Literal["24h", "72h", "7d"] = "7d"):
+        return {**live_summary(s.intel_db_dsn, horizon), "last_measure": state.get("last_measure")}
+
+    @app.get("/v1/ledger/export")
+    def ledger_export():
+        """Every shadow prediction with its outcomes (no captions), for the Sunday training run on the Mac."""
+        with connect(s.intel_db_dsn) as c:
+            rows = c.execute(
+                """select p.post_id, p.platform, p.planned_at, p.model_name, p.model_version, p.probability,
+                          p.threshold, p.predicted_label, p.created_at,
+                          coalesce(jsonb_object_agg(o.horizon, jsonb_build_object('label', o.label, 'engagement',
+                            o.engagement, 'reach', o.reach, 'age_hours', o.age_hours, 'platform_median',
+                            o.platform_median)) filter (where o.horizon is not null), '{}') as outcomes
+                   from prediction p left join post_outcome o on o.post_id = p.post_id
+                   where p.source = 'shadow' group by p.id order by p.planned_at"""
+            ).fetchall()
+        return {"rows": rows}
 
     # ----- web approval page -----
     def _who(request: Request) -> str:

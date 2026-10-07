@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -28,6 +29,10 @@ class Settings(BaseSettings):
     intel_inbox_interval_s: int = Field(default=30, ge=5)
     intel_public_url: str | None = None  # tailnet URL of the approval page, used in Telegram links
     intel_require_tailscale: bool = True  # web decisions need the Tailscale-User-Login header (tailscale serve)
+    intel_warehouse_dsn: str | None = None  # read-only role over the harness docker network (M6)
+    harness_predictor_url: str | None = None  # e.g. http://predictor:8000 (the production predictor)
+    intel_ledger_start: dt.datetime = dt.datetime(2026, 10, 7, tzinfo=dt.UTC)  # posts before this are not scored
+    intel_measure_interval_s: int = Field(default=3600, ge=60)
     telegram_bot_token: str | None = None
     telegram_chat_id: int | None = None
     telegram_polling: bool = True

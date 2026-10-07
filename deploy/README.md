@@ -69,6 +69,25 @@ GitHub → dk-intelligence → Settings → Secrets and variables → Actions �
 `INTEL_VPS_HOST` (same value as the harness `VPS_HOST`), `INTEL_VPS_USER` = `deploy`,
 `INTEL_VPS_SSH_KEY` = the private key printed above. Every push to main then runs tests, then deploys.
 
+### 6. Measurement (M6): warehouse access over the harness network
+`intel-api` joins the harness network to read the warehouse as `intelligence_reader` (read-only) and to ask the
+production predictor (`http://predictor:8000`) for its shadow score. Find the network name, then add two lines to
+`.env` (the password is the one you set for `intelligence_reader`):
+```bash
+docker network ls --format '{{.Name}}' | grep -i kacchi
+nano .env   # HARNESS_NETWORK=<name from above>
+            # INTEL_WAREHOUSE_DSN=postgresql://intelligence_reader:<password>@postgres:5432/warehouse
+git -C .. pull --ff-only && ./deploy.sh
+```
+Within a minute: `curl -s 127.0.0.1:8710/v1/ledger/summary` shows `last_measure` and the ledger counts.
+
+### 7. Nightly backup of intel-db (joins the harness B2 backup)
+```bash
+mkdir -p /opt/dhaka-kacchi/logs && ./backup.sh && ls -l /opt/dhaka-kacchi/backups | tail -3
+( crontab -l; echo "50 2 * * * /opt/dhaka-kacchi/dk-intelligence/deploy/backup.sh >> /opt/dhaka-kacchi/logs/intel-backup.log 2>&1" ) | crontab -
+crontab -l | tail -3
+```
+
 ## Everyday
 | Task | Command (in `/opt/dhaka-kacchi/dk-intelligence/deploy`) |
 |---|---|
@@ -78,5 +97,5 @@ GitHub → dk-intelligence → Settings → Secrets and variables → Actions �
 | Manual deploy | `/opt/dhaka-kacchi/bin/run-intel-deploy.sh` |
 | Database shell | `docker compose exec intel-db psql -U intel intel` |
 | Roll back a model | Telegram `/rollback`, or the button on the page |
+| Live ledger | `curl -s 127.0.0.1:8710/v1/ledger/summary` · Telegram `/status` |
 
-Back up `intel-db` with the harness's nightly backup later (Phase 1 M6/M7); it holds only registry data now.
