@@ -36,6 +36,7 @@ MODEL_SOURCES = {
         "models/content_scorer/spec.yaml",
         "champions/harness_v1/features.py",
     ],
+    "community_map": ["models/community_map/spec.yaml", "models/community_map/run.py"],
     "weakness_miner": [
         "models/weakness_miner/spec.yaml",
         "models/weakness_miner/aspects.yaml",

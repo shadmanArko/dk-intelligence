@@ -75,6 +75,13 @@ def _pct(x) -> str:
 
 
 def _insights_text(meta: dict, approval_id: int, public_url: str | None) -> str:
+    if meta["name"] == "community_map":
+        tops = "\n".join(f"{i + 1}. {H(t)}" for i, t in enumerate(meta.get("top_complaints") or []))
+        link = f'\n\n<a href="{H(public_url)}/packages/{approval_id}">Open details</a>' if public_url else ""
+        return (
+            f"🗺 <b>Community map ready</b>\n\n<code>{H(meta['version'])}</code>\nTop areas for delivery:\n{tops}\n\n"
+            f"Do these look right to you? Approving shows the map on the Insights page.{link}"
+        )
     c = meta.get("check") or {}
     tops = ", ".join(meta.get("top_complaints") or []) or "–"
     link = f'\n\n<a href="{H(public_url)}/packages/{approval_id}">Open details</a>' if public_url else ""

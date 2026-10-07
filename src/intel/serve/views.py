@@ -330,3 +330,84 @@ true for us.</p>
 <table><tr><th>District</th><th>Places</th><th>Reviews</th><th>Top complaints</th></tr>{dist}</table>
 <h2>Competitors: weaker / stronger than the Berlin average</h2>
 <table><tr><th>Place</th><th>District</th><th>Reviews</th><th>★</th><th>Weak at</th><th>Strong at</th></tr>{comp}</table>"""
+
+
+BAND_COLOR = {"≤ 5 km · €5": "var(--ok)", "≤ 10 km · €7": "var(--acc)", "≤ 15 km · €9": "#b8860b"}
+
+
+def _bubble_map(ins: dict, width: int = 720, height: int = 600) -> str:
+    """Plain SVG bubble map (no map tiles, no scripts): one circle per planning area at its centre, size = score,
+    colour = delivery band, dark ring = gap (big audience, no biryani seller), star = pickup point."""
+    lon0, lon1, lat0, lat1 = 13.08, 13.77, 52.33, 52.68
+
+    def xy(lat, lon):
+        return (lon - lon0) / (lon1 - lon0) * width, (lat1 - lat) / (lat1 - lat0) * height
+
+    dots = []
+    for a in reversed(ins["areas"]):  # best last = drawn on top
+        if a["lat"] is None:
+            continue
+        x, y = xy(a["lat"], a["lon"])
+        r = 2 + 9 * (a["score"] or 0)
+        col = BAND_COLOR.get(a["reach_band"], "var(--muted)")
+        ring = " stroke='var(--fg)' stroke-width='1.6'" if a["gap"] else ""
+        dots.append(
+            f"<circle cx='{x:.1f}' cy='{y:.1f}' r='{r:.1f}' fill='{col}' fill-opacity='0.55'{ring}>"
+            f"<title>{H(str(a['name']))} ({H(str(a['district']))}): score {a['score']}, {a['distance_km']} km"
+            f"{', gap' if a['gap'] else ''}</title></circle>"
+        )
+    ox, oy = xy(ins["origin"]["lat"], ins["origin"]["lon"])
+    legend = "".join(f"<tspan fill='{c}'>● </tspan><tspan>{H(b)}   </tspan>" for b, c in BAND_COLOR.items())
+    return (
+        f"<svg viewBox='0 0 {width} {height + 30}' role=img aria-label='Berlin areas by score' "
+        f"style='width:100%;max-width:{width}px;background:var(--card);border:1px solid var(--line);border-radius:10px'>"
+        + "".join(dots)
+        + f"<text x='{ox:.0f}' y='{oy + 5:.0f}' text-anchor=middle font-size='18' fill='var(--bad)'>★</text>"
+        f"<text x='12' y='{height + 20}' font-size='12' fill='var(--muted)'>{legend}<tspan>○ ring = gap · ★ pickup "
+        f"Leopoldplatz · bubble size = score</tspan></text></svg>"
+    )
+
+
+def community_html(bundle: dict | None) -> str:
+    if not bundle:
+        return (
+            "<h2>Community map</h2><p class=muted>Not approved yet: it is built every Sunday and offered for approval "
+            "in Telegram.</p>"
+        )
+    ins = bundle["insights"]
+    by_id = {a["area_id"]: a for a in ins["areas"]}
+
+    def row(a):
+        return (
+            f"<tr><td><b>{H(str(a['name']))}</b></td><td>{H(str(a['district']))}</td><td>{a['distance_km']} km</td>"
+            f"<td>{a['score']}</td><td>{a['south_asian']}</td><td>{a['meat_rice_cultures']}</td>"
+            f"<td>{a['internationals']}</td><td>{a['young_small_households']}</td><td>{a['biryani_listings']}</td>"
+            f"<td>{'<b class=ok>gap</b>' if a['gap'] else ''}</td><td>{a['orders'] or ''}</td></tr>"
+        )
+
+    head = (
+        "<tr><th>Area</th><th>District</th><th>From pickup</th><th>Score</th><th>South Asian origin</th>"
+        "<th>Meat & rice cultures</th><th>Internationals</th><th>Young, small households</th><th>Biryani sellers</th>"
+        "<th></th><th>Your orders</th></tr>"
+    )
+    top = "".join(row(a) for a in ins["areas"][:25])
+    aud = "".join(row(by_id[i]) for i in ins.get("top_audience", [])[:15] if i in by_id)
+    gaps = [a for a in ins["areas"] if a["gap"]][:15]
+    dist = "".join(
+        f"<tr><td>{H(d['district'])}</td><td>{d['score']}</td><td>{d['distance_km']} km</td><td>{d['south_asian']:,}</td>"
+        f"<td>{d['meat_rice_cultures']:,}</td><td>{d['biryani_listings']}</td><td>{d['gaps']}</td><td>{d['orders'] or ''}</td></tr>"
+        for d in ins["districts"]
+    )
+    w = ", ".join(f"{k.replace('_', ' ')} {v:.0%}" for k, v in ins["weights"].items())
+    return f"""<h2>Community map: where to deliver, advertise and pop up</h2>
+<p class=muted>{ins["n_areas"]} Berlin planning areas (LOR), version <code>{H(bundle["version"])}</code>. Score = audience
+({H(w)}; percentile ranks of public statistics) × reach factor of the delivery band from Leopoldplatz. South Asian
+origin is published per area only for India; Bangladeshi and Pakistani residents are counted citywide only. The census
+religion variable is deliberately not used. Use this to choose AREAS (delivery zones, area-targeted ads, flyers,
+pop-ups), never to target or exclude people. Your orders so far located: {ins["orders_located"]}.</p>
+{_bubble_map(ins)}
+<h3>Best areas overall (delivery)</h3><table>{head}{top}</table>
+<h3>Gaps: big audience, no biryani seller in the area</h3><table>{head}{"".join(row(a) for a in gaps)}</table>
+<h3>Biggest audience regardless of distance (pop-ups, events, ads)</h3><table>{head}{aud}</table>
+<h3>Districts</h3><table><tr><th>District</th><th>Avg score</th><th>Median distance</th><th>South Asian origin</th>
+<th>Meat & rice cultures</th><th>Biryani sellers</th><th>Gaps</th><th>Your orders</th></tr>{dist}</table>"""

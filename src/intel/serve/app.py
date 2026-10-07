@@ -29,7 +29,15 @@ from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.runs import report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
-from intel.serve.views import BERLIN, insights_html, ledger_rows, posts_html, training_html, try_form_html
+from intel.serve.views import (
+    BERLIN,
+    community_html,
+    insights_html,
+    ledger_rows,
+    posts_html,
+    training_html,
+    try_form_html,
+)
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
@@ -381,8 +389,9 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/insights", response_class=HTMLResponse)
     def insights_page(request: Request):
-        m = state["models"].get("weakness_miner")
-        return _page(request, "Insights", insights_html(m["bundle"] if m else None))
+        cm, wm = state["models"].get("community_map"), state["models"].get("weakness_miner")
+        body = community_html(cm["bundle"] if cm else None) + "<hr>" + insights_html(wm["bundle"] if wm else None)
+        return _page(request, "Insights", body)
 
     @app.get("/try", response_class=HTMLResponse)
     def try_page(request: Request):

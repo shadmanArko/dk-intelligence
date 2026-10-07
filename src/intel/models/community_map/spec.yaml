@@ -1,0 +1,28 @@
+name: community_map
+version_prefix: cm
+kind: insights
+question: "Which Berlin areas (542 LOR planning areas) are most promising for delivery, area-targeted ads and pop-ups?"
+data: market snapshot lor_community / lor_stats / lor_places / postcode_area / biryani_listings; warehouse orders (postcode only, counted per area)
+# Transparent score: weighted percentile ranks of the audience inputs, times a reach factor by delivery band.
+# Deliberately NOT used: the census religion variable. Areas are chosen by audience, food culture and reach.
+origin: {name: Leopoldplatz (pickup point), lat: 52.5465, lon: 13.3592}
+weights:
+  south_asian: 0.35          # residents of Indian origin (the only South Asian group published per area)
+  meat_rice_cultures: 0.25   # Turkish, Syrian, Lebanese, Iraqi, Afghan, Iranian origin
+  internationals: 0.15       # Anglo, French, Italian, Spanish/Portuguese origin
+  young_small_households: 0.25   # residents 20-39 x share of 1-2 person households (who order delivery most)
+groups:
+  south_asian: [indian]
+  meat_rice_cultures: [turkish, syrian, lebanese, iraqi, afghan, iranian]
+  internationals: [anglo, french, italian, iberian]
+reach:                       # delivery bands (facts.yaml): fee 5 / 7 / 9 EUR; beyond 15 km pickup or pop-up only
+  - {max_km: 5, factor: 1.0, label: "≤ 5 km · €5"}
+  - {max_km: 10, factor: 0.8, label: "≤ 10 km · €7"}
+  - {max_km: 15, factor: 0.6, label: "≤ 15 km · €9"}
+  - {max_km: 999, factor: 0.3, label: "> 15 km · pickup / pop-up"}
+gap_audience_rank: 0.75      # an area in the top 25% for audience with no biryani seller = gap
+gates:
+  min_areas: 500
+  min_located_share: 0.95
+  min_top20_overlap: 14      # stability: at least 14 of last week's top-20 areas stay in the top 20
+  max_package_mb: 5

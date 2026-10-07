@@ -387,6 +387,40 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             },
         )
 
+        step = "community"
+        prog.start("community")
+        from intel.models.community_map.run import run as map_run
+
+        cdir = map_run(market, pull, d / "runs", log=log)
+        cr = json.loads((cdir / "report.json").read_text())
+        cm = json.loads((cdir / "insights.json").read_text())
+        results.append((cdir, cr))
+        rep["models"].append(
+            {
+                "name": "community_map",
+                "version": cr["version"],
+                "verdict": cr["judge"]["verdict"],
+                "new": None,
+                "current": None,
+                "failed_gates": cr["judge"].get("failed", []),
+            }
+        )
+        top = cm["areas"][0]
+        prog.done(
+            "community",
+            f"top area: {top['name']} ({top['district']})",
+            {
+                "areas scored": cm["n_areas"],
+                "located": cm["located"],
+                **{
+                    f"#{i + 1}": f"{a['name']} ({a['district']}, {a['distance_km']} km){' · gap' if a['gap'] else ''}"
+                    for i, a in enumerate(cm["areas"][:5])
+                },
+                "gaps (big audience, no biryani seller)": sum(1 for a in cm["areas"] if a["gap"]),
+                "your orders located": cm["orders_located"],
+            },
+        )
+
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}

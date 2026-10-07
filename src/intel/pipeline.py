@@ -45,6 +45,12 @@ STEPS: dict[str, tuple[str, str]] = {
         "14 topics (delivery time, rice, meat, portion, wrong items, ...) with praise or complaint, per competitor "
         "and district. Every decision is a readable dictionary phrase; your 200-sentence check measures accuracy.",
     ),
+    "community": (
+        "Community map",
+        "Scores all 542 Berlin planning areas: residents of South Asian origin, meat-and-rice food cultures, "
+        "international food explorers and young small households (public statistics), times a reach factor for the "
+        "delivery bands from Leopoldplatz. Flags gaps: big audience, no biryani seller. Chooses AREAS, never people.",
+    ),
     "judge": (
         "Judge against the current model",
         "For each question, seven automatic checks on the newest posts, never seen in training, against what we use "
@@ -114,6 +120,15 @@ NODES: list[dict] = [
         "row": 0,
         "step": "mine",
     },
+    {
+        "id": "community",
+        "label": "Community map",
+        "sub": "542 Berlin areas",
+        "lane": "mac",
+        "col": 3,
+        "row": 0,
+        "step": "community",
+    },
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
@@ -151,6 +166,8 @@ EDGES: list[tuple[str, str]] = [
     ("train", "judge"),
     ("market", "mine"),
     ("mine", "judge"),
+    ("market", "community"),
+    ("community", "judge"),
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),
