@@ -14,6 +14,8 @@ from intel.tunnel import TunnelError, warehouse_tunnel
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="Dhaka Kacchi intelligence")
 pulls_app = typer.Typer(no_args_is_help=True, help="Inspect warehouse pulls")
 app.add_typer(pulls_app, name="pulls")
+champion_app = typer.Typer(no_args_is_help=True, help="The current champion model")
+app.add_typer(champion_app, name="champion")
 
 
 def _pulls_dir():
@@ -97,6 +99,32 @@ def pulls_verify(pull_id: str = typer.Argument(None, help="Default: latest")) ->
         typer.secho(f"{p.name}: " + "; ".join(problems), fg="red")
         raise typer.Exit(1)
     typer.secho(f"{p.name}: OK", fg="green")
+
+
+@champion_app.command("reproduce")
+def champion_reproduce(pull_id: str = typer.Option(None, help="Default: latest pull")) -> None:
+    """M2: reproduce the harness predictor and write the benchmark the challenger must beat."""
+    from intel.champions.reproduce import run
+
+    s = get_settings()
+    out = run(resolve_pull(_pulls_dir(), pull_id), s.harness_dir, s.intel_data_dir / "runs")
+    r = json.loads((out / "report.json").read_text())
+    a, b, c = r["A_recipe_check"], r["B_production_on_unseen_posts"], r["C_benchmark_for_challenger"]
+    typer.echo(
+        f"A recipe check      : {a['balanced_accuracy']} (published {a['published_balanced_accuracy']}) "
+        f"exact={a['reproduced_exactly']}"
+    )
+    bs = b.get("score", {})
+    typer.echo(
+        f"B production unseen : n={b['unseen_matured_posts']} balanced_acc={bs.get('balanced_accuracy')} "
+        f"ci95={bs.get('balanced_accuracy_ci95')} auc={bs.get('roc_auc')}"
+    )
+    cs = c["score"]
+    typer.echo(
+        f"C benchmark         : train={c['train']} test={c['test']} balanced_acc={cs['balanced_accuracy']} "
+        f"ci95={cs['balanced_accuracy_ci95']} auc={cs['roc_auc']} brier={cs['brier']}"
+    )
+    typer.echo(f"report -> {out}")
 
 
 if __name__ == "__main__":

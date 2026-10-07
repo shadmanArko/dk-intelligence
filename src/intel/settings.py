@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     dk_warehouse_ssh_key: Path | None = None
     mip_reader_dsn: str | None = None
     intel_data_dir: Path = Path("data")
+    harness_dir: Path = Path("../dhaka_kacchi_ai_harness")
     intel_keep_pulls: int = Field(default=12, ge=1)
 
-    @field_validator("dk_warehouse_ssh_key", "intel_data_dir", mode="after")
+    @field_validator("dk_warehouse_ssh_key", "intel_data_dir", "harness_dir", mode="after")
     @classmethod
     def _expand(cls, v: Path | None) -> Path | None:
         return v.expanduser() if v else v
