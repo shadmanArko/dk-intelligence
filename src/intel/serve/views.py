@@ -180,3 +180,75 @@ def try_form_html(result: dict | None = None, form: dict | None = None, error: s
 <label>Planned time (Berlin) <input type=datetime-local name=when value='{H(f.get("when", ""))}' required></label></p>
 <p><textarea name=caption rows=6 maxlength=5000 placeholder="Caption, hashtags included">{H(f.get("caption", ""))}</textarea></p>
 <button>Score it</button></form>{res}"""
+
+
+GITHUB_ACTIONS = "https://github.com/shadmanArko/dk-intelligence/actions"
+STEP_ICON = {
+    "done": ("✓", "ok"),
+    "running": ("⏳", ""),
+    "failed": ("✗", "bad"),
+    "skipped": ("–", "muted"),
+    "pending": ("·", "muted"),
+}
+
+
+def _t(v) -> str:
+    if not v:
+        return ""
+    t = v if hasattr(v, "astimezone") else __import__("datetime").datetime.fromisoformat(v)
+    return f"{t.astimezone(BERLIN):%a %d %b %H:%M}"
+
+
+def training_html(o: dict, deployed: dict) -> str:
+    p = o["progress"]
+    if p:
+        head = (
+            "⏳ running now"
+            if p["state"] == "running" and not o["stalled"]
+            else f"finished: <b>{H(p.get('result') or '?')}</b>"
+            if p["state"] == "finished"
+            else "⚠️ stalled"
+        )
+        rows = ""
+        for st in p["steps"].values():
+            icon, cls = STEP_ICON.get(st["status"], ("?", ""))
+            rows += (
+                f"<tr><td class='{cls}'>{icon}</td><td>{H(st['label'])}</td><td>{H(st['status'])}</td>"
+                f"<td>{_t(st.get('started_at'))}</td><td>{_t(st.get('finished_at'))}</td>"
+                f"<td>{H(st.get('note') or '')}</td></tr>"
+            )
+        stalled = ""
+        if o["stalled"]:
+            stalled = (
+                f"<p class=bad>No update for {int(o['stalled'].total_seconds() // 3600)} hours. The Mac is probably "
+                "asleep or was switched off during the run. When it is back on, the run starts again by itself "
+                "(it is still due), or start it by hand.</p>"
+            )
+        current = f"""<div class=card><h2>Run {H(p["run_id"])}: {head}</h2>
+<p class=muted>Started {_t(p["started_at"])} · last update {_t(p["updated_at"])} (Berlin time)</p>{stalled}
+<table><tr><th></th><th>Step</th><th>Status</th><th>Started</th><th>Finished</th><th>Note</th></tr>{rows}</table></div>"""
+    else:
+        current = (
+            "<p class=muted>No training progress received yet. It appears here as soon as the Mac starts a run.</p>"
+        )
+    hist = (
+        "".join(
+            f"<tr><td>{H(r['run_id'])}</td><td><span class='tag {'approved' if r['status'] in ('pass', 'baseline') else 'rejected' if r['status'] == 'error' else ''}'>{H(r['status'])}</span></td>"
+            f"<td>{H(r['failed_step'] or '')}</td>"
+            f"<td>{(r['report'].get('challenger') or {}).get('balanced_accuracy', '–')} vs {(r['report'].get('champion') or {}).get('balanced_accuracy', '–')}</td>"
+            f"<td>{H(', '.join(r['report'].get('failed_gates') or []))}</td><td>{_t(r['received_at'])}</td></tr>"
+            for r in o["runs"]
+        )
+        or "<tr><td colspan=6 class=muted>No runs received yet.</td></tr>"
+    )
+    return f"""<h1>Training</h1>
+<div class=card><p><b>This week:</b> {H(o["this_week"])}<br>
+<b>Last successful run:</b> {_t(o["last_ok"]) or "none yet"} · <b>Next regular run:</b> {o["next_anchor"].astimezone(BERLIN):%a %d %b} 12:00</p>
+<p class=muted>The Mac checks every hour and at start-up; if this week's run has not happened (for example the Mac was off
+on Sunday), it starts within an hour of the Mac being on. A failed run is retried after {o["retry_after_h"]} hours.
+To run it now: double-click <b>Run Sunday training</b> in the dk-intelligence folder.</p></div>
+<h2>Current / last run</h2>{current}
+<h2>Recent runs</h2><table><tr><th>Run</th><th>Result</th><th>Failed at</th><th>New vs current</th><th>Failed checks</th>
+<th>Received</th></tr>{hist}</table>
+<h2>VPS code</h2><p>Deployed version <code>{H(deployed["sha"])}</code>, running since {_t(deployed["started_at"])}.
+Deploys happen automatically after every push to main: <a href="{GITHUB_ACTIONS}" target=_blank rel=noopener>GitHub Actions</a>.</p>"""

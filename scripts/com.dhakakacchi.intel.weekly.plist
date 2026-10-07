@@ -4,9 +4,13 @@
 <dict>
   <key>Label</key><string>com.dhakakacchi.intel.weekly</string>
   <key>ProgramArguments</key>
-  <array><string>/bin/bash</string><string>/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence/scripts/weekly.sh</string></array>
+  <array><string>/bin/bash</string><string>/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence/scripts/weekly.sh</string><string>--if-due</string></array>
+  <!-- Sundays 12:00, plus every hour and at login: the run itself only starts when this week's is still due,
+       so a Mac that was switched off on Sunday catches up within an hour of being turned on. -->
   <key>StartCalendarInterval</key>
   <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence/data/logs/weekly_launchd.log</string>
   <key>StandardErrorPath</key><string>/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence/data/logs/weekly_launchd.log</string>
 </dict>

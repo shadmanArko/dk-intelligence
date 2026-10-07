@@ -244,13 +244,25 @@ def package_upload(tgz: Path) -> None:
 
 @app.command()
 def weekly(
-    upload: bool = typer.Option(True, help="Upload the package (if it passed) and the run report to the VPS"),
+    upload: bool = typer.Option(True, help="Upload the package (if it passed), progress and the run report to the VPS"),
     wait_hours: int = typer.Option(8, help="Max hours to wait for the data platform's weekly refresh"),
+    if_due: bool = typer.Option(False, "--if-due", help="Only run if this week's training has not happened yet"),
 ) -> None:
     """M7: the Sunday run. Pull, market snapshot, ledger, train + judge, package/upload if better, report."""
-    from intel.weekly import run_weekly
+    from intel.weekly import is_due, run_weekly
 
-    r = run_weekly(get_settings(), upload=upload, wait_max_s=wait_hours * 3600)
+    s = get_settings()
+    if if_due:
+        due, why = is_due(s.intel_data_dir / "weekly")
+        if not due:
+            typer.echo(f"not due: {why}")
+            return
+        typer.echo(why)
+    try:
+        r = run_weekly(s, upload=upload, wait_max_s=wait_hours * 3600)
+    except RuntimeError as e:  # lock held by a running run
+        typer.secho(str(e), fg="yellow")
+        return
     color = {"pass": "green", "fail": "yellow", "baseline": "green"}.get(r["status"], "red")
     where = f" at {r['failed_step']}: {r['error']}" if r["status"] == "error" else ""
     typer.secho(f"weekly run {r['run_id']}: {r['status'].upper()}{where}", fg=color)
@@ -262,6 +274,28 @@ def weekly(
     typer.echo(f"  report uploaded: {r.get('report_uploaded', False)}")
     if r["status"] == "error":
         raise typer.Exit(1)
+
+
+@app.command("weekly-status")
+def weekly_status() -> None:
+    """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""
+    from intel.weekly import is_due, run_history
+
+    w = get_settings().intel_data_dir / "weekly"
+    cur = w / "current.json"
+    if cur.exists():
+        st = json.loads(cur.read_text())
+        typer.echo(
+            f"run {st['run_id']}: {st['state']}{' (' + st.get('result', '') + ')' if st.get('result') else ''}"
+            f", updated {st['updated_at']}"
+        )
+        icons = {"done": "✓", "running": "⏳", "failed": "✗", "skipped": "–", "pending": "·"}
+        for v in st["steps"].values():
+            typer.echo(f"  {icons.get(v['status'], '?')} {v['label']:28s} {v.get('note') or ''}")
+    due, why = is_due(w)
+    typer.echo(f"this week: {'DUE - ' if due else ''}{why}")
+    for r in run_history(w)[-5:]:
+        typer.echo(f"  {r['run_id']}  {r['status']:8s} {r.get('failed_step') or ''}")
 
 
 if __name__ == "__main__":

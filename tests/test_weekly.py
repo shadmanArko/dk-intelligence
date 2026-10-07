@@ -97,3 +97,123 @@ def test_weekly_failure_still_writes_error_report(tmp_path, monkeypatch):
     assert r["status"] == "error" and r["failed_step"] == "pull" and "TunnelError" in r["error"]
     files = list((tmp_path / "weekly").glob("weekly-*.run.json"))
     assert len(files) == 1 and json.loads(files[0].read_text())["failed_step"] == "pull"
+    st = json.loads((tmp_path / "weekly" / "current.json").read_text())
+    assert (
+        st["result"] == "error"
+        and st["steps"]["pull"]["status"] == "failed"
+        and st["steps"]["wait"]["status"] == "done"
+    )
+    assert not (tmp_path / "weekly" / ".lock").exists()
+
+
+# ---------- schedule, catch-up, lock, progress ----------
+
+
+def _hist(tmp_path, run_id, status, started, finished=None, dry=False):
+    w = tmp_path / "weekly"
+    w.mkdir(exist_ok=True)
+    (w / f"weekly-{run_id}.run.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "status": status,
+                "started_at": started.isoformat(),
+                "finished_at": (finished or started + dt.timedelta(minutes=10)).isoformat(),
+                "dry_run": dry,
+            }
+        )
+    )
+    return w
+
+
+def test_due_rules_and_catch_up_after_mac_was_off(tmp_path):
+    from intel.weekly import is_due, last_sunday_noon
+
+    sun_noon = dt.datetime(2026, 10, 11, 10, tzinfo=dt.UTC)  # 12:00 Berlin (CEST)
+    assert last_sunday_noon(sun_noon + dt.timedelta(minutes=1)) == sun_noon
+    assert last_sunday_noon(sun_noon - dt.timedelta(minutes=1)) == sun_noon - dt.timedelta(days=7)
+    w = tmp_path / "weekly"
+    w.mkdir()
+    assert is_due(w, sun_noon + dt.timedelta(minutes=5))[0]  # never ran
+    # Mac off from Saturday to Tuesday: last success the previous week -> due on Tuesday
+    _hist(tmp_path, "20261004T100000Z", "fail", sun_noon - dt.timedelta(days=7))
+    assert is_due(w, sun_noon + dt.timedelta(days=2))[0]
+    _hist(tmp_path, "20261013T090000Z", "pass", sun_noon + dt.timedelta(days=2))
+    assert not is_due(w, sun_noon + dt.timedelta(days=2, hours=1))[0]  # done this week
+    assert is_due(w, sun_noon + dt.timedelta(days=7, minutes=1))[0]  # next Sunday
+
+
+def test_failed_run_retried_after_6h_and_dry_runs_ignored(tmp_path):
+    from intel.weekly import is_due
+
+    t = dt.datetime(2026, 10, 11, 11, tzinfo=dt.UTC)
+    w = _hist(tmp_path, "20261011T110000Z", "error", t)
+    assert not is_due(w, t + dt.timedelta(hours=2))[0]
+    assert is_due(w, t + dt.timedelta(hours=7))[0]
+    _hist(tmp_path, "20261011T190000Z", "fail", t + dt.timedelta(hours=8), dry=True)
+    assert is_due(w, t + dt.timedelta(hours=9))[0]  # a --no-upload run does not count
+
+
+def test_lock_blocks_second_run_and_takes_over_stale(tmp_path):
+    from intel.weekly import Lock
+
+    with Lock(tmp_path), pytest.raises(RuntimeError, match="in progress"), Lock(tmp_path):
+        pass
+    (tmp_path / ".lock").mkdir()
+    (tmp_path / ".lock" / "pid").write_text("999999")  # dead process
+    with Lock(tmp_path):
+        pass
+    assert not (tmp_path / ".lock").exists()
+
+
+def test_progress_files_and_upload_failure_is_harmless(tmp_path):
+    from intel.weekly import Progress
+
+    calls = []
+
+    def flaky(path):
+        calls.append(path.name)
+        raise OSError("vps down")
+
+    p = Progress("20261011T100000Z", tmp_path, flaky)
+    p.start("pull")
+    p.done("pull", "P1")
+    p.fail("market", "boom")
+    p.finish("error")
+    st = json.loads((tmp_path / "current.json").read_text())
+    assert st["state"] == "finished" and st["steps"]["pull"]["status"] == "done"
+    assert st["steps"]["market"]["status"] == "failed" and st["steps"]["upload"]["status"] == "skipped"
+    assert calls and p.upload_error.startswith("OSError")
+
+
+def test_vps_progress_stall_page_and_telegram(intel, tmp_path):  # noqa: F811
+    from fastapi.testclient import TestClient
+
+    from intel.serve.app import create_app
+    from intel.serve.runs import scan_status, training_overview, training_text
+    from intel.settings import Settings
+    from intel.weekly import Progress
+
+    inbox = tmp_path / "inbox"
+    p = Progress("20261011T100000Z", inbox)
+    p.start("pull")
+    assert scan_status(intel, inbox) is True and scan_status(intel, inbox) is False
+    old = json.loads((inbox / "weekly-20261011T100000Z.status.json").read_text()) | {"seq": 0}
+    (inbox / "weekly-20261011T100000Z.status.json").write_text(json.dumps(old))
+    assert scan_status(intel, inbox) is False  # older seq ignored
+    now = dt.datetime.fromisoformat(p.state["updated_at"])
+    assert training_overview(intel, now)["stalled"] is None
+    assert training_overview(intel, now + dt.timedelta(hours=3))["stalled"]
+    assert "⏳ Pull the warehouse" in training_text(intel)
+
+    s = Settings(
+        _env_file=None,
+        intel_db_dsn=intel,
+        intel_inbox_dir=inbox,
+        intel_store_dir=tmp_path / "store",
+        intel_git_sha="abc1234",
+    )
+    with TestClient(create_app(s, start_workers=False)) as c:
+        page = c.get("/training").text
+        assert "Run 20261011T100000Z" in page and "Pull the warehouse" in page and "abc1234" in page
+        assert c.get("/ready").json()["version"] == "abc1234"

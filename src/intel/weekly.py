@@ -67,7 +67,150 @@ def _scores(t: dict | None) -> dict | None:
     return {k: t.get(k) for k in ("balanced_accuracy", "roc_auc", "brier", "n")}
 
 
+STEP_LABELS = {
+    "wait": "Wait for the data refresh",
+    "pull": "Pull the warehouse",
+    "market": "Market snapshot",
+    "ledger": "Download the live ledger",
+    "train": "Train and judge",
+    "package": "Package the model",
+    "upload": "Upload to the VPS",
+}
+RETRY_AFTER = dt.timedelta(hours=6)
+
+
+class Progress:
+    """Step-by-step state of the current run: written to data/weekly/current.json and (best effort) uploaded as
+    weekly-<run_id>.status.json so the VPS Training page and Telegram /training can show it live."""
+
+    def __init__(self, run_id: str, out_dir: Path, uploader=None):
+        self.path, self.uploader, self.upload_error = out_dir / "current.json", uploader, None
+        self.remote = out_dir / f"weekly-{run_id}.status.json"
+        now = _now()
+        self.state = {
+            "kind": "weekly_status",
+            "run_id": run_id,
+            "state": "running",
+            "started_at": now,
+            "updated_at": now,
+            "seq": 0,
+            "current_step": None,
+            "steps": {k: {"label": v, "status": "pending"} for k, v in STEP_LABELS.items()},
+        }
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _save(self) -> None:
+        self.state["seq"] += 1
+        self.state["updated_at"] = _now()
+        data = json.dumps(self.state, indent=1)
+        self.path.write_text(data)
+        self.remote.write_text(data)
+        if self.uploader:
+            try:
+                self.uploader(self.remote)
+            except Exception as e:  # progress is nice-to-have; never fail the run for it
+                self.upload_error = f"{type(e).__name__}: {e}"
+
+    def start(self, step: str) -> None:
+        self.state["steps"][step].update(status="running", started_at=_now())
+        self.state["current_step"] = step
+        self._save()
+
+    def done(self, step: str, note: str | None = None) -> None:
+        self.state["steps"][step].update(status="done", finished_at=_now(), note=note)
+        self._save()
+
+    def skip(self, step: str, note: str) -> None:
+        self.state["steps"][step].update(status="skipped", note=note)
+
+    def fail(self, step: str, error: str) -> None:
+        self.state["steps"][step].update(status="failed", finished_at=_now(), note=error[:300])
+        self._save()
+
+    def finish(self, status: str) -> None:
+        for v in self.state["steps"].values():
+            if v["status"] == "pending":
+                v["status"] = "skipped"
+        self.state.update(state="finished", result=status, current_step=None)
+        self._save()
+
+
+def _now() -> str:
+    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+
+
+def last_sunday_noon(now: dt.datetime) -> dt.datetime:
+    """Most recent Sunday 12:00 Europe/Berlin at or before `now` (the weekly anchor)."""
+    from zoneinfo import ZoneInfo
+
+    local = now.astimezone(ZoneInfo("Europe/Berlin"))
+    anchor = (local - dt.timedelta(days=local.isoweekday() % 7)).replace(hour=12, minute=0, second=0, microsecond=0)
+    if anchor > local:
+        anchor -= dt.timedelta(days=7)
+    return anchor.astimezone(dt.UTC)
+
+
+def run_history(weekly_dir: Path) -> list[dict]:
+    out = []
+    for f in sorted(weekly_dir.glob("weekly-*.run.json")):
+        try:
+            out.append(json.loads(f.read_text()))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def is_due(weekly_dir: Path, now: dt.datetime | None = None) -> tuple[bool, str]:
+    """Due when no successful run (pass / fail / baseline) happened since the last Sunday 12:00 Berlin, and the last
+    attempt was before that anchor or failed more than RETRY_AFTER ago (so a broken step does not loop hourly)."""
+    now = now or dt.datetime.now(dt.UTC)
+    anchor = last_sunday_noon(now)
+    hist = [r for r in run_history(weekly_dir) if not r.get("dry_run")]  # --no-upload runs never reached the VPS
+    ok = [
+        dt.datetime.fromisoformat(r["finished_at"]) for r in hist if r.get("status") != "error" and r.get("finished_at")
+    ]
+    tries = [dt.datetime.fromisoformat(r["started_at"]) for r in hist if r.get("started_at")]
+    if ok and max(ok) >= anchor:
+        return False, f"done this week ({max(ok):%a %d %b %H:%M} UTC)"
+    if tries and max(tries) >= anchor and now - max(tries) < RETRY_AFTER:
+        return False, f"last attempt failed at {max(tries):%H:%M} UTC; retrying after {RETRY_AFTER.seconds // 3600} h"
+    return True, f"due since {anchor:%a %d %b %H:%M} UTC"
+
+
+class Lock:
+    """Directory lock with the owner's pid; a lock whose process is gone is stale and taken over."""
+
+    def __init__(self, weekly_dir: Path):
+        self.dir = weekly_dir / ".lock"
+
+    def __enter__(self):
+        import os
+
+        self.dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.dir.mkdir()
+        except FileExistsError:
+            try:
+                pid = int((self.dir / "pid").read_text())
+                os.kill(pid, 0)
+                raise RuntimeError(f"another weekly run is in progress (pid {pid})") from None
+            except (ProcessLookupError, ValueError, FileNotFoundError):
+                pass  # stale: take it over
+        (self.dir / "pid").write_text(str(os.getpid()))
+        return self
+
+    def __exit__(self, *exc):
+        import shutil
+
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
 def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, log=print) -> dict:
+    with Lock(s.intel_data_dir / "weekly"):
+        return _run_weekly(s, upload=upload, wait_max_s=wait_max_s, log=log)
+
+
+def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, log=print) -> dict:
     from intel.market import run_market_pull
     from intel.models.content_scorer.run import run as train_run
     from intel.package import build_package, verify_package
@@ -86,21 +229,29 @@ def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, 
         "error": None,
         "market_fallback": False,
         "failed_gates": [],
+        "dry_run": not upload,
     }
     d = s.intel_data_dir
+    uploader = (lambda f: _upload_report(f, s)) if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key else None
+    prog = Progress(rep["run_id"], d / "weekly", uploader)
     step = "wait"
     try:
+        prog.start("wait")
         wait_for_mip(wait_max_s, log)
+        prog.done("wait")
 
         step = "pull"
+        prog.start("pull")
         log("pulling the warehouse")
         with warehouse_tunnel(s.dk_warehouse_ssh, s.dk_warehouse_ssh_key, s.warehouse_local_port):
             pull = run_pull(s.dk_warehouse_dsn, d / "pulls", keep=s.intel_keep_pulls, log=lambda *_: None)
         if verify_pull(pull):
             raise RuntimeError("pull verification failed")
         rep["pull_id"] = pull.name
+        prog.done("pull", pull.name)
 
         step = "market"
+        prog.start("market")
         try:
             market = run_market_pull(s.mip_reader_dsn, s.mip_dir, d / "market", s.intel_keep_pulls, log=lambda *_: None)
         except Exception as e:  # market data changes slowly: last week's is acceptable
@@ -111,14 +262,18 @@ def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, 
             rep["market_fallback"] = True
             log(f"market snapshot failed ({type(e).__name__}); using {market.name}")
         rep["market_id"] = market.name
+        prog.done("market", market.name + (" (older snapshot)" if rep["market_fallback"] else ""))
 
         step = "ledger"
+        prog.start("ledger")
         ledger = None
         if s.intel_api_url:
             ledger, _ = fetch_ledger(s.intel_api_url, d / "ledger")
             log(f"ledger: {len(ledger)} predictions")
+        prog.done("ledger", f"{len(ledger or [])} predictions")
 
         step = "train"
+        prog.start("train")
         log("training and judging")
         mlflow_uri = f"sqlite:///{(d / 'mlflow.db').resolve()}"
         run_dir = train_run(pull, market, d / "runs", mlflow_uri, log=log, ledger=ledger)
@@ -133,21 +288,33 @@ def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, 
             failed_gates=j.get("failed", []),
             live=next((g["detail"] for g in j["gates"] if g["gate"] == "live_evidence"), None),
         )
+        prog.done(
+            "train",
+            f"{j['verdict']}: new {rep['challenger']['balanced_accuracy']} vs "
+            f"current {rep['champion']['balanced_accuracy']}",
+        )
 
         if j["verdict"] == "pass":
             step = "package"
+            prog.start("package")
             tgz = build_package(run_dir, d / "packages", Path.cwd())
             if verify_package(tgz):
                 raise RuntimeError("package verification failed")
             rep["package"] = tgz.name
+            prog.done("package", tgz.name)
             if upload:
                 step = "upload"
+                prog.start("upload")
                 upload_file(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
+                prog.done("upload")
             rep["status"] = "pass"
         else:
+            prog.skip("package", "not better: nothing to package")
+            prog.skip("upload", "not better: nothing to upload")
             rep["status"] = "fail"
     except Exception as e:
         rep.update(status="error", failed_step=step, error=f"{type(e).__name__}: {e}"[:500])
+        prog.fail(step, rep["error"])
         log(traceback.format_exc())
     rep["finished_at"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
@@ -161,6 +328,7 @@ def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, 
         except Exception as e:
             rep["report_uploaded"] = False
             log(f"could not upload the run report: {e}")
+    prog.finish(rep["status"])
     return rep
 
 

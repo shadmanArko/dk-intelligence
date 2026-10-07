@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     intel_store_dir: Path = Path("/store")
     intel_approval_days: int = Field(default=7, ge=1)
     intel_inbox_interval_s: int = Field(default=30, ge=5)
+    intel_git_sha: str = "unknown"  # set by deploy/deploy.sh
     intel_public_url: str | None = None  # tailnet URL of the approval page, used in Telegram links
     intel_require_tailscale: bool = True  # web decisions need the Tailscale-User-Login header (tailscale serve)
     intel_warehouse_dsn: str | None = None  # read-only role over the harness docker network (M6)

@@ -26,9 +26,9 @@ from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
-from intel.serve.runs import report_tick, run_message, scan_run_reports
+from intel.serve.runs import report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
-from intel.serve.views import BERLIN, ledger_rows, posts_html, try_form_html
+from intel.serve.views import BERLIN, ledger_rows, posts_html, training_html, try_form_html
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
@@ -97,6 +97,7 @@ def inbox_loop(state: dict, stop: threading.Event) -> None:
     s: Settings = state["settings"]
     while not stop.is_set():
         try:
+            scan_status(s.intel_db_dsn, s.intel_inbox_dir)
             reports = scan_run_reports(s.intel_db_dsn, s.intel_inbox_dir)  # before packages: summary first
             for rep in reports:
                 if state.get("telegram"):
@@ -196,6 +197,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             for t in threads:
                 t.start()
         log_event(s.intel_db_dsn, "api_started", workers=[t.name for t in threads])
+        state["started_at"] = dt.datetime.now(dt.UTC)
         app.state.intel = state
         yield
         stop.set()
@@ -211,7 +213,11 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     def ready():
         with connect(s.intel_db_dsn) as c:
             c.execute("select 1")
-        return {"status": "ready", "models": {n: m["version"] for n, m in state["models"].loaded.items()}}
+        return {
+            "status": "ready",
+            "version": s.intel_git_sha,
+            "models": {n: m["version"] for n, m in state["models"].loaded.items()},
+        }
 
     # ----- scoring: same contract as the harness predictor -----
     def _score(body: PredictRequest) -> dict:
@@ -299,6 +305,11 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     def posts_page(request: Request):
         summaries = {h: live_summary(s.intel_db_dsn, h) for h in ("24h", "72h", "7d")}
         return _page(request, "Posts", posts_html(ledger_rows(s.intel_db_dsn, s.intel_warehouse_dsn), summaries))
+
+    @app.get("/training", response_class=HTMLResponse)
+    def training_page(request: Request):
+        deployed = {"sha": s.intel_git_sha, "started_at": state.get("started_at")}
+        return _page(request, "Training", training_html(training_overview(s.intel_db_dsn), deployed))
 
     @app.get("/try", response_class=HTMLResponse)
     def try_page(request: Request):
@@ -481,7 +492,7 @@ nav b{{margin-right:auto}}textarea,input{{width:100%;box-sizing:border-box;paddi
 border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}}label{{display:inline-block;margin:0 12px 8px 0}}
 label input{{width:auto}}
 </style></head><body><nav><b>DK Intelligence</b><a href="/">Approvals</a><a href="/posts">Posts</a>
-<a href="/try">Try a draft</a></nav>{body}</body></html>"""
+<a href="/try">Try a draft</a><a href="/training">Training</a></nav>{body}</body></html>"""
 
 
 def configure_logging() -> None:

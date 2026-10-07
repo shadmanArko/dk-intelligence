@@ -190,3 +190,107 @@ def report_tick(dsn: str, tg, public_url: str | None, now: dt.datetime | None = 
         kv_set(dsn, "reminder_sent", day_key)
         sent.append("reminder")
     return sent
+
+
+# ---------- live progress of the Sunday run (weekly-<run_id>.status.json, re-uploaded after every step) ----------
+
+STEP_KEYS = ("wait", "pull", "market", "ledger", "train", "package", "upload")
+STALLED_AFTER = dt.timedelta(hours=2)
+
+
+class StepState(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    label: str = Field(max_length=60)
+    status: Literal["pending", "running", "done", "failed", "skipped"]
+    started_at: dt.datetime | None = None
+    finished_at: dt.datetime | None = None
+    note: str | None = Field(default=None, max_length=300)
+
+
+class StatusFile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    kind: Literal["weekly_status"]
+    run_id: str = Field(pattern=r"^\d{8}T\d{6}Z$")
+    state: Literal["running", "finished"]
+    result: Literal["pass", "fail", "baseline", "error"] | None = None
+    seq: int = Field(ge=0)
+    started_at: dt.datetime
+    updated_at: dt.datetime
+    current_step: str | None = Field(default=None, max_length=20)
+    steps: dict[Literal["wait", "pull", "market", "ledger", "train", "package", "upload"], StepState]
+
+
+def scan_status(dsn: str, inbox: Path) -> bool:
+    """Keep the newest status (latest run_id, highest seq) in kv 'weekly_progress'. Returns True if it changed."""
+    files = sorted(inbox.glob("weekly-*.status.json"))
+    if not files:
+        return False
+    try:
+        data = files[-1].read_bytes()
+        if len(data) > MAX_BYTES:
+            return False
+        st = StatusFile.model_validate(json.loads(data))
+    except (OSError, ValueError, ValidationError):
+        return False
+    cur = kv_get(dsn, "weekly_progress")
+    if cur and (cur["run_id"], cur["seq"]) >= (st.run_id, st.seq):
+        return False
+    kv_set(dsn, "weekly_progress", json.loads(st.model_dump_json()))
+    return True
+
+
+def training_overview(dsn: str, now: dt.datetime | None = None) -> dict:
+    from intel.weekly import RETRY_AFTER, last_sunday_noon
+
+    now = now or dt.datetime.now(dt.UTC)
+    prog = kv_get(dsn, "weekly_progress")
+    with connect(dsn) as c:
+        runs = c.execute(
+            "select run_id, status, failed_step, version, report, received_at from training_run "
+            "order by run_id desc limit 12"
+        ).fetchall()
+    anchor = last_sunday_noon(now)
+    ok = [r for r in runs if r["status"] != "error" and not r["report"].get("dry_run")]
+    last_ok = dt.datetime.fromisoformat(ok[0]["report"]["finished_at"]) if ok else None
+    stalled = None
+    if prog and prog["state"] == "running":
+        age = now - dt.datetime.fromisoformat(prog["updated_at"])
+        if age > STALLED_AFTER:
+            stalled = age
+    if last_ok and last_ok >= anchor:
+        this_week = f"done ({last_ok:%a %d %b %H:%M} UTC)"
+    elif prog and prog["state"] == "running" and not stalled:
+        this_week = "running now"
+    else:
+        this_week = f"due since {anchor:%a %d %b %H:%M} UTC: starts within an hour of the Mac being on"
+    return {
+        "progress": prog,
+        "stalled": stalled,
+        "runs": runs,
+        "last_ok": last_ok,
+        "this_week": this_week,
+        "next_anchor": anchor + dt.timedelta(days=7),
+        "retry_after_h": RETRY_AFTER.seconds // 3600,
+    }
+
+
+def training_text(dsn: str) -> str:
+    o = training_overview(dsn)
+    icons = {"done": "✅", "running": "⏳", "failed": "❌", "skipped": "➖", "pending": "▫️"}
+    lines = [f"<b>Sunday training</b>\nThis week: {H(o['this_week'])}"]
+    p = o["progress"]
+    if p:
+        head = "running" if p["state"] == "running" else f"finished: {p.get('result')}"
+        lines.append(f"\n<b>Run {H(p['run_id'])}</b> ({H(head)})")
+        for k in STEP_KEYS:
+            st = p["steps"].get(k)
+            if st:
+                note = f": {H(st['note'])}" if st.get("note") else ""
+                lines.append(f"{icons.get(st['status'], '?')} {H(st['label'])}{note}")
+        if o["stalled"]:
+            lines.append(
+                f"⚠️ No update for {int(o['stalled'].total_seconds() // 3600)} h: the Mac may be asleep or "
+                "the run stopped. It resumes automatically when due."
+            )
+    lines.append(f"\nNext regular run: {o['next_anchor']:%a %d %b} 12:00 Berlin")
+    return "\n".join(lines)

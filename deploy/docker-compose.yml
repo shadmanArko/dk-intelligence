@@ -29,6 +29,7 @@ services:
     env_file: .env
     environment:
       INTEL_DB_DSN: postgresql://intel:${INTEL_DB_PASSWORD}@intel-db:5432/intel
+      INTEL_GIT_SHA: ${INTEL_GIT_SHA:-unknown}             # shown on the Training page and /ready
       HARNESS_PREDICTOR_URL: http://predictor:8000          # the production predictor, for shadow comparison
     group_add:
       - "${INBOX_GID:?set INBOX_GID (getent group intelinbox) in deploy/.env}"

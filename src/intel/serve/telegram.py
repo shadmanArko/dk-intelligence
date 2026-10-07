@@ -107,6 +107,7 @@ HELP = (
     "<b>DK Intelligence</b>\n"
     "/status: models in use and waiting approvals\n"
     "/rollback: switch a model back to the previous version\n"
+    "/training: progress of the Sunday training on the Mac\n"
     "Approve or reject new models with the buttons on each message."
 )
 
@@ -142,6 +143,10 @@ class Bot:
         cmd = text.split()[0].split("@")[0].lower() if text else ""
         if cmd == "/status":
             self.tg.send(self.status_text())
+        elif cmd == "/training":
+            from intel.serve.runs import training_text
+
+            self.tg.send(training_text(self.reg.dsn))
         elif cmd == "/rollback":
             names = sorted(self.reg.active())
             if not names:

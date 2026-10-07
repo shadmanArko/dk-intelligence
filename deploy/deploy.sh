@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 
 [[ -f .env ]] || { echo "deploy/.env missing: run the first-time setup in deploy/README.md"; exit 2; }
 
-echo "== build"
+export INTEL_GIT_SHA="$(git -C .. rev-parse --short HEAD)"
+echo "== build ($INTEL_GIT_SHA)"
 docker compose build --pull intel-api
 echo "== start"
 docker compose up -d --remove-orphans
