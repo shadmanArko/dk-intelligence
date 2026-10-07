@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from pathlib import Path
 
 import psycopg
 import typer
@@ -18,6 +20,8 @@ market_app = typer.Typer(no_args_is_help=True, help="Market knowledge snapshots 
 app.add_typer(market_app, name="market")
 train_app = typer.Typer(no_args_is_help=True, help="Train models and judge them against the champion")
 app.add_typer(train_app, name="train")
+package_app = typer.Typer(no_args_is_help=True, help="Seal runs into model packages and upload them (door 2)")
+app.add_typer(package_app, name="package")
 champion_app = typer.Typer(no_args_is_help=True, help="The current champion model")
 app.add_typer(champion_app, name="champion")
 
@@ -168,6 +172,70 @@ def train_content_scorer(
         color = {"pass": "green", "fail": "red", "pending": "yellow"}[g["status"]]
         typer.secho(f"  {g['status']:7s} {g['gate']:18s} {g['detail']}", fg=color)
     typer.secho(f"verdict: {j['verdict'].upper()}  -> {out}", fg="green" if j["verdict"] == "pass" else "red")
+
+
+def _latest_run(kind: str) -> Path:
+    runs = sorted((get_settings().intel_data_dir / "runs").glob(f"*_{kind}"))
+    if not runs:
+        raise typer.BadParameter(f"no {kind} runs yet")
+    return runs[-1]
+
+
+@package_app.command("build")
+def package_build(
+    run: str = typer.Option(None, help="Run folder (default: latest content_scorer run)"),
+    allow_fail: bool = typer.Option(False, help="Package a failed run as a pipeline-test (never approvable)"),
+) -> None:
+    """Seal a training run into data/packages/<name>-<version>.tar.gz (+ .sha256)."""
+    from intel.package import build_package, verify_package
+
+    s = get_settings()
+    try:
+        tgz = build_package(
+            Path(run) if run else _latest_run("content_scorer"), s.intel_data_dir / "packages", Path.cwd(), allow_fail
+        )
+    except ValueError as e:
+        typer.secho(str(e), fg="red")
+        raise typer.Exit(1) from e
+    problems = verify_package(tgz)
+    if problems:
+        typer.secho("package FAILED verification: " + "; ".join(problems), fg="red")
+        raise typer.Exit(1)
+    typer.secho(f"package {tgz.name} ({tgz.stat().st_size / 1024:.0f} KB) verified -> {tgz}", fg="green")
+
+
+@package_app.command("verify")
+def package_verify(tgz: Path) -> None:
+    """Check a package's outer and inner checksums and structure."""
+    from intel.package import verify_package
+
+    problems = verify_package(tgz)
+    if problems:
+        typer.secho("; ".join(problems), fg="red")
+        raise typer.Exit(1)
+    typer.secho(f"{tgz.name}: OK", fg="green")
+
+
+@package_app.command("upload")
+def package_upload(tgz: Path) -> None:
+    """Upload a verified package to the VPS inbox (upload-only) and confirm the remote bytes match."""
+    from intel.package import upload, verify_package
+
+    s = get_settings()
+    if not (s.dk_inbox_ssh and s.dk_inbox_ssh_key):
+        typer.secho("DK_INBOX_SSH and DK_INBOX_SSH_KEY must be set (see .env.example)", fg="red")
+        raise typer.Exit(1)
+    problems = verify_package(tgz)
+    if problems:
+        typer.secho("refusing to upload: " + "; ".join(problems), fg="red")
+        raise typer.Exit(1)
+    try:
+        upload(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
+    except (subprocess.CalledProcessError, RuntimeError) as e:
+        detail = getattr(e, "stderr", "") or str(e)
+        typer.secho(f"upload failed: {detail.strip()}", fg="red")
+        raise typer.Exit(1) from e
+    typer.secho(f"uploaded {tgz.name}; remote checksums match", fg="green")
 
 
 if __name__ == "__main__":

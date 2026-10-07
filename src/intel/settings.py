@@ -17,12 +17,16 @@ class Settings(BaseSettings):
     dk_warehouse_ssh: str | None = None
     dk_warehouse_ssh_key: Path | None = None
     mip_reader_dsn: str | None = None
+    dk_inbox_ssh: str | None = None  # upload-only inbox user on the VPS (door 2)
+    dk_inbox_ssh_key: Path | None = None
     intel_data_dir: Path = Path("data")
     harness_dir: Path = Path("../dhaka_kacchi_ai_harness")
     mip_dir: Path = Path("../MarketIntelligence Data Platform")
     intel_keep_pulls: int = Field(default=12, ge=1)
 
-    @field_validator("dk_warehouse_ssh_key", "intel_data_dir", "harness_dir", "mip_dir", mode="after")
+    @field_validator(
+        "dk_warehouse_ssh_key", "dk_inbox_ssh_key", "intel_data_dir", "harness_dir", "mip_dir", mode="after"
+    )
     @classmethod
     def _expand(cls, v: Path | None) -> Path | None:
         return v.expanduser() if v else v
