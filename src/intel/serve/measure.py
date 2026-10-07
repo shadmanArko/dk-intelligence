@@ -28,6 +28,7 @@ import psycopg
 from psycopg.rows import dict_row
 from sklearn.metrics import balanced_accuracy_score
 
+from intel.datasets.content import REACH_MIN_PRIOR, REACH_WINDOW
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect
 
@@ -108,28 +109,41 @@ class Measurer:
             "top_reasons": d.get("top_reasons"),
         }
 
-    def _scorer(self, p: dict) -> dict | None:
-        m = self.models.get("content_scorer")
-        if m is None:
-            return None
+    def _active_names(self) -> list[str]:
+        names = getattr(self.models, "names", None)
+        return names() if names else ["content_scorer"]
+
+    def _scorers(self, p: dict) -> list[dict]:
+        """One prediction per ACTIVE approved model (content_scorer, reach_scorer, ...)."""
+        out = []
         row = pd.DataFrame([{k: p[k] for k in ("platform", "content_type", "caption")} | {"posted_at": p["posted_at"]}])
-        r = cs_predict(m["bundle"], row)[0]
-        return {
-            "model_name": "content_scorer",
-            "model_version": r["model_version"],
-            "probability": r["probability"],
-            "threshold": r["threshold"],
-            "predicted_label": r["label"],
-            "top_reasons": r["top_reasons"],
-        }
+        for name in self._active_names():
+            m = self.models.get(name)
+            if m is None:
+                continue
+            r = cs_predict(m["bundle"], row)[0]
+            out.append(
+                {
+                    "model_name": name,
+                    "model_version": r["model_version"],
+                    "probability": r["probability"],
+                    "threshold": r["threshold"],
+                    "predicted_label": r["label"],
+                    "top_reasons": r["top_reasons"],
+                }
+            )
+        return out
+
+    def _harness_list(self, p: dict) -> list[dict]:
+        x = self._harness(p)
+        return [x] if x else []
 
     def score_new_posts(self, res: RunResult) -> None:
         for p in self._new_posts():
             preds = []
-            for fn in (self._scorer, self._harness):
+            for fn in (self._scorers, self._harness_list):
                 try:
-                    if (x := fn(p)) is not None:
-                        preds.append(x)
+                    preds.extend(fn(p))
                 except Exception:
                     res.errors += 1
                     log.exception("scoring post %s with %s failed", p["id"], fn.__name__)
@@ -166,11 +180,13 @@ class Measurer:
     def backfill_missing_models(self, res: RunResult) -> None:
         """A post scored while one model was unavailable gets that model's prediction later, if still unmeasured."""
         with connect(self.intel) as c:
+            expected = len(self._active_names()) + (1 if self.harness_url else 0)
             todo = c.execute(
                 """select lp.post_id from ledger_post lp
                    where not exists (select 1 from post_outcome o where o.post_id = lp.post_id)
                      and (select count(distinct model_name) from prediction p
-                          where p.post_id = lp.post_id and p.source = 'shadow') < 2"""
+                          where p.post_id = lp.post_id and p.source = 'shadow') < %s""",
+                (expected,),
             ).fetchall()
         if not todo:
             return
@@ -181,14 +197,13 @@ class Measurer:
                 ([t["post_id"] for t in todo],),
             ).fetchall()
         for p in posts:
-            for fn in (self._scorer, self._harness):
+            xs = []
+            for fn in (self._scorers, self._harness_list):
                 try:
-                    x = fn(p)
+                    xs.extend(fn(p))
                 except Exception:
                     res.errors += 1
-                    continue
-                if x is None:
-                    continue
+            for x in xs:
                 with connect(self.intel) as c:
                     cur = c.execute(
                         """insert into prediction (source, model_name, model_version, post_id, platform, planned_at,
@@ -233,9 +248,9 @@ class Measurer:
                 (ids,),
             ).fetchall()
             history = w.execute(
-                """select sp.platform, sp.posted_at, s.likes + s.comments + s.shares as engagement
+                """select sp.platform, sp.posted_at, s.likes + s.comments + s.shares as engagement, s.reach
                    from social_post sp join lateral (
-                     select likes, comments, shares from social_metrics_snapshot m
+                     select likes, comments, shares, reach from social_metrics_snapshot m
                      where m.social_post_id = sp.id order by captured_at desc limit 1) s on true
                    where sp.platform = any(%s)""",
                 (list(PLATFORMS),),
@@ -243,7 +258,7 @@ class Measurer:
         by_post: dict = {}
         for s in snaps:
             by_post.setdefault(s["social_post_id"], []).append(s)
-        hist = pd.DataFrame(history, columns=["platform", "posted_at", "engagement"])
+        hist = pd.DataFrame(history, columns=["platform", "posted_at", "engagement", "reach"])
         for p, h in due:
             target = p["posted_at"] + HORIZONS[h]
             window = target + LATE[h]
@@ -257,12 +272,18 @@ class Measurer:
             ].dropna()
             med = float(np.median(earlier.astype(float))) if len(earlier) else None
             label = None if eng is None or med is None else int(eng > med)
+            # reach question (reach_scorer): beat the median latest reach of the previous REACH_WINDOW posts
+            prior = hist[(hist["platform"] == p["platform"]) & (hist["posted_at"] < p["posted_at"])]
+            prior = prior.sort_values("posted_at")["reach"].dropna().tail(REACH_WINDOW)
+            rmed = float(np.median(prior.astype(float))) if len(prior) >= REACH_MIN_PRIOR else None
+            label_reach = None if snap["reach"] is None or rmed is None else int(snap["reach"] > rmed)
             age = (snap["captured_at"] - p["posted_at"]).total_seconds() / 3600
             with connect(self.intel) as c:
                 cur = c.execute(
                     """insert into post_outcome (post_id, horizon, captured_at, age_hours, impressions, reach, likes,
-                       comments, shares, saves, clicks, engagement, platform_median, label)
-                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
+                       comments, shares, saves, clicks, engagement, platform_median, label, reach_median,
+                       label_reach)
+                       values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
                     (
                         p["post_id"],
                         h,
@@ -278,6 +299,8 @@ class Measurer:
                         eng,
                         med,
                         label,
+                        rmed,
+                        label_reach,
                     ),
                 )
                 res.outcomes += cur.rowcount
@@ -290,13 +313,17 @@ class Measurer:
         return res
 
 
+MODEL_LABEL = {"reach_scorer": "label_reach"}  # which outcome column answers each model's question
+
+
 def live_summary(intel_dsn: str, horizon: str = "7d") -> dict:
-    """Live accuracy per model on posts whose outcome at `horizon` is known (the M7 judge's live-evidence gate)."""
+    """Live accuracy per model on posts whose outcome at `horizon` is known (the judge's live-evidence gate).
+    `models`: each model against its OWN question; `reach`: every model against the reach question."""
     with connect(intel_dsn) as c:
         rows = c.execute(
-            """select p.model_name, p.model_version, p.predicted_label, p.probability, o.label
+            """select p.model_name, p.model_version, p.predicted_label, o.label, o.label_reach
                from prediction p join post_outcome o on o.post_id = p.post_id and o.horizon = %s
-               where p.source = 'shadow' and o.label is not null""",
+               where p.source = 'shadow'""",
             (horizon,),
         ).fetchall()
         counts = c.execute(
@@ -305,16 +332,26 @@ def live_summary(intel_dsn: str, horizon: str = "7d") -> dict:
                       (select count(*) from prediction where source='api') as api_predictions,
                       (select count(*) from post_outcome) as outcomes"""
         ).fetchone()
-    out = {"horizon": horizon, **counts, "models": {}}
-    df = pd.DataFrame(rows, columns=["model_name", "model_version", "predicted_label", "probability", "label"])
-    for name, g in df.groupby("model_name"):
-        y, yhat = g["label"].astype(int), g["predicted_label"].astype(int)
-        out["models"][name] = {
+    out = {"horizon": horizon, **counts, "models": {}, "reach": {}}
+    df = pd.DataFrame(rows, columns=["model_name", "model_version", "predicted_label", "label", "label_reach"])
+
+    def acc(g: pd.DataFrame, col: str) -> dict | None:
+        g = g[g[col].notna()]
+        if g.empty:
+            return None
+        y, yhat = g[col].astype(int), g["predicted_label"].astype(int)
+        return {
             "n": len(g),
             "versions": sorted(g["model_version"].unique()),
             "accuracy": round(float((y == yhat).mean()), 4),
             "balanced_accuracy": round(float(balanced_accuracy_score(y, yhat)), 4) if y.nunique() == 2 else None,
         }
+
+    for name, g in df.groupby("model_name"):
+        if (a := acc(g, MODEL_LABEL.get(name, "label"))) is not None:
+            out["models"][name] = a
+        if (r := acc(g, "label_reach")) is not None:
+            out["reach"][name] = r
     return out
 
 

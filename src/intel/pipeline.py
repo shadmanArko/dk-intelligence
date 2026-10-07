@@ -34,13 +34,16 @@ STEPS: dict[str, tuple[str, str]] = {
     ),
     "train": (
         "Train candidate models",
-        "Builds features (only what is known before posting) and trains several candidate models on all posts "
-        "except the newest 20%, choosing between them with time-ordered cross-validation.",
+        "Two questions, one model each: content_scorer (more likes + comments + shares than usual?) and reach_scorer "
+        "(more people reached than our last 20 posts?). Features use only what is known before posting; several "
+        "candidates per question are trained on all posts except the newest 20% and chosen by time-ordered "
+        "cross-validation.",
     ),
     "judge": (
         "Judge against the current model",
-        "Seven automatic checks on the newest posts, never seen in training: data sanity, no leakage, clearly "
-        "better, no platform worse, well calibrated, live evidence, works (size, speed). All must pass.",
+        "For each question, seven automatic checks on the newest posts, never seen in training, against what we use "
+        "today: data sanity, no leakage, clearly better, no platform worse, well calibrated, live evidence, works "
+        "(size, speed). All must pass before a model is offered to you.",
     ),
     "package": (
         "Package the model",

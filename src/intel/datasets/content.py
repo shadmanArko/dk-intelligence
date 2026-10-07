@@ -23,6 +23,8 @@ from intel.data import load_table
 
 PLATFORMS = ("facebook", "instagram")
 MATURE_DAYS = 7
+REACH_WINDOW = 20  # reach label: beat the median reach of the previous 20 posts on the same platform
+REACH_MIN_PRIOR = 5
 
 
 def expanding_median_label(df: pd.DataFrame) -> pd.DataFrame:
@@ -46,6 +48,20 @@ def expanding_median_label(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(out).sort_values(["platform", "posted_at"], kind="stable").reset_index(drop=True)
 
 
+def reach_label(df: pd.DataFrame) -> pd.DataFrame:
+    """y_reach = 1 if reach > median reach of the previous REACH_WINDOW posts of the same platform (not including the
+    post itself; at least REACH_MIN_PRIOR earlier posts, else NaN). A rolling window, not all-time: the accounts grew
+    (Facebook reach ~5x since April), and "better than our recent posts" is the question that matters."""
+    out = []
+    for _, g in df.groupby("platform", sort=True):
+        g = g.sort_values(["posted_at", "id"], kind="stable").copy()
+        med = g["reach"].astype(float).shift(1).rolling(REACH_WINDOW, min_periods=REACH_MIN_PRIOR).median()
+        g["reach_median_prior"] = med
+        g["y_reach"] = (g["reach"].astype(float) > med).astype(float).where(med.notna() & g["reach"].notna())
+        out.append(g)
+    return pd.concat(out).sort_values(["platform", "posted_at"], kind="stable").reset_index(drop=True)
+
+
 def build_content_dataset(pull_dir: Path) -> pd.DataFrame:
     posts = load_table(pull_dir, "social_post", ["id", "platform", "posted_at", "content_type", "caption"])
     posts = posts[posts["platform"].isin(PLATFORMS)]
@@ -65,7 +81,7 @@ def build_content_dataset(pull_dir: Path) -> pd.DataFrame:
     df["engagement"] = parts.sum(axis=1, skipna=False).astype(float)
     df["snapshot_age_days"] = (df["captured_at"] - df["posted_at"]).dt.total_seconds() / 86400
     df["matured"] = df["snapshot_age_days"] >= MATURE_DAYS
-    return expanding_median_label(df)
+    return reach_label(expanding_median_label(df))
 
 
 def time_split(df: pd.DataFrame, test_fraction: float = 0.2) -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:

@@ -158,15 +158,21 @@ def train_content_scorer(
     market_id: str = typer.Option(None, help="Default: latest market snapshot"),
     mlflow: bool = typer.Option(True, help="Log the run to MLflow (data/mlflow.db)"),
     baseline: bool = typer.Option(False, help="Package the champion's recipe in the new format (no gain claimed)"),
+    target: str = typer.Option("engagement", help="engagement (content_scorer) or reach (reach_scorer)"),
 ) -> None:
-    """M3: train the content scorer, judge it against the champion on the same split."""
+    """Train a post scorer (engagement or reach question), judge it against today's predictor on the same split."""
     from intel.models.content_scorer.run import run
 
     s = get_settings()
     d = s.intel_data_dir
     uri = f"sqlite:///{(d / 'mlflow.db').resolve()}" if mlflow else None
     out = run(
-        resolve_pull(d / "pulls", pull_id), resolve_pull(d / "market", market_id), d / "runs", uri, baseline=baseline
+        resolve_pull(d / "pulls", pull_id),
+        resolve_pull(d / "market", market_id),
+        d / "runs",
+        uri,
+        baseline=baseline,
+        target=target,
     )
     r = json.loads((out / "report.json").read_text())
     j = r["judge"]

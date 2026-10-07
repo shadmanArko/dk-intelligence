@@ -19,7 +19,12 @@ log = logging.getLogger("intel.views")
 H = html.escape
 BERLIN = ZoneInfo("Europe/Berlin")
 HORIZONS = ("24h", "72h", "7d")
-MODEL_LABEL = {"content_scorer": "New model", "harness_predictor": "Current predictor"}
+MODEL_LABEL = {
+    "content_scorer": "New model (engagement)",
+    "reach_scorer": "Reach model",
+    "harness_predictor": "Current predictor",
+}
+OUTCOME_COL = {"reach_scorer": "label_reach"}  # which result answers each model's question
 
 
 def reason_text(feature: str) -> str:
@@ -77,10 +82,10 @@ def ledger_rows(intel_dsn: str, warehouse_dsn: str | None, limit: int = 100) -> 
     return posts
 
 
-def _latest_outcome(p: dict) -> tuple[str, dict] | None:
+def _latest_outcome(p: dict, col: str = "label") -> tuple[str, dict] | None:
     for h in reversed(HORIZONS):
         o = p["outcomes"].get(h)
-        if o and o["label"] is not None:
+        if o and o.get(col) is not None:
             return h, o
     return None
 
@@ -93,7 +98,11 @@ def posts_html(rows: list[dict], summaries: dict[str, dict]) -> str:
             f"{H(MODEL_LABEL.get(n, n))}: <b>{m['accuracy']:.0%}</b> right of {m['n']}"
             for n, m in sorted(s["models"].items())
         )
-        score += f"<tr><td>after {h}</td><td>{cells or 'no posts measured yet'}</td></tr>"
+        reach = " · ".join(
+            f"{H(MODEL_LABEL.get(n, n))}: <b>{m['accuracy']:.0%}</b> of {m['n']}"
+            for n, m in sorted(s.get("reach", {}).items())
+        )
+        score += f"<tr><td>after {h}</td><td>{cells or 'no posts measured yet'}</td><td>{reach or '–'}</td></tr>"
     if not rows:
         body = (
             "<p class=muted>No posts in the ledger yet. Every Facebook / Instagram post published from 7 October "
@@ -104,7 +113,8 @@ def posts_html(rows: list[dict], summaries: dict[str, dict]) -> str:
     return f"""<h1>Posts: predicted vs real</h1>
 <p class=muted>Each post is scored once, using only what was known before posting (platform, format, time, caption).
 "Above typical" means more likes + comments + shares than the median of your earlier posts on that platform.</p>
-<h2>How often each model was right</h2><table>{score}</table>
+<h2>How often each model was right</h2><table><tr><th></th><th>Its own question</th>
+<th>Reach question (more people than our last 20 posts?)</th></tr>{score}</table>
 <h2>Posts</h2>{body}"""
 
 
@@ -117,17 +127,25 @@ def _post_card(p: dict) -> str:
         else f"<span class=muted>({p['caption_length']} characters)</span>"
     )
     link = f" · <a href='{H(p['permalink'])}' target=_blank rel=noopener>open post</a>" if p["permalink"] else ""
-    latest = _latest_outcome(p)
     preds = ""
-    for name in ("content_scorer", "harness_predictor"):
+    names = [
+        n
+        for n in ("content_scorer", "reach_scorer", "harness_predictor")
+        if n != "reach_scorer" or n in p["predictions"]
+    ]
+    for name in names:
+        latest = _latest_outcome(p, OUTCOME_COL.get(name, "label"))
         x = p["predictions"].get(name)
         if not x:
             preds += f"<tr><td>{MODEL_LABEL[name]}</td><td colspan=3 class=muted>not scored</td></tr>"
             continue
-        said = "above typical" if x["predicted_label"] else "below typical"
+        if name == "reach_scorer":
+            said = "more reach" if x["predicted_label"] else "less reach"
+        else:
+            said = "above typical" if x["predicted_label"] else "below typical"
         verdict = ""
         if latest:
-            right = x["predicted_label"] == latest[1]["label"]
+            right = x["predicted_label"] == latest[1][OUTCOME_COL.get(name, "label")]
             verdict = f"<span class={'ok' if right else 'bad'}>{'✓ right' if right else '✗ wrong'}</span> <span class=muted>({latest[0]})</span>"
         preds += (
             f"<tr><td>{MODEL_LABEL[name]}</td><td>{x['probability']:.0%} → <b>{said}</b></td>"
@@ -145,8 +163,11 @@ def _post_card(p: dict) -> str:
             else (" <span class=ok>▲ above</span>" if o["label"] else " <span class=bad>▼ below</span>")
         )
         med = "" if o["platform_median"] is None else f" (typical {o['platform_median']:.0f})"
+        rl = o.get("label_reach")
+        rlab = "" if rl is None else (" <span class=ok>▲</span>" if rl else " <span class=bad>▼</span>")
+        rmed = "" if o.get("reach_median") is None else f" (recent {o['reach_median']:.0f})"
         outs += (
-            f"<td>reach {o['reach'] if o['reach'] is not None else '–'} · engagement "
+            f"<td>reach {o['reach'] if o['reach'] is not None else '–'}{rmed}{rlab}<br>engagement "
             f"{o['engagement'] if o['engagement'] is not None else '–'}{med}{lab}</td>"
         )
     return f"""<div class=card><p><b>{when:%a %d %b %Y, %H:%M}</b> · {H(p["platform"])} · {H(p["content_type"] or "unknown format")}{link}</p>

@@ -206,6 +206,7 @@ def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, 
 
 def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, log=print) -> dict:
     from intel.market import run_market_pull
+    from intel.models.content_scorer.run import TARGETS
     from intel.models.content_scorer.run import run as train_run
     from intel.package import build_package, verify_package
     from intel.package import upload as upload_file
@@ -312,8 +313,11 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
         prog.start("train")
         log("training and judging")
         mlflow_uri = f"sqlite:///{(d / 'mlflow.db').resolve()}"
-        run_dir = train_run(pull, market, d / "runs", mlflow_uri, log=log, ledger=ledger)
-        r = json.loads((run_dir / "report.json").read_text())
+        results = []  # one per question; engagement first (its numbers stay the report's headline)
+        for target in TARGETS:
+            run_dir = train_run(pull, market, d / "runs", mlflow_uri, log=log, ledger=ledger, target=target)
+            results.append((run_dir, json.loads((run_dir / "report.json").read_text())))
+        _, r = results[0]
         j = r["judge"]
         rep.update(
             version=r["version"],
@@ -323,58 +327,72 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             gain=j.get("gain"),
             failed_gates=j.get("failed", []),
             live=next((g["detail"] for g in j["gates"] if g["gate"] == "live_evidence"), None),
+            models=[
+                {
+                    "name": rr["kind"].removesuffix("_run"),
+                    "version": rr["version"],
+                    "verdict": rr["judge"]["verdict"],
+                    "new": rr["challenger"]["test"]["balanced_accuracy"],
+                    "current": rr["champion"]["test"]["balanced_accuracy"],
+                    "failed_gates": rr["judge"].get("failed", []),
+                }
+                for _, rr in results
+            ],
         )
-        ch = r["challenger"]
-        prog.done(
-            "train",
-            f"best: {ch['model']}",
-            {
-                "training posts": r["split"]["train"],
-                "test posts (newest, unseen)": r["split"]["test"],
-                "test period from": r["split"]["cutoff"][:10],
-                "candidates (CV score)": ", ".join(
-                    f"{c['name']} {c['cv_balanced_accuracy@0.5']}" for c in r.get("leaderboard_cv", [])
-                )
-                or "–",
-                "chosen": f"{ch['model']} {ch['params']}",
-                "features": ch["features"],
-                "threshold": ch["threshold"],
-            },
-        )
+        train_details = {
+            "training posts": r["split"]["train"],
+            "test posts (newest, unseen)": r["split"]["test"],
+            "test period from": r["split"]["cutoff"][:10],
+        }
+        for _, rr in results:
+            name = rr["kind"].removesuffix("_run")
+            train_details[f"{name}: chosen"] = f"{rr['challenger']['model']} {rr['challenger']['params']}"
+            train_details[f"{name}: candidates (CV)"] = (
+                ", ".join(f"{c['name']} {c['cv_balanced_accuracy@0.5']}" for c in rr.get("leaderboard_cv", [])) or "–"
+            )
+        prog.done("train", f"{len(results)} models trained", train_details)
 
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}
-        prog.done(
-            "judge",
-            f"{j['verdict']}: new {rep['challenger']['balanced_accuracy']} vs current "
-            f"{rep['champion']['balanced_accuracy']}",
-            {
-                "verdict": j["verdict"],
-                "new model (balanced accuracy)": rep["challenger"]["balanced_accuracy"],
-                "current model": rep["champion"]["balanced_accuracy"],
-                "gain": j.get("gain"),
-                **{f"{icon.get(g['status'], '?')} {g['gate']}": g["detail"] for g in j["gates"]},
-            },
-        )
+        judge_details: dict = {}
+        for _, rr in results:
+            name, jj = rr["kind"].removesuffix("_run"), rr["judge"]
+            judge_details[f"{name}: verdict"] = (
+                f"{jj['verdict']} (new {rr['challenger']['test']['balanced_accuracy']} "
+                f"vs current {rr['champion']['test']['balanced_accuracy']})"
+            )
+            judge_details.update(
+                {f"{name}: {icon.get(g['status'], '?')} {g['gate']}": g["detail"] for g in jj["gates"]}
+            )
+        passed = [(rd, rr) for rd, rr in results if rr["judge"]["verdict"] == "pass"]
+        prog.done("judge", ", ".join(f"{m['name']} {m['verdict']}" for m in rep["models"]), judge_details)
 
-        if j["verdict"] == "pass":
+        if passed:
             step = "package"
             prog.start("package")
-            tgz = build_package(run_dir, d / "packages", Path.cwd())
-            if verify_package(tgz):
-                raise RuntimeError("package verification failed")
-            rep["package"] = tgz.name
+            tgzs = []
+            for rd, _ in passed:
+                tgz = build_package(rd, d / "packages", Path.cwd())
+                if verify_package(tgz):
+                    raise RuntimeError(f"package verification failed: {tgz.name}")
+                tgzs.append(tgz)
+            rep["package"] = ", ".join(t.name for t in tgzs)
             prog.done(
                 "package",
-                tgz.name,
-                {"file": tgz.name, "size KB": round(tgz.stat().st_size / 1024), "checksums": "verified"},
+                rep["package"],
+                {t.name: f"{round(t.stat().st_size / 1024)} KB, checksums verified" for t in tgzs},
             )
             if upload:
                 step = "upload"
                 prog.start("upload")
-                upload_file(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
-                prog.done("upload", "arrived intact", {"target": "VPS inbox (upload-only)", "remote checksum": "match"})
+                for tgz in tgzs:
+                    upload_file(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
+                prog.done(
+                    "upload",
+                    f"{len(tgzs)} arrived intact",
+                    {"target": "VPS inbox (upload-only)", "remote checksum": "match"},
+                )
             rep["status"] = "pass"
         else:
             prog.skip("package", "not better: nothing to package")

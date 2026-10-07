@@ -1,0 +1,19 @@
+name: reach_scorer
+version_prefix: rs
+question: "Will this Facebook / Instagram post reach more people than our last 20 posts on that platform?"
+label: reach (latest snapshot) > median reach of the previous 20 posts, same platform   # y_reach in datasets/content.py
+platforms: [facebook, instagram]
+prediction_time: before posting (platform, format, planned time, caption only)
+champion: "today's predictor (harness recipe, engagement label) used to answer the reach question"
+metric: balanced_accuracy
+gates:
+  min_gain_balanced_accuracy: 0.02
+  max_platform_drop: 0.03
+  max_brier_increase: 0.005
+  min_live_posts: 30
+  max_package_mb: 50
+  max_latency_ms: 200
+schedule: weekly (Sunday, Mac)
+# Uses the content_scorer feature code and candidates (models/content_scorer/); only the question differs.
+# 2026-10-07 finding: a market-trained TikTok prior (232k posts, caption-level inputs) added nothing on CV
+# (0.644 vs 0.657 without it); revisit with video features. See docs/results/P2_1_reach_scorer.md.

@@ -79,7 +79,12 @@ def judge(
 
 
 def live_gate(
-    test: pd.DataFrame, chall_pred, ledger_rows: list[dict] | None, min_posts: int
+    test: pd.DataFrame,
+    chall_pred,
+    ledger_rows: list[dict] | None,
+    min_posts: int,
+    model_name: str = "content_scorer",
+    label_key: str = "label",
 ) -> tuple[bool | None, str]:
     """Live evidence on the SAME newest test posts: challenger vs the active model's logged predictions.
 
@@ -91,8 +96,8 @@ def live_gate(
     logged = {}
     for r in ledger_rows:
         o = (r.get("outcomes") or {}).get("7d") or {}
-        if r.get("model_name") == "content_scorer" and o.get("label") is not None:
-            logged[str(r["post_id"])] = (int(r["predicted_label"]), int(o["label"]))
+        if r.get("model_name") == model_name and o.get(label_key) is not None:
+            logged[str(r["post_id"])] = (int(r["predicted_label"]), int(o[label_key]))
     ids = test["id"].astype(str).tolist()
     pairs = [(int(p), *logged[i]) for i, p in zip(ids, chall_pred, strict=True) if i in logged]
     n = len(pairs)

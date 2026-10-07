@@ -199,3 +199,46 @@ def test_posts_page_and_try_a_draft(intel, warehouse, tmp_path):
         assert "Please check the inputs" in bad.text
     assert reason_text("nominal__day_of_week_Saturday") == "Day: Saturday"
     assert reason_text("numeric__caption_length") == "Caption length"
+
+
+class TwoModels(Models):
+    def get(self, name):
+        if name == "reach_scorer":
+            return {**self.m, "version": "rs-t", "bundle": {**self.m["bundle"], "version": "rs-t"}}
+        return super().get(name)
+
+    def names(self):
+        return ["content_scorer", "reach_scorer"]
+
+
+def test_reach_outcome_and_every_active_model_scored(intel, warehouse):
+    wh, ids = warehouse
+    with psycopg.connect(wh, autocommit=True) as w:  # 6 earlier facebook posts with reach 10..60
+        for i in range(6):
+            pid = uuid.uuid4()
+            at = NOW - dt.timedelta(days=30 - i)
+            w.execute(
+                "insert into social_post (id, platform, posted_at, content_type, caption) "
+                "values (%s,'facebook',%s,'image','x')",
+                (pid, at),
+            )
+            w.execute(
+                "insert into social_metrics_snapshot values (%s,%s,1,%s,1,0,0,0,0)",
+                (pid, at + dt.timedelta(days=9), 10 * (i + 1)),
+            )
+    Measurer(intel, wh, START, TwoModels(), "http://predictor:8000", http=harness()).run_once()
+    with connect(intel) as c:
+        models = {
+            r["model_name"] for r in c.execute("select model_name from prediction where post_id=%s", (ids["fb"],))
+        }
+        o = c.execute(
+            "select reach, reach_median, label_reach from post_outcome where post_id=%s and horizon='7d'", (ids["fb"],)
+        ).fetchone()
+    assert models == {"content_scorer", "reach_scorer", "harness_predictor"}
+    assert o["reach_median"] == 40.0 and o["reach"] == 88 and o["label_reach"] == 1  # 7 prior: 10..60 + old 90
+    s = live_summary(intel, "7d")
+    assert s["models"]["reach_scorer"]["n"] == 1 and set(s["reach"]) == {
+        "content_scorer",
+        "reach_scorer",
+        "harness_predictor",
+    }

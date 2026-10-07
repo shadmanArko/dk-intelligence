@@ -23,6 +23,17 @@ from .predict import predict
 from .train import CHAMPION_COLS, Trained, train
 
 SPEC = yaml.safe_load((Path(__file__).with_name("spec.yaml")).read_text())
+# One run function, two questions. Same features, candidates, judge and packaging; only the label differs.
+TARGETS = {
+    "engagement": {"name": "content_scorer", "label": "label", "prefix": "cs", "spec": SPEC, "live_label": "label"},
+    "reach": {
+        "name": "reach_scorer",
+        "label": "y_reach",
+        "prefix": "rs",
+        "live_label": "label_reach",
+        "spec": yaml.safe_load((Path(__file__).parents[1] / "reach_scorer" / "spec.yaml").read_text()),
+    },
+}
 INPUTS = ["platform", "content_type", "posted_at", "caption"]  # the ONLY columns features may see
 
 
@@ -59,29 +70,35 @@ def run(
     log=print,
     baseline: bool = False,
     ledger: list[dict] | None = None,
+    target: str = "engagement",
 ) -> Path:
     """`baseline=True`: package the CHAMPION's own recipe in this model format, refit on all matured posts. It claims
     no improvement (verdict 'baseline'); it lets the new service start serving the same quality as today."""
+    t = TARGETS[target]
+    spec, y = t["spec"], t["label"]
     ds = build_content_dataset(pull_dir)
-    matured = ds[ds["matured"]].reset_index(drop=True)
+    matured = ds[ds["matured"] & ds[y].notna()].reset_index(drop=True)
+    matured[y] = matured[y].astype(int)
     tr, te, cutoff = time_split(matured, 0.2)
     ctx = MarketContext.from_snapshot(market_dir)
     Xtr, Xte = build_features(tr[INPUTS], ctx), build_features(te[INPUTS], ctx)
 
     log(f"training on {len(tr)} posts, testing on {len(te)} (from {cutoff:%Y-%m-%d})")
-    model = _baseline(Xtr, tr["label"]) if baseline else train(Xtr, tr["label"])
+    model = _baseline(Xtr, tr[y]) if baseline else train(Xtr, tr[y])
     chall_p = model.pipeline.predict_proba(Xte[model.columns])[:, 1]
-    chall = score(te["label"], chall_p, model.threshold, te["platform"])
+    chall = score(te[y], chall_p, model.threshold, te["platform"])
 
+    # The champion is always TODAY's predictor (harness recipe trained on the engagement label, same train posts),
+    # scored on this target's question: "what would we use today to answer it".
     cm = champ.recipe().fit(champ.features_frame(tr), tr["label"])
     champ_p = cm.predict_proba(champ.features_frame(te))[:, 1]
-    champion = score(te["label"], champ_p, champ.THRESHOLD, te["platform"])
+    champion = score(te[y], champ_p, champ.THRESHOLD, te["platform"])
 
     now = dt.datetime.now(dt.UTC)
     data_hash = hashlib.sha256((pull_dir.name + market_dir.name).encode()).hexdigest()[:6]
-    version = f"cs-{'base-' if baseline else ''}{now:%Y%m%dT%H%M}-{data_hash}"  # unique per run
+    version = f"{t['prefix']}-{'base-' if baseline else ''}{now:%Y%m%dT%H%M%S}-{data_hash}"  # unique per run
     if baseline:  # like the production champion: after the honest test, refit on every matured post
-        model.pipeline = champ.recipe().fit(build_features(matured[INPUTS], ctx)[model.columns], matured["label"])
+        model.pipeline = champ.recipe().fit(build_features(matured[INPUTS], ctx)[model.columns], matured[y])
     bundle = {
         "version": version,
         "pipeline": model.pipeline,
@@ -103,21 +120,29 @@ def run(
     verdict = judge(
         champion,
         chall,
-        SPEC["gates"],
+        spec["gates"],
         data_ok=_data_gate(pull_dir, len(ds)),
         leakage_ok=(True, f"features built only from {', '.join(INPUTS)}; label from metrics after posting"),
-        live=live_gate(te, (chall_p >= model.threshold).astype(int), ledger, SPEC["gates"]["min_live_posts"]),
+        live=live_gate(
+            te,
+            (chall_p >= model.threshold).astype(int),
+            ledger,
+            spec["gates"]["min_live_posts"],
+            model_name=t["name"],
+            label_key=t["live_label"],
+        ),
         size_mb=size_mb,
         latency_ms=latency_ms,
         gain_ci=paired_gain_ci(
-            te["label"], (champ_p >= champ.THRESHOLD).astype(int), (chall_p >= model.threshold).astype(int)
+            te[y], (champ_p >= champ.THRESHOLD).astype(int), (chall_p >= model.threshold).astype(int)
         ),
     )
     if baseline:
         verdict["verdict"] = "baseline"
         verdict["note"] = "champion recipe, refit on all matured posts; no improvement claimed"
     report = {
-        "kind": "content_scorer_run",
+        "kind": f"{t['name']}_run",
+        "target": target,
         "version": version,
         "pull_id": pull_dir.name,
         "market_id": market_dir.name,
@@ -131,11 +156,16 @@ def run(
             "cv_balanced_accuracy": model.cv_balanced_accuracy,
             "test": chall,
         },
-        "champion": {"model": champ.MODEL_VERSION, "recipe_retrained_on_same_train": True, "test": champion},
+        "champion": {
+            "model": champ.MODEL_VERSION,
+            "recipe_retrained_on_same_train": True,
+            "label": "engagement (today's predictor)",
+            "test": champion,
+        },
         "judge": verdict,
         "leaderboard_cv": model.leaderboard,
     }
-    out = runs_dir / f"{now:%Y%m%dT%H%M%SZ}_content_scorer{'_baseline' if baseline else ''}"
+    out = runs_dir / f"{now:%Y%m%dT%H%M%SZ}_{t['name']}{'_baseline' if baseline else ''}"
     out.mkdir(parents=True)
     (out / "model.joblib").write_bytes(buf.getvalue())
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
@@ -144,7 +174,7 @@ def run(
             "id": te["id"],
             "platform": te["platform"],
             "posted_at": te["posted_at"],
-            "label": te["label"],
+            "label": te[y],
             "champion_p": champ_p,
             "challenger_p": chall_p,
         }
@@ -158,7 +188,7 @@ def _mlflow(uri: str, r: dict, out: Path) -> None:
     import mlflow
 
     mlflow.set_tracking_uri(uri)
-    mlflow.set_experiment("content_scorer")
+    mlflow.set_experiment(r["kind"].removesuffix("_run"))
     with mlflow.start_run(run_name=r["version"]):
         mlflow.set_tags({"pull_id": r["pull_id"], "market_id": r["market_id"], "verdict": r["judge"]["verdict"]})
         mlflow.log_params(

@@ -69,6 +69,10 @@ class Models:
         with self._lock:
             return self.loaded.get(name)
 
+    def names(self) -> list[str]:
+        with self._lock:
+            return sorted(self.loaded)
+
 
 # ---------- background workers ----------
 
@@ -254,9 +258,25 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             "top_reasons": r["top_reasons"],
         }
 
+    def _score_all(body: PredictRequest) -> dict:
+        row = pd.DataFrame(
+            [
+                {
+                    "platform": body.platform,
+                    "content_type": body.content_type,
+                    "caption": body.caption,
+                    "posted_at": body.planned_posted_at,
+                }
+            ]
+        )
+        return {n: cs_predict(state["models"].get(n)["bundle"], row)[0] for n in state["models"].names()}
+
     @app.post("/v1/score")
     def score(body: PredictRequest):
-        return {"models": {"content_scorer": _score(body)}}
+        """Every active model's answer (content_scorer: engagement question, reach_scorer: reach question)."""
+        if body.planned_posted_at.tzinfo is None:
+            raise HTTPException(400, "planned_posted_at needs a timezone")
+        return {"models": _score_all(body)}
 
     # ----- ledger (read-only; tailnet) -----
     @app.get("/v1/ledger/summary")
@@ -272,7 +292,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
                           p.threshold, p.predicted_label, p.created_at,
                           coalesce(jsonb_object_agg(o.horizon, jsonb_build_object('label', o.label, 'engagement',
                             o.engagement, 'reach', o.reach, 'age_hours', o.age_hours, 'platform_median',
-                            o.platform_median)) filter (where o.horizon is not null), '{}') as outcomes
+                            o.platform_median, 'label_reach', o.label_reach, 'reach_median', o.reach_median)) filter (where o.horizon is not null), '{}') as outcomes
                    from prediction p left join post_outcome o on o.post_id = p.post_id
                    where p.source = 'shadow' group by p.id order by p.planned_at"""
             ).fetchall()

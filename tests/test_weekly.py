@@ -246,3 +246,18 @@ def test_vps_diagram_endpoints_and_details(intel, tmp_path):  # noqa: F811
         assert st["progress"]["steps"]["pull"]["details"]["rows"] == 11622 and st["running"] is True
         assert c.get("/static/pipeline.css").status_code == 200 and c.get("/static/x.py").status_code == 404
         assert len(c.get("/api/pipeline").json()["nodes"]) >= 10
+
+
+def test_run_message_lists_each_model():
+    from intel.serve.runs import RunReport
+
+    rep = RunReport.model_validate(
+        report(
+            models=[
+                {"name": "content_scorer", "verdict": "fail", "new": 0.56, "current": 0.62, "failed_gates": ["better"]},
+                {"name": "reach_scorer", "verdict": "pass", "new": 0.70, "current": 0.63, "failed_gates": []},
+            ]
+        )
+    )
+    msg = run_message(rep)
+    assert "➖ content_scorer: fail" in msg and "✅ reach_scorer: pass" in msg

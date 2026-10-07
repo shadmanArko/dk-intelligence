@@ -178,6 +178,8 @@ class Bot:
             for n, m in sorted(live["models"].items()):
                 ba = m["balanced_accuracy"] if m["balanced_accuracy"] is not None else "–"
                 lines.append(f"• {H(n)}: {m['n']} posts at 7 days, accuracy {m['accuracy']:.2f}, balanced {ba}")
+            for n, m in sorted(live["reach"].items()):
+                lines.append(f"• reach question, {H(n)}: right {m['accuracy']:.0%} of {m['n']}")
         except Exception:
             lines.append("\n(live ledger not available)")
         return "\n".join(lines)

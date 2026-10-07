@@ -36,6 +36,12 @@ MODEL_SOURCES = {
         "models/content_scorer/spec.yaml",
         "champions/harness_v1/features.py",
     ],
+    "reach_scorer": [
+        "models/content_scorer/features.py",
+        "models/content_scorer/predict.py",
+        "models/reach_scorer/spec.yaml",
+        "champions/harness_v1/features.py",
+    ],
 }
 PKG_ROOT = Path(__file__).parent
 

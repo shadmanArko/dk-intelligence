@@ -32,6 +32,16 @@ class Scores(BaseModel):
     n: int | None = None
 
 
+class ModelResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str = Field(max_length=40)
+    version: str | None = Field(default=None, max_length=80)
+    verdict: str = Field(max_length=20)
+    new: float | None = None
+    current: float | None = None
+    failed_gates: list[str] = Field(default_factory=list, max_length=20)
+
+
 class RunReport(BaseModel):
     model_config = ConfigDict(extra="ignore")
     kind: Literal["weekly_run"]
@@ -52,6 +62,7 @@ class RunReport(BaseModel):
     gain: float | None = None
     failed_gates: list[str] = Field(default_factory=list, max_length=20)
     live: str | None = Field(default=None, max_length=300)
+    models: list[ModelResult] = Field(default_factory=list, max_length=10)
 
 
 def scan_run_reports(dsn: str, inbox: Path) -> list[RunReport]:
@@ -104,6 +115,12 @@ def run_message(r: RunReport) -> str:
         )
     extra = "\n(market data from an older snapshot: the data platform was not reachable)" if r.market_fallback else ""
     live = f"\nLive check: {H(r.live)}" if r.live else ""
+    if r.models:
+        sc += "\n" + "\n".join(
+            f"{'✅' if m.verdict == 'pass' else '➖'} {H(m.name)}: {H(m.verdict)} (new {m.new} vs now {m.current})"
+            + (f": failed {H(', '.join(m.failed_gates))}" if m.failed_gates else "")
+            for m in r.models
+        )
     if r.status == "pass":
         return (
             f"🚀 <b>Sunday training: a better model passed</b> ({when}). The approval message follows.{sc}{live}{extra}"

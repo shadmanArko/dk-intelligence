@@ -92,3 +92,24 @@ def test_recipe_reproduces_published_score():
     from intel.champions.reproduce import PUBLISHED_TEST_BALANCED_ACCURACY, recipe_check
 
     assert recipe_check(HARNESS)["balanced_accuracy"] == PUBLISHED_TEST_BALANCED_ACCURACY
+
+
+def test_reach_label_uses_only_earlier_posts():
+    from intel.datasets.content import REACH_MIN_PRIOR, reach_label
+
+    t = pd.Timestamp("2026-05-01", tz="UTC")
+    reach = [10, 20, 30, 40, 50, 25, 100, None]
+    df = pd.DataFrame(
+        {
+            "id": list("abcdefgh"),
+            "platform": "facebook",
+            "posted_at": [t + pd.Timedelta(days=i) for i in range(8)],
+            "reach": reach,
+        }
+    )
+    out = reach_label(df).set_index("id")
+    assert out.loc[["a", "b", "c", "d", "e"], "y_reach"].isna().all()  # fewer than 5 earlier posts
+    assert REACH_MIN_PRIOR == 5
+    assert out.loc["f", "reach_median_prior"] == 30 and out.loc["f", "y_reach"] == 0  # 25 vs median(10..50)
+    assert out.loc["g", "y_reach"] == 1  # 100 vs median incl. f
+    assert pd.isna(out.loc["h", "y_reach"])  # no reach -> no label

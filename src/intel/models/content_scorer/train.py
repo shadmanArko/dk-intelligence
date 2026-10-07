@@ -36,6 +36,9 @@ CHAMPION_COLS = [
     "hashtag_count",
 ]
 FEATURE_SETS = {
+    # today's 7 features (for the reach question this is a real challenger: same inputs, the right label; it scored
+    # best in training-only CV on 2026-10-07, before any test look)
+    "champion": CHAMPION_COLS,
     # chosen 2026-10-07 from a single-feature ablation on TRAIN-fold CV only (docs/results/M3_content_scorer.md)
     "champion_plus_text": CHAMPION_COLS + ["first_line_length", "script_bengali"],
     "champion_plus_market": CHAMPION_COLS + ["market_cue_lift", "n_cues", "days_to_feast", "days_since_feast"],
