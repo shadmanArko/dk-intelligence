@@ -210,7 +210,9 @@ def training_html(o: dict, deployed: dict) -> str:
             else "⚠️ stalled"
         )
         rows = ""
-        for st in p["steps"].values():
+        from intel.pipeline import STEPS
+
+        for st in (p["steps"][k] for k in STEPS if k in p["steps"]):  # jsonb does not keep key order
             icon, cls = STEP_ICON.get(st["status"], ("?", ""))
             rows += (
                 f"<tr><td class='{cls}'>{icon}</td><td>{H(st['label'])}</td><td>{H(st['status'])}</td>"
