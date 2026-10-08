@@ -106,36 +106,13 @@
       ansible.builtin.command: grep -c 'command="{{ deploy_command }}"' {{ deploy_home }}/.ssh/authorized_keys
       register: door3
       changed_when: false
+      check_mode: false  # read-only: runs in --check previews too
       failed_when: door3.rc != 0 or (door3.stdout | int) < 1
       when: not in_container
 
     # ---------------------------------------------------------------- cron (deploy user)
-    - name: "Cron: adopt identical hand-made lines (so Ansible's managed entries never duplicate them)"
-      ansible.builtin.shell: |
-        set -euo pipefail
-        current="$(crontab -u {{ deploy_user }} -l 2>/dev/null || true)"
-        before="$current"
-        {% for j in cron_jobs %}
-        current="$(printf '%s\n' "$current" | python3 -c '
-        import sys
-        lines = sys.stdin.read().split("\n")
-        spec, name = sys.argv[1], sys.argv[2]
-        out, prev = [], ""
-        for line in lines:
-            if line.strip() == spec and prev != "#Ansible: " + name:
-                prev = line
-                continue  # unmanaged duplicate of a managed job: drop it, the cron task re-adds it with its marker
-            out.append(line)
-            prev = line
-        print("\n".join(out).rstrip("\n"))
-        ' '{{ j.minute }} {{ j.hour }} * * {{ j.weekday | default("*") }} {{ j.job }}' '{{ j.name }}')"
-        {% endfor %}
-        if [ "$current" != "$before" ]; then printf '%s\n' "$current" | crontab -u {{ deploy_user }} -; echo adopted; fi
-      args:
-        executable: /bin/bash
-      register: adopt
-      changed_when: "'adopted' in adopt.stdout"
-
+    # A hand-made line identical to a managed job is adopted in place (the module labels it with its `#Ansible:`
+    # marker instead of appending a duplicate); tests/test_infra.py proves it.
     - name: "Cron: managed jobs"
       ansible.builtin.cron:
         name: "{{ item.name }}"
@@ -190,6 +167,7 @@
       ansible.builtin.command: tailscale serve status --json
       register: ts
       changed_when: false
+      check_mode: false  # read-only: runs in --check previews too
       when: not in_container
 
     - name: "Tailscale: publish each local service on the tailnet only"
@@ -202,6 +180,7 @@
     - name: "Check: Docker is installed (managed with the harness, not here)"
       ansible.builtin.command: docker --version
       changed_when: false
+      check_mode: false  # read-only: runs in --check previews too
       when: not in_container
 
     - name: "Check: the git checkouts exist"

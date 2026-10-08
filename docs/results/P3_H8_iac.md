@@ -13,9 +13,13 @@ the hand-made backup and daily-collector lines (once each, now marked), added th
 door lines match the originals byte for byte. Tailscale, swap and Docker cannot run in a container: they are covered
 by the first `--check --diff` on the VPS.
 
-## Expected first check-mode diff on the VPS
+## First check-mode run on the VPS (2026-10-08)
+`ok=20 changed=2 failed=0`; exactly the expected diff, nothing else:
 - the deploy script's header comment ("Not tracked in git on purpose" → "Managed by infra/site.yml"); commands identical;
-- the four cron jobs: hand-made lines replaced by the same lines with `#Ansible:` markers (in check mode the adoption
-  step is skipped, so the preview shows them as additions);
-- possibly the tunnel key's comment, if it was typed differently from the Mac's `.pub` file (the comment does not
-  affect access).
+- the four cron jobs: an `#Ansible:` marker inserted above each existing hand-made line; no line duplicated, the
+  harness's lines untouched;
+- users, keys, directories, swap, `.env` modes and checkouts: `ok` (already as the code describes).
+
+Lesson: `--check` skips every `command`/`shell` task, so the first preview silently did not run the read-only checks
+(door-3 key present, `tailscale serve` status, Docker). They now carry `check_mode: false`. The preview also showed that
+the cron module adopts identical lines itself, so the playbook's own adoption script was deleted.

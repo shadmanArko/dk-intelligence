@@ -16,8 +16,10 @@ rebuilding meant replaying a conversation, and a drifted line (a `permitopen`, a
    ADR 0003's three narrow doors.
 3. **Boundaries:** secrets, private keys, git checkouts and Docker are *checked*, never written (a missing `.env`
    stops the run and is named); the harness stack and its crontab lines are not touched; app deploys stay with CI.
-4. **Adoption, not duplication:** cron lines first made by hand are recognised and replaced by managed entries
-   (Ansible's cron module otherwise adds a second copy: every backup would run twice).
+4. **Adoption, not duplication:** cron lines first made by hand must not run twice. Ansible's cron module adopts a line
+   identical to a managed job in place (it inserts the `#Ansible:` marker above it); a first version carried its own
+   adoption script on the belief that the module would append a copy. The VPS preview showed otherwise, so the script
+   was removed, and the container test keeps proving no line is duplicated.
 5. **Check mode first** on the real VPS (`--check --diff`), then apply.
 6. **Tested in CI** on a fresh Ubuntu 24.04 container set up like the VPS (a deploy user whose crontab holds a harness
    job and hand-made copies of ours): converges, then 0 changes; doors byte-exact; harness line kept.
