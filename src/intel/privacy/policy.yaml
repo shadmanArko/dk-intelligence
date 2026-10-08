@@ -1,0 +1,165 @@
+# Data protection policy (ADR 0024): the ONE place that says what data this system holds, why, whether it is personal,
+# and for how long. Code enforces it, tests check it against the real tables, and docs/privacy/RECORD_OF_PROCESSING.md
+# is rendered from it (`intel privacy ropa`). Change the policy here, never only in the docs.
+#
+# personal:  none          no information about a natural person
+#            pseudonymous  about a person, but only through a random or hashed identifier (still personal data)
+#            declared      identifiable public information, needed for the stated purpose (listed, never silently added)
+# retention: days, or "keep" (the business or audit record; contains no personal data) with a reason
+version: 1
+controller: Dhaka Kacchi Berlin (the owner, one person); this system is run by the owner for the owner
+updated: 2026-10-09
+
+# ------------------------------------------------------------------------------------------------ warehouse pull (Mac)
+# Purpose limitation: only these tables are copied from the harness warehouse. Everything else (customers, orders with
+# customer ids, reviews, Facebook comments, agent actions, ...) stays on the VPS. A new table must be added here,
+# with a purpose, before any model can use it.
+warehouse_pull:
+  where: Mac, data/pulls/<id>/ (Parquet, checksummed); the newest 12 pulls are kept (INTEL_KEEP_PULLS)
+  tables:
+    social_post:
+      purpose: training data for content_scorer / reach_scorer (our own posts and captions); funnel post links
+      personal: none
+      note: captions are our own public posts; the only phone number in them is the business's own (allow-listed)
+    social_metrics_snapshot:
+      purpose: training labels (likes, comments, shares, reach of our own posts over time)
+      personal: none
+    raw_orders_direct:
+      purpose: funnel (orders per day and source) and community_map (orders counted per postcode area)
+      personal: pseudonymous
+      categories: order time, items, amounts, delivery city and postal code; no name, email, phone or street
+      note: postcodes are only counted per planning area (542 areas); never shown or exported per order
+    raw_posthog_events:
+      purpose: funnel (website sessions, entry source, checkout steps)
+      personal: pseudonymous
+      categories: random visitor and session ids (dk_...), page paths, coarse GeoIP (country, region); no IP address
+    tracked_link:
+      purpose: funnel (which post or campaign a visit came from)
+      personal: none
+
+# ---------------------------------------------------------------------------------------------- market pull (Mac)
+# Fixed queries against the data platform (mip). Reviewer identities are salted hashes there and are not copied.
+market_pull:
+  where: Mac, data/market/<id>/ (Parquet, checksummed); the newest 12 pulls are kept
+  tables:
+    content_feature_performance: {purpose: market lift per content tag (content_scorer features), personal: none}
+    occasion_day: {purpose: occasion calendar (content_scorer features), personal: none}
+    occasions_next:
+      purpose: occasion planner (the next occasions, with how many Berlin residents share each)
+      personal: none
+      protected_derived: true   # berlin_citizens: city-wide residents by citizenship
+    afs_citizenship:
+      purpose: occasion planner (how many Berlin residents share an occasion; city-wide counts)
+      personal: none
+      protected_derived: true
+      note: official aggregate statistics, never per person
+    biryani_reviews:
+      purpose: weakness_miner (what customers of other biryani sellers complain about)
+      personal: pseudonymous
+      categories: review text and rating; no reviewer name or id
+      redact: [text]    # emails and phone numbers inside review texts are replaced before the pull is written
+    biryani_listings: {purpose: weakness_miner and community_map (competitor places), personal: none}
+    lor_community:
+      purpose: community_map (residents per planning area by community of origin; official aggregates)
+      personal: none
+      protected_derived: true
+      note: reviewed exception for protected-attribute data, see fairness.exceptions
+    lor_stats: {purpose: community_map (age, household size, rent per planning area), personal: none}
+    lor_places: {purpose: community_map (area centres, restaurant counts), personal: none}
+    postcode_area: {purpose: community_map (postcode -> planning area), personal: none}
+    creators:
+      purpose: creator_matcher (public Berlin food creators who could make paid content with us)
+      personal: declared
+      categories: public handle, display name, bio, website, public post statistics
+      note: public business-facing profiles; used only to suggest whom the owner could contact
+    creator_posts:
+      purpose: creator_matcher (what those creators post about)
+      personal: declared
+      categories: public post captions, links and counts
+
+# ------------------------------------------------------------------------------------------------ intel-db (VPS)
+# Retention is enforced by the retention job in intel-api (daily, audited); "keep" tables hold no personal data.
+intel_db:
+  where: VPS, intel-db (Postgres, Docker volume); nightly backups kept 30 days locally and in Backblaze B2
+  tables:
+    schema_migrations: {purpose: database schema version, personal: none, retention: keep, why: needed to migrate}
+    model_package: {purpose: model registry, personal: none, retention: keep, why: governance record (ADR 0019)}
+    approval: {purpose: who approved which model, personal: none, retention: keep, why: governance record}
+    model_activation: {purpose: which model served when, personal: none, retention: keep, why: append-only record}
+    audit_log: {purpose: hash-chained audit trail, personal: none, retention: keep, why: append-only by design}
+    model_reference: {purpose: training reference profiles for drift, personal: none, retention: keep, why: small}
+    kv: {purpose: settings and markers, personal: none, retention: keep, why: current state only}
+    ledger_post:
+      purpose: our own posts scored by the models (caption hash and length only, never the caption)
+      personal: none
+      retention: keep
+      why: the model ledger is the evidence the judge and guardrail rely on
+    post_outcome: {purpose: real results of our posts, personal: none, retention: keep, why: model ledger}
+    prediction:
+      purpose: every prediction (shadow scoring of our posts, and draft scoring through the API)
+      personal: none
+      retention: keep
+      why: shadow predictions are the model ledger
+      delete_after_days: {where: "source = 'api'", days: 90, column: created_at}
+      note: API calls score drafts (features and an input hash, no caption text); 90 days covers drift windows
+    event_log:
+      purpose: operational events (packages received, measure runs, start-ups)
+      personal: none
+      retention: 180
+      column: at
+    training_run:
+      purpose: reports of the Sunday training runs (for the training page and its history)
+      personal: none
+      retention: 365
+      column: received_at
+
+# ------------------------------------------------------------------------------------------------ files
+files:
+  - {what: intel-db backups, where: "VPS /opt/dhaka-kacchi/backups/intel_*.sql.gz", retention: 30, enforced_by: deploy/backup.sh}
+  - {what: backup copies, where: Backblaze B2 (EU), retention: 30, enforced_by: bucket lifecycle (harness)}
+  - {what: VPS job logs, where: "/opt/dhaka-kacchi/logs/intel-*.log, mip-collector.log", retention: 56, enforced_by: "logrotate (infra/site.yml)"}
+  - {what: container logs, where: "Docker json-file (intel-api, intel-db)", retention: "3 x 10 MB", enforced_by: deploy/docker-compose.yml}
+  - {what: metrics, where: VPS Prometheus, retention: 35, enforced_by: deploy/monitoring/docker-compose.yml}
+  - {what: warehouse and market pulls, where: Mac data/pulls, data/market, retention: "newest 12", enforced_by: intel.pull.prune}
+
+# ------------------------------------------------------------------------------------------------ PII scan
+pii:
+  # sha256 of the digits of the business's own public contact numbers: allowed wherever they appear
+  allow_phone_sha256:
+    - 8aa07cff127d6ffda3f23ecd0272e3ce079d84cebcdb247fc353c1c6def9ed7d
+  # keys that hold a person's identity or contact data; finding one in a pulled JSON payload fails the pull
+  identity_keys: [email, e_mail, mail, phone, phone_number, telephone, mobile, ip, $ip, ip_address, first_name,
+                  last_name, full_name, street, address_line1, address_line2, iban, from]
+
+# ------------------------------------------------------------------------------------------------ fairness
+fairness:
+  # No model may produce or use a field about these; checked on every package before it is built.
+  # Two checks. (1) Names: matched as whole words inside field names (`resident_religion` matches `religion`); the
+  # community ids of the run's market snapshot (bangladeshi, turkish, ...) are added at check time. (2) Lineage: a
+  # model that READS a table marked `protected_derived` needs a reviewed exception, whatever its fields are called.
+  protected_terms: [religion, religious, ethnicity, ethnic, race, racial, nationality, citizenship, citizen,
+                    country_of_origin, origin_country, caste, migration_background, skin, sexual, gender, disability,
+                    health]
+  exceptions:
+    - model: community_map
+      reads: [lor_community]
+      fields: [south_asian, meat_rice_cultures, internationals]
+      basis: official area statistics (residents per planning area by community of origin), never individuals
+      use: choosing AREAS for delivery zones, area-targeted ads and pop-ups; never to target or exclude people
+      reviewed_by: owner
+      reviewed_on: 2026-10-08
+      review_again: 2027-04-08
+    - model: occasion_planner
+      reads: [afs_citizenship, occasions_next]
+      fields: [berlin_citizens]
+      basis: official city-wide counts of residents by citizenship, used only to size an occasion's audience
+      use: which occasions to plan content for and when; presentation is neutral (content playbook) and never
+        addresses or excludes people by origin or religion
+      reviewed_by: owner
+      reviewed_on: 2026-10-09
+      review_again: 2027-04-09
+  # Blocked words apply to text a model WRITES (greetings, labels, suggestions). Models that quote third-party text
+  # (review excerpts, creator profiles) are not rewritten; their quotes are shown as quotes.
+  generated_text: [occasion_planner]
+  # Generated text (greetings, labels, suggestions) must not contain the content playbook's blocked words.
+  blocked_words_source: market pull content_rules.yaml (the data platform's content playbook)

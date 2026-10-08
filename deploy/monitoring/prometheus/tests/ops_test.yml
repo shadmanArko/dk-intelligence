@@ -33,6 +33,20 @@ tests:
               summary: "Background worker inbox has not completed a loop for 15m 0s"
               action: "`docker compose logs --tail 200 intel-api | grep inbox`; a restart (`docker compose up -d`) is safe."
 
+  - name: the daily retention job may be quiet for a day, not for two (ADR 0024)
+    interval: 1m   # samples every minute: the alert's `for: 5m` needs a continuous series
+    input_series:
+      - {series: 'intel_worker_last_success_timestamp_seconds{worker="retention"}', values: '0x3100'}
+    alert_rule_test:
+      - {eval_time: 30h, alertname: IntelWorkerStalled, exp_alerts: []}
+      - eval_time: 50h
+        alertname: IntelWorkerStalled
+        exp_alerts:
+          - exp_labels: {severity: ticket, worker: retention}
+            exp_annotations:
+              summary: "Background worker retention has not completed a loop for 2d 2h 0m 0s"
+              action: "`docker compose logs --tail 200 intel-api | grep retention`; a restart (`docker compose up -d`) is safe."
+
   - name: disk thresholds and the inhibition-friendly split
     interval: 1m
     input_series:

@@ -271,6 +271,25 @@ def measure_loop(state: AppState, stop: threading.Event) -> None:
         stop.wait(s.intel_measure_interval_s)
 
 
+def retention_loop(state: AppState, stop: threading.Event) -> None:
+    """Daily: delete what the data-protection policy no longer allows us to keep (ADR 0024); audited in the same
+    transaction. Its staleness alert (IntelWorkerStalled, worker=retention) says when deletion has stopped."""
+    from intel.privacy.retention import run_retention
+
+    stop.wait(60)
+    while not stop.is_set():
+        try:
+            for p in run_retention(state.dsn):
+                if p.deleted:
+                    state.metrics.retention_deleted.labels(p.table).inc(p.deleted)
+                    log.info("retention: %s deleted %d rows", p.rule, p.deleted)
+            state.metrics.worker_ok("retention")
+        except Exception:
+            state.metrics.worker_failed("retention")
+            log.exception("retention loop error")
+        stop.wait(state.settings.intel_retention_interval_s)
+
+
 def report_loop(state: AppState, stop: threading.Event) -> None:
     s: Settings = state.settings
     tg = state.telegram
@@ -325,6 +344,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         threads = []
         if start_workers:
             threads.append(threading.Thread(target=inbox_loop, args=(state, stop), daemon=True, name="inbox"))
+            threads.append(threading.Thread(target=retention_loop, args=(state, stop), daemon=True, name="retention"))
             if s.intel_warehouse_dsn:
                 threads.append(threading.Thread(target=measure_loop, args=(state, stop), daemon=True, name="measure"))
             if state.telegram:

@@ -56,3 +56,9 @@ env_files:
 
 # CI sets this: a container has no systemd, Tailscale, Docker or swap; those parts are checked on the VPS only
 in_container: false
+
+# Job logs under {{ base_dir }}/logs that are ours (ADR 0024); `copytruncate` because cron appends with >>.
+log_files:
+  - "{{ base_dir }}/logs/intel-*.log"
+  - "{{ base_dir }}/logs/mip-collector.log"
+log_keep_weeks: 8

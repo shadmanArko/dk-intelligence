@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from intel.privacy.guard import pull_guard
 from intel.pull import run_pull
 
 # Reviews of the Berlin listings that sell biryani (Phase 2.2, competitor weakness miner). Reviewer identities are
@@ -175,4 +176,5 @@ def run_market_pull(dsn: str, mip_dir: Path, market_dir: Path, keep: int, log: C
             "community_countries.yaml": community_countries_bytes(mip_dir),
         },
         application_name="dk-intelligence-market",
+        guard=pull_guard("market_pull"),
     )

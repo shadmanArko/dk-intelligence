@@ -398,6 +398,8 @@ def _run_weekly(
     from intel.market import run_market_pull
     from intel.package import build_package, verify_package
     from intel.package import upload as upload_file
+    from intel.privacy import pull_tables
+    from intel.privacy.guard import pull_guard
     from intel.pull import list_pulls, run_pull, verify_pull
     from intel.tunnel import warehouse_tunnel
 
@@ -434,11 +436,13 @@ def _run_weekly(
         prog.start("pull")
         log("pulling the warehouse")
         with warehouse_tunnel(s.dk_warehouse_ssh, s.dk_warehouse_ssh_key, s.warehouse_local_port):
-            pull = run_pull(
+            pull = run_pull(  # declared tables only; undeclared personal data fails the run (ADR 0024)
                 required(s.dk_warehouse_dsn, "DK_WAREHOUSE_DSN"),
                 d / "pulls",
+                pull_tables(),
                 keep=s.intel_keep_pulls,
                 log=lambda *_: None,
+                guard=pull_guard("warehouse_pull"),
             )
         if verify_pull(pull):
             raise RuntimeError("pull verification failed")

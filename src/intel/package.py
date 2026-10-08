@@ -181,13 +181,54 @@ When the model says X, how often does it happen?
 
 ## Ethical considerations
 {_bullets(card.ethics)}
-"""
+{_responsible_ai(meta.get("responsible_ai"))}"""
+
+
+def _responsible_ai(ra: dict[str, Any] | None) -> str:
+    """The responsible-AI gate's record (ADR 0024), as the last lines of the model card."""
+    if not ra:
+        return ""
+    words = "checked" if ra["blocked_words_checked"] else "not checked (no content rules on this machine)"
+    out = (
+        f"- Passed the responsible-AI gate (policy v{ra['policy_version']}): protected attributes by name and by "
+        f"lineage, personal data; blocked words {words}.\n"
+    )
+    if exc := ra.get("exception"):
+        out += (
+            f"- Reviewed exception: reads {', '.join(exc['reads'])} ({exc['basis']}); reviewed by {exc['reviewed_by']} "
+            f"on {exc['reviewed_on']}, next review {exc['review_again']}.\n"
+        )
+    return out
 
 
 def _add(tar: tarfile.TarFile, name: str, data: bytes) -> None:
     info = tarfile.TarInfo(name)
     info.size, info.mtime, info.mode = len(data), 0, 0o644
     tar.addfile(info, io.BytesIO(data))
+
+
+def responsible_ai_gate(name: str, report: dict[str, Any], model_bytes: bytes, market_root: Path) -> dict[str, Any]:
+    """ADR 0024: the package is refused when its report or bundle breaks the fairness, wording or privacy rules."""
+    import joblib
+
+    from intel.privacy import PrivacyViolation, policy
+    from intel.privacy.fairness import blocked_words, bundle_documents, check, community_ids, exception_for
+
+    market = market_root / report["market_id"] if report.get("market_id") else None
+    words = blocked_words(market)
+    documents = {"report.json": report, **bundle_documents(joblib.load(io.BytesIO(model_bytes)))}
+    problems = check(name, documents, words, extra_terms=community_ids(market))
+    if problems:
+        raise PrivacyViolation(f"responsible-AI gate refused {name}: " + "; ".join(problems))
+    exc = exception_for(name)
+    return {
+        "policy_version": policy()["version"],
+        "checked": sorted(documents),
+        "blocked_words_checked": words is not None,
+        "exception": {k: exc[k] for k in ("reads", "basis", "reviewed_by", "reviewed_on", "review_again")}
+        if exc
+        else None,
+    }
 
 
 def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = False) -> Path:
@@ -203,6 +244,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         )
     git = git_state(repo)
     model_bytes = (run_dir / "model.joblib").read_bytes()
+    responsible_ai = responsible_ai_gate(name, report, model_bytes, run_dir.parent.parent / "market")
     spec = yaml.safe_load((PKG_ROOT / f"models/{name}/spec.yaml").read_text())
     meta = {
         "format_version": 1,
@@ -228,6 +270,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         "code": {"dk_intelligence": __version__, "hashes": code_hashes(name)},
         "runtime": {"python": platform.python_version(), "scikit_learn": sklearn.__version__},
         "git": git,
+        "responsible_ai": responsible_ai,
     }
     files: dict[str, bytes] = {
         "model.joblib": model_bytes,

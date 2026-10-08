@@ -36,9 +36,12 @@ shows in the judge's `works` gate; roll back with `/rollback` if it started afte
 (`df -h /`). A full disk stops Postgres: see HostDiskCritical. Data loss is bounded by the nightly backup (RPO 24 h).
 
 ## IntelWorkerStalled
-🟠 A background worker stopped finishing its loop (inbox, telegram, reports, measure).
+🟠 A background worker stopped finishing its loop (inbox, telegram, reports, measure, retention).
 `docker compose logs --tail 200 intel-api | grep -i <worker>`. A restart is safe (`docker compose up -d intel-api` —
 work is idempotent: the inbox re-scans, the measurer back-fills, Telegram resumes from its stored offset).
+**retention** (daily, ADR 0024): data is being kept past its retention period. Check what is due with
+`docker compose exec intel-api intel privacy retention` (a dry run), then fix the cause; the job catches up on its
+own once it runs, and every purge is in the audit trail (`/audit`, action `retention_purge`).
 
 ## IntelWorkerErrors
 🟠 A worker keeps failing. The exception is in the logs (`"logger": "intel.api"`). Common: the warehouse unreachable

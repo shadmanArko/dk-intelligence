@@ -203,9 +203,12 @@ def run_pull(
     items: list[tuple[Any, ...]] | None = None,
     extra_files: dict[str, bytes] | None = None,
     application_name: str = "dk-intelligence-pull",
+    guard: Callable[[Path, list[TableResult]], dict[str, Any]] | None = None,
 ) -> Path:
     """Snapshot `tables` of `schema` (default: all readable). `items` = explicit (schema, table) pairs across
-    schemas instead (file name = table name). `extra_files` (name -> bytes) are stored and checksummed too."""
+    schemas instead (file name = table name). `extra_files` (name -> bytes) are stored and checksummed too.
+    `guard` (ADR 0024) sees the written tables before anything is checksummed: it may rewrite files (updating their
+    TableResult), raises to refuse the pull, and returns the manifest's `privacy` section."""
     pulls_dir.mkdir(parents=True, exist_ok=True)
     pull_id = new_pull_id()
     tmp = pulls_dir / f"{pull_id}.partial"
@@ -240,6 +243,7 @@ def run_pull(
                     log(f"  {t:32s} {r.rows:>9,} rows")
                     results.append(r)
 
+        privacy = guard(tmp, results) if guard else None
         manifest = {
             "format_version": FORMAT_VERSION,
             "pull_id": pull_id,
@@ -256,6 +260,8 @@ def run_pull(
             "total_rows": sum(r.rows for r in results),
             "files": sorted(extra_files or {}),
         }
+        if privacy is not None:
+            manifest["privacy"] = privacy
         for name, data in (extra_files or {}).items():
             (tmp / name).write_bytes(data)
         (tmp / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")

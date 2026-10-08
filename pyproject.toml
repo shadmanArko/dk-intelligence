@@ -108,6 +108,12 @@ module = [
     "intel.reproduce",
     "intel.serve.guardrail",
     "intel.loadtest",
+    "intel.privacy",
+    "intel.privacy.pii",
+    "intel.privacy.guard",
+    "intel.privacy.fairness",
+    "intel.privacy.retention",
+    "intel.privacy.ropa",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

@@ -68,3 +68,9 @@ def test_the_three_doors_are_written_exactly(applied):
 def test_deploy_owned_directories(applied):
     dirs = section(applied, "dirs")
     assert "/opt/dhaka-kacchi/metrics deploy 755" in dirs and "/opt/dhaka-kacchi/monitoring-runtime deploy 700" in dirs
+
+
+def test_job_logs_rotate(applied):
+    """ADR 0024: our job logs rotate (the real logrotate, forced once); the harness's logs are not in the rule."""
+    logs = section(applied, "logrotate").split()
+    assert "intel-backup.log.1" in logs and "intel-backup.log" in logs
