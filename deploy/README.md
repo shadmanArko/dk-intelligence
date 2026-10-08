@@ -116,4 +116,5 @@ See [monitoring/README.md](monitoring/README.md): one `.env` line, `./up.sh`, an
 | Emergency build on the VPS | `./deploy.sh --local-build` (only if GitHub is down: not scanned) |
 | Database shell | `docker compose exec intel-db psql -U intel intel` |
 | Roll back a model | Telegram `/rollback`, or the button on the page |
+| Automatic rollback (ADR 0020) | on by default; `INTEL_AUTO_ROLLBACK=dry_run` (report only) or `off` in `.env`, then `docker compose up -d`; Telegram `/keep` pauses it per model for 14 days |
 | Live ledger | `curl -s 127.0.0.1:8710/v1/ledger/summary` · Telegram `/status` |

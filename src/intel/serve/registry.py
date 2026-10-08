@@ -265,7 +265,7 @@ class Registry:
                 audit(c, "system", "system", "expired", f"{r['name']} {r['version']}", approval_id=r["id"])
         return rows
 
-    def rollback(self, name: str, by: str, channel: str) -> dict:
+    def rollback(self, name: str, by: str, channel: str, reason: str | None = None) -> dict:
         with connect(self.dsn) as c, c.transaction():
             c.execute("select pg_advisory_xact_lock(hashtext(%s))", (name,))
             hist = c.execute(
@@ -282,7 +282,8 @@ class Registry:
                 (name, previous, f"{channel}:{by}"),
             )
             v = one(c.execute("select version from model_package where id=%s", (previous,)))["version"]
-            audit(c, by, channel, "rolled_back", f"{name} {v}", from_package=current, to_package=previous)
+            extra = {"reason": reason} if reason else {}
+            audit(c, by, channel, "rolled_back", f"{name} {v}", from_package=current, to_package=previous, **extra)
         log_event(self.dsn, "rollback", name=name, to_version=v, by=by, channel=channel)
         return {"name": name, "version": v}
 

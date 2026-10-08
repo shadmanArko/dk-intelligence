@@ -246,3 +246,41 @@ operator, evidence plus an alert is the right weight; anchoring the latest hash 
   snapshots.
 - *What breaks reproducibility in practice?* Pruned snapshots (refused, with a clear message) and changed sealed
   code (reported next to the result).
+
+---
+
+## H6 · A guardrail that can withdraw a model, but never promote one
+
+**Situation.** Monitoring could see a production model getting worse and ask for retraining. But retraining takes
+days (a Mac, a judge, an approval), and meanwhile the bad model kept answering every draft. Automation that acts on
+production can also be wrong.
+
+**Task.** Withdraw a degraded model automatically, on evidence strong enough to trust, without flapping, and keep
+the owner in control.
+
+**Action.**
+- **Paired evidence instead of thresholds.** Every post is scored by both the production model and the previous
+  system (shadow). McNemar's exact test on the posts where exactly one of them was right says whether the model is
+  significantly worse *on the same posts*. That's fair at small samples and immune to "this month was just harder".
+  Collapse to chance and severe miscalibration are secondary triggers. Nothing is judged under 40 matured outcomes.
+- **Safety rails in a fixed order:** off / dry run / on; an owner pin (`/keep`, audited); one automatic rollback per
+  model per week; only back to a version a human approved.
+- **One path for every change:** the rollback goes through the registry, so the database lifecycle rules and the
+  hash-chained audit trail apply. The reason is recorded, Telegram explains it, and undo is one tap.
+
+**Result.** A measurably worse model is withdrawn within the hour of the evidence existing, explained and audited,
+and never ping-pongs (all tested end to end on a real database). The system now has a complete autonomy boundary:
+monitoring can *trigger training*, the guardrail can *restore an approved version*, and only the judge plus a human
+can *promote*.
+
+**Trade-off I would defend.** I shipped it **on** rather than in dry-run. At a few posts a week, a dry-run period
+would delay protection by months, and the action only ever returns to a version the owner already approved. The
+switch to dry-run is one line, and every decision is visible.
+
+**Likely follow-up questions.**
+- *Why McNemar and not comparing two accuracies?* The two accuracies come from the same posts, so they're paired.
+  McNemar uses only the disagreements, which is exactly the information that distinguishes the models.
+- *What if the baseline is down?* No paired posts, no paired evidence. The other triggers still work, and the
+  baseline back-fills when it returns.
+- *Isn't 40 outcomes slow?* Yes, deliberately. Fast symptoms (errors, latency, outages) are caught by the deploy
+  smoke test and the SLO alerts. The guardrail is the slow, sure net for "it works but it's wrong".

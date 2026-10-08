@@ -106,6 +106,7 @@ module = [
     "intel.serve.monitor",
     "intel.serve.lifecycle",
     "intel.reproduce",
+    "intel.serve.guardrail",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

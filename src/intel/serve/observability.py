@@ -82,6 +82,12 @@ class Metrics:
             registry=r,
         )
         self.worker_errors = Counter("intel_worker_errors", "Background worker loop failures", ["worker"], registry=r)
+        self.guardrail_actions = Counter(
+            "intel_guardrail_actions",
+            "Guardrail outcomes: rollback, would_rollback (dry run), hold",
+            ["model", "action"],
+            registry=r,
+        )
         for w in WORKERS:  # exported from the start, so "never succeeded" is visible as 0 rather than missing
             self.worker_errors.labels(w)
 
@@ -139,6 +145,9 @@ class StateCollector(Collector):
             "1 if every audit entry's hash and link verify",
             value=row["audit_first_bad"] is None,
         )
+        mode = GaugeMetricFamily("intel_guardrail_mode", "Automatic rollback mode (ADR 0020)", labels=["mode"])
+        mode.add_metric([self.state.settings.intel_auto_rollback], 1)
+        yield mode
         yield from self._monitoring()
         if row["training_status"]:
             st = GaugeMetricFamily(

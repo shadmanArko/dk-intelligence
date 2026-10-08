@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
@@ -35,6 +36,9 @@ class Settings(BaseSettings):
     harness_predictor_url: str | None = None  # e.g. http://predictor:8000 (the production predictor)
     intel_ledger_start: dt.datetime = dt.datetime(2026, 10, 7, tzinfo=dt.UTC)  # posts before this are not scored
     intel_measure_interval_s: int = Field(default=3600, ge=60)
+    # H6 guardrail (ADR 0020): roll a degraded production scorer back by itself ('on'), only report what it would do
+    # ('dry_run'), or never ('off').
+    intel_auto_rollback: Literal["on", "dry_run", "off"] = "on"
     telegram_bot_token: str | None = None
     telegram_chat_id: int | None = None
     telegram_polling: bool = True

@@ -15,7 +15,7 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
+from intel.serve.guardrail import run_guardrail
 from intel.serve.lifecycle import audit_verify, stage
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.monitor import run_monitor, scan_references
@@ -106,7 +107,26 @@ class AppState:
     last_inbox_scan: dt.datetime | None = None
     last_measure: dict[str, Any] | None = None
     monitoring: dict[str, Any] | None = None
+    guardrail: list[dict[str, Any]] | None = None
     metrics: Metrics = field(default_factory=Metrics)
+
+
+def guard(state: AppState) -> None:
+    """The guardrail after each monitoring pass (ADR 0020); a rollback reloads the models immediately."""
+    tg = state.telegram
+    decisions = run_guardrail(
+        state.dsn,
+        state.registry,
+        state.monitoring,
+        state.settings.intel_auto_rollback,
+        notify=tg.send if tg else None,
+    )
+    state.guardrail = [asdict(d) for d in decisions]
+    for d in decisions:
+        if d.action != "none":
+            state.metrics.guardrail_actions.labels(d.model, d.action).inc()
+    if any(d.action == "rollback" for d in decisions):
+        state.models.refresh()
 
 
 def active_scorers(models: Models) -> dict[str, str]:
@@ -204,6 +224,7 @@ def measure_loop(state: AppState, stop: threading.Event) -> None:
             state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
             state.metrics.predictions.labels("all", "shadow").inc(r.predictions)
             state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
+            guard(state)
             state.metrics.worker_ok("measure")
             if r.new_posts or r.outcomes or r.errors:
                 log_event(state.dsn, "measure_run", **r.__dict__)
@@ -327,7 +348,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         `retrain_requested` to train early."""
         if state.monitoring is None:  # not yet computed in this process: compute now (cheap)
             state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
-        return state.monitoring
+        return {**state.monitoring, "guardrail": {"mode": s.intel_auto_rollback, "decisions": state.guardrail or []}}
 
     @app.get("/metrics")
     def metrics():

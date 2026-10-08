@@ -123,6 +123,7 @@ HELP = (
     "<b>DK Intelligence</b>\n"
     "/status: models in use and waiting approvals\n"
     "/rollback: switch a model back to the previous version\n"
+    "/keep: keep the current version (no automatic rollback for 14 days)\n"
     "/training: progress of the Sunday training on the Mac\n"
     "Approve or reject new models with the buttons on each message."
 )
@@ -163,6 +164,12 @@ class Bot:
             from intel.serve.runs import training_text
 
             self.tg.send(training_text(self.reg.dsn))
+        elif cmd == "/keep":
+            names = sorted(self.reg.active())
+            self.tg.send(
+                "Keep which model as it is? Automatic rollback pauses for 14 days (you can still use /rollback).",
+                [[(f"📌 {n}", f"kp:{n}")] for n in names] + [[("Cancel", "x")]],
+            )
         elif cmd == "/rollback":
             names = sorted(self.reg.active())
             if not names:
@@ -237,6 +244,16 @@ class Bot:
                     self.tg.edit(
                         msg_id, approval_text(a["metadata"], a["id"], self.public_url), approval_buttons(a["id"])
                     )
+            elif kind == "kp":
+                from intel.serve.db import connect
+                from intel.serve.guardrail import PIN_DAYS, pin
+                from intel.serve.lifecycle import audit
+
+                until = pin(self.reg.dsn, arg)
+                with connect(self.reg.dsn) as c:
+                    audit(c, user, "telegram", "guardrail_pinned", arg, until=until, days=PIN_DAYS)
+                self.tg.answer(q["id"], "Kept")
+                self.tg.edit(msg_id, f"📌 <b>{H(arg)}</b> kept: no automatic rollback until {until[:10]}.")
             elif kind == "rb":
                 r = self.reg.rollback(arg, user, "telegram")
                 self.on_change()

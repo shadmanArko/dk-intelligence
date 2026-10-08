@@ -1270,6 +1270,71 @@
     "graphMode": "none",
     "textMode": "value_and_name"
    }
+  },
+  {
+   "type": "stat",
+   "title": "Guardrail (automatic rollback, ADR 0020)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "id": 27,
+   "description": "Mode, and what the guardrail did in the last 30 days: rollback / would_rollback (dry run) / hold.",
+   "gridPos": {
+    "x": 0,
+    "y": 51,
+    "w": 24,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max by (mode) (intel_guardrail_mode)",
+     "legendFormat": "mode: {{mode}}",
+     "refId": "A",
+     "instant": true
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (model, action) (increase(intel_guardrail_actions_total[30d]))",
+     "legendFormat": "{{model}} {{action}} (30 d)",
+     "refId": "B",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value_and_name"
+   }
   }
  ],
  "templating": {

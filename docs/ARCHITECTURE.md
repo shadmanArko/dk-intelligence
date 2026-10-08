@@ -79,6 +79,8 @@ flowchart LR
 7. **Serve + measure** (ADR 0006): predictions are registered before outcomes exist; they feed the next judge.
 8. **Monitor** (ADR 0018): served features and scores vs the version's reference profile, live accuracy and
    calibration, hourly; a model that drifted or degraded asks the Mac to retrain early (it still goes through 3–6).
+9. **Guard** (ADR 0020): a production scorer significantly worse than the previous system on the same posts
+   (McNemar), collapsed or badly miscalibrated is rolled back to the earlier approved version, audited, explained.
 
 ## 4. Code map
 
