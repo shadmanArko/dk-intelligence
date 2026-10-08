@@ -1,0 +1,58 @@
+# Everything the VPS needs for dk-intelligence, as data. Public keys and addresses only: secrets (.env files, private
+# keys, tokens) are never in git; the playbook only checks that they exist with safe permissions.
+base_dir: /opt/dhaka-kacchi
+repo_dir: /opt/dhaka-kacchi/dk-intelligence
+collector_dir: /opt/dhaka-kacchi/mip-collector
+deploy_user: deploy
+mac_tailscale_ip: 100.107.175.13
+
+# door 1: tunnel-only (warehouse 5432, data-platform collector 5442)
+tunnel_user: intel
+tunnel_permitopen: ["127.0.0.1:5432", "127.0.0.1:5442"]
+tunnel_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHlIf2882/4OqjaOtH3LC5646JwUywwduuMgosS879oT dk-intel-tunnel"
+
+# door 2: upload-only inbox (rrsync write-only, no delete)
+inbox_user: intelinbox
+inbox_dir: /opt/dhaka-kacchi/intel-data/inbox
+inbox_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIUmg1OlcVlpHQGj9M3XRko0hOgOs8Y1UmTtTx/MFMzj dk-intel-inbox"
+
+# door 3: GitHub Actions deploy key on the deploy user (forced command); the public key is not in git, so it is
+# only CHECKED unless you set intel_deploy_pubkey.
+deploy_command: /opt/dhaka-kacchi/bin/run-intel-deploy.sh
+intel_deploy_pubkey: ""
+
+swap_size_mb: 2048
+swappiness: 10
+
+tailscale_serves:          # https port on the tailnet -> local service
+  - {https: 443, target: "http://127.0.0.1:8710"}   # intel-api pages
+  - {https: 8443, target: "http://127.0.0.1:3330"}  # Grafana
+
+cron_jobs:                 # all on the deploy user's crontab; existing hand-made identical lines are adopted
+  - name: intel-db backup
+    minute: "50"
+    hour: "2"
+    job: /opt/dhaka-kacchi/dk-intelligence/deploy/backup.sh >> /opt/dhaka-kacchi/logs/intel-backup.log 2>&1
+  - name: intel restore drill
+    minute: "30"
+    hour: "4"
+    weekday: "0"
+    job: /opt/dhaka-kacchi/dk-intelligence/deploy/restore_drill.sh >> /opt/dhaka-kacchi/logs/intel-restore-drill.log 2>&1
+  - name: mip collector daily
+    minute: "15"
+    hour: "10"
+    job: /opt/dhaka-kacchi/mip-collector/deploy/collector/run.sh daily >> /opt/dhaka-kacchi/logs/mip-collector.log 2>&1
+  - name: mip collector weekly
+    minute: "30"
+    hour: "22"
+    weekday: "6"
+    job: /opt/dhaka-kacchi/mip-collector/deploy/collector/run.sh weekly >> /opt/dhaka-kacchi/logs/mip-collector.log 2>&1
+
+# required secrets / checkouts (checked, never written)
+env_files:
+  - /opt/dhaka-kacchi/dk-intelligence/deploy/.env
+  - /opt/dhaka-kacchi/dk-intelligence/deploy/monitoring/.env
+  - /opt/dhaka-kacchi/mip-collector/deploy/collector/.env
+
+# CI sets this: a container has no systemd, Tailscale, Docker or swap; those parts are checked on the VPS only
+in_container: false

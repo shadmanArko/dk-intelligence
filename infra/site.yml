@@ -1,0 +1,248 @@
+# The dk-intelligence side of the VPS, as code (ADR 0022). Run ON the VPS as `deploy` (pull mode):
+#
+#   cd /opt/dhaka-kacchi/dk-intelligence && ansible-playbook -i infra/inventory.yml infra/site.yml --check --diff -K
+#   (read the diff; then the same without --check)
+#
+# It converges what the setup guides did by hand: the three doors (users, keys, forced commands), directories, the
+# deploy script, cron, swap and `tailscale serve`; it CHECKS what it must never write (.env files, private keys, the
+# git checkouts, Docker). The harness stack, its database and its crontab lines are not touched. App deploys stay
+# with CI (door 3); this playbook changes the host, not the running service. A second run must change nothing.
+- name: dk-intelligence host
+  hosts: vps
+  become: true
+  vars:
+    deploy_home: "/home/{{ deploy_user }}"
+  tasks:
+    # ---------------------------------------------------------------- base
+    - name: Packages the doors and scripts rely on
+      ansible.builtin.apt:
+        name: [rsync, git, cron, python3]
+        state: present
+        update_cache: false
+      when: not in_container
+
+    - name: Directories (created if missing; existing owners and modes of shared folders are left alone)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ base_dir }}"
+        - "{{ base_dir }}/logs"
+        - "{{ base_dir }}/backups"
+        - "{{ base_dir }}/intel-data"
+
+    - name: Deploy-owned directories (metrics are read by node-exporter, so 755)
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: "{{ base_dir }}/bin", mode: "0755"}
+        - {path: "{{ base_dir }}/metrics", mode: "0755"}
+        - {path: "{{ base_dir }}/monitoring-runtime", mode: "0700"}
+
+    # ---------------------------------------------------------------- door 1: tunnel-only
+    - name: "Door 1: tunnel user (no shell)"
+      ansible.builtin.user:
+        name: "{{ tunnel_user }}"
+        shell: /usr/sbin/nologin
+        create_home: true
+
+    - name: "Door 1: the Mac's key may only forward to the listed ports, only from the Mac"
+      ansible.posix.authorized_key:
+        user: "{{ tunnel_user }}"
+        key: "{{ tunnel_pubkey }}"
+        key_options: >-
+          restrict,port-forwarding,{{ tunnel_permitopen | map('regex_replace', '^(.*)$', 'permitopen="\1"') | join(',') }},from="{{ mac_tailscale_ip }}"
+        exclusive: true
+
+    # ---------------------------------------------------------------- door 2: upload-only inbox
+    - name: "Door 2: inbox user (shell needed for the forced command; password locked)"
+      ansible.builtin.user:
+        name: "{{ inbox_user }}"
+        shell: /bin/bash
+        create_home: true
+        password_lock: true
+
+    - name: "Door 2: inbox directory"
+      ansible.builtin.file:
+        path: "{{ inbox_dir }}"
+        state: directory
+        owner: "{{ inbox_user }}"
+        group: "{{ inbox_user }}"
+        mode: "0750"
+
+    - name: "Door 2: the Mac's key can only write into the inbox (rrsync -wo -no-del), only from the Mac"
+      ansible.posix.authorized_key:
+        user: "{{ inbox_user }}"
+        key: "{{ inbox_pubkey }}"
+        key_options: 'command="/usr/bin/rrsync -wo -no-del {{ inbox_dir }}",restrict,from="{{ mac_tailscale_ip }}"'
+        exclusive: true
+
+    # ---------------------------------------------------------------- door 3: GitHub Actions deploy
+    - name: "Door 3: the only command the GitHub Actions key can run"
+      ansible.builtin.copy:
+        dest: "{{ deploy_command }}"
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          # The ONLY command the GitHub Actions intel key can run (forced command). Managed by infra/site.yml.
+          set -euo pipefail
+          cd {{ repo_dir }}
+          git pull --ff-only origin main
+          exec {{ repo_dir }}/deploy/deploy.sh
+
+    - name: "Door 3: deploy key with its forced command (only when the public key is given)"
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ intel_deploy_pubkey }}"
+        key_options: 'command="{{ deploy_command }}",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty'
+      when: intel_deploy_pubkey | length > 0
+
+    - name: "Door 3: check that a forced-command key for the deploy script exists"
+      ansible.builtin.command: grep -c 'command="{{ deploy_command }}"' {{ deploy_home }}/.ssh/authorized_keys
+      register: door3
+      changed_when: false
+      failed_when: door3.rc != 0 or (door3.stdout | int) < 1
+      when: not in_container
+
+    # ---------------------------------------------------------------- cron (deploy user)
+    - name: "Cron: adopt identical hand-made lines (so Ansible's managed entries never duplicate them)"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        current="$(crontab -u {{ deploy_user }} -l 2>/dev/null || true)"
+        before="$current"
+        {% for j in cron_jobs %}
+        current="$(printf '%s\n' "$current" | python3 -c '
+        import sys
+        lines = sys.stdin.read().split("\n")
+        spec, name = sys.argv[1], sys.argv[2]
+        out, prev = [], ""
+        for line in lines:
+            if line.strip() == spec and prev != "#Ansible: " + name:
+                prev = line
+                continue  # unmanaged duplicate of a managed job: drop it, the cron task re-adds it with its marker
+            out.append(line)
+            prev = line
+        print("\n".join(out).rstrip("\n"))
+        ' '{{ j.minute }} {{ j.hour }} * * {{ j.weekday | default("*") }} {{ j.job }}' '{{ j.name }}')"
+        {% endfor %}
+        if [ "$current" != "$before" ]; then printf '%s\n' "$current" | crontab -u {{ deploy_user }} -; echo adopted; fi
+      args:
+        executable: /bin/bash
+      register: adopt
+      changed_when: "'adopted' in adopt.stdout"
+
+    - name: "Cron: managed jobs"
+      ansible.builtin.cron:
+        name: "{{ item.name }}"
+        user: "{{ deploy_user }}"
+        minute: "{{ item.minute }}"
+        hour: "{{ item.hour }}"
+        weekday: "{{ item.weekday | default('*') }}"
+        job: "{{ item.job }}"
+      loop: "{{ cron_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # ---------------------------------------------------------------- swap (ADR 0021)
+    - name: "Swap: file present"
+      ansible.builtin.command: fallocate -l {{ swap_size_mb }}M /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile
+      when: not in_container
+
+    - name: "Swap: permissions"
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+      when: not in_container
+
+    - name: "Swap: format a new file"
+      ansible.builtin.command: mkswap /swapfile
+      when: not in_container and swapfile is changed  # noqa: no-handler
+
+    - name: "Swap: active"
+      ansible.builtin.shell: swapon --show=NAME --noheadings | grep -qx /swapfile || swapon /swapfile
+      register: swapon
+      changed_when: false
+      when: not in_container
+
+    - name: "Swap: mounted at boot"
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+      when: not in_container
+
+    - name: "Swap: only under pressure"
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "{{ swappiness }}"
+        sysctl_file: /etc/sysctl.d/99-swappiness.conf
+      when: not in_container
+
+    # ---------------------------------------------------------------- tailscale serve (tailnet-only pages)
+    - name: "Tailscale: current serve configuration"
+      ansible.builtin.command: tailscale serve status --json
+      register: ts
+      changed_when: false
+      when: not in_container
+
+    - name: "Tailscale: publish each local service on the tailnet only"
+      ansible.builtin.command: tailscale serve --bg --https={{ item.https }} {{ item.target }}
+      loop: "{{ tailscale_serves }}"
+      when: not in_container and (item.target ~ '"') not in ts.stdout
+      changed_when: true
+
+    # ---------------------------------------------------------------- checks (never written by this playbook)
+    - name: "Check: Docker is installed (managed with the harness, not here)"
+      ansible.builtin.command: docker --version
+      changed_when: false
+      when: not in_container
+
+    - name: "Check: the git checkouts exist"
+      ansible.builtin.stat:
+        path: "{{ item }}/.git"
+      loop: ["{{ repo_dir }}", "{{ collector_dir }}"]
+      register: checkouts
+      when: not in_container
+
+    - name: "Check: report missing checkouts"
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: "{{ item.item }} is not a git checkout: follow deploy/README.md step 1"
+        quiet: true
+      loop: "{{ checkouts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not in_container
+
+    - name: "Check: secrets files exist"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ env_files }}"
+      register: envs
+      when: not in_container
+
+    - name: "Check: secrets files are private (600); missing ones are reported"
+      ansible.builtin.file:
+        path: "{{ item.item }}"
+        mode: "0600"
+      loop: "{{ envs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not in_container and item.stat.exists
+
+    - name: "Check: report missing secrets files"
+      ansible.builtin.assert:
+        that: item.stat.exists
+        fail_msg: "{{ item.item }} is missing (see the setup guide); it is never created by this playbook"
+        quiet: true
+      loop: "{{ envs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not in_container

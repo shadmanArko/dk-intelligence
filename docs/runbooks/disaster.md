@@ -18,9 +18,9 @@ Targets ([RELIABILITY.md](../RELIABILITY.md)): **RPO 24 h** (nightly backup), **
 6. `docker compose up -d intel-api`; `curl -s 127.0.0.1:8710/ready`. Approvals made after the dump must be redone.
 
 ## VPS lost (new machine)
-Until H8 (infrastructure as code) this follows the setup guides in order: [deploy/README.md](../../deploy/README.md)
-(steps 1–8), [monitoring/README.md](../../deploy/monitoring/README.md), the data collector's README, then restore
-intel-db as above from the newest B2 copy. The models re-arrive with the next Sunday run; the Mac re-sends reference
+[infra/README.md](../../infra/README.md#rebuild-a-lost-vps): a new Ubuntu host with Docker and Tailscale, the two git
+checkouts, the `.env` files back, then the playbook (the doors, cron, swap, tailscale serve), the deploy and
+monitoring scripts, and finally restore intel-db as above from the newest B2 copy. The models re-arrive with the next Sunday run; the Mac re-sends reference
 profiles (`intel send-references`).
 
 ## Mac lost

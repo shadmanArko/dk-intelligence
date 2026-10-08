@@ -1,0 +1,6 @@
+# Pull mode (ADR 0022): the playbook runs ON the VPS, from the checkout the deploy already keeps up to date.
+all:
+  hosts:
+    vps:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python3

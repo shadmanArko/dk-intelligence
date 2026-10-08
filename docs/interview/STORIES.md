@@ -319,3 +319,30 @@ responsibility and is monitored there.
   The drill proves both "it restores" and "it's the record we trust".
 - *What's your RTO really?* The drill measures the restore itself. The rest (rollback to `:previous`, redeploy) is
   automated and rehearsed (H1), so 30 minutes has margin.
+
+---
+
+## H8 · Infrastructure as code without breaking the trust model
+
+**Situation.** The VPS side had been built by following guides: restricted SSH keys for three narrow "doors",
+directories, a deploy script, cron lines, swap, tailnet-only publishing. The real state lived only on the box.
+Rebuilding meant replaying a conversation, and drift would go unnoticed.
+
+**Task.** Make the host reproducible and reviewable, without giving any machine (including the one where an AI
+assistant works) a shell login to production.
+
+**Action.**
+- **One Ansible playbook in pull mode:** it runs *on* the VPS from the checkout the deploy already updates. Push
+  mode, the usual Ansible setup, would have needed exactly the shell access the architecture forbids.
+- **Clear boundaries:** secrets, private keys, checkouts and Docker are checked, never written; the shared
+  harness's cron lines are left alone; app deploys stay with CI.
+- **Adoption instead of duplication:** Ansible's cron module would add a second copy of every hand-made job (two
+  backups a night). The playbook recognises identical existing lines and replaces them with managed ones.
+- **Tested in CI on a fresh Ubuntu container set up like the VPS:** converges in one run, 0 changes on the second,
+  doors byte-exact, harness job untouched. On the real host: preview with `--check --diff`, then apply.
+
+**Result.** The VPS can be rebuilt or checked for drift with one command, and every host change is now a reviewed
+diff in git.
+
+**Trade-off I would defend.** Pull mode means the playbook can't be pushed to the VPS from CI. It runs when the
+owner runs it. That's the right price for keeping production reachable only through three single-purpose doors.

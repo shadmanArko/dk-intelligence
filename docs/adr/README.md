@@ -26,5 +26,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0019](0019-governance-lifecycle-audit-reproducibility.md) | Governance: enforced lifecycle, hash-chained audit, model cards v2, reproducibility | Accepted |
 | [0020](0020-automatic-rollback-guardrail.md) | Automatic rollback of a degraded production model (the guardrail) | Accepted |
 | [0021](0021-reliability-and-disaster-recovery.md) | Reliability and DR: tested restores, dead-man's switch, runbooks, postmortems | Accepted |
+| [0022](0022-infrastructure-as-code-pull-mode.md) | Infrastructure as code, in pull mode | Accepted |
 
 Template: [0000-template.md](0000-template.md).
