@@ -1,0 +1,20 @@
+# Weekly update proposals (ADR 0014). Each arrives as a pull request that must pass the full CI (tests, audit, image
+# scan) before it can be merged; nothing updates itself. Minor/patch updates are grouped to keep the noise low.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule: {interval: weekly, day: monday}
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly, day: monday}
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: {interval: weekly, day: monday}

@@ -18,5 +18,7 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0011](0011-sealed-model-code.md) | Sealed model code changes only with the model | Accepted |
 | [0012](0012-local-models-zero-running-cost.md) | Local open models; €0 running cost | Accepted |
 | [0013](0013-right-sized-tooling.md) | Right-sized tooling: what we deliberately do not run yet | Accepted |
+| [0014](0014-build-once-deploy-by-digest.md) | Build once in CI, deploy by digest, roll back automatically | Accepted |
+| [0015](0015-additive-migrations.md) | intel-db migrations are additive (expand / contract) | Accepted |
 
 Template: [0000-template.md](0000-template.md).

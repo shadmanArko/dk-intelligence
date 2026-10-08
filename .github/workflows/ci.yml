@@ -1,20 +1,30 @@
 name: CI
 
+# test -> image (build once, push, scan, SBOM) -> deploy that exact digest -> smoke test / auto-rollback on the VPS.
+# Any failure on main sends a Telegram alert. Supply chain (ADR 0014): every action is pinned to a commit SHA, tool
+# images to a digest; Dependabot proposes updates; jobs get the least permissions they need.
+
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:     # "Run workflow" button: test + deploy without a new commit
+  workflow_dispatch:     # "Run workflow" button: test + build + deploy without a new commit
 
 permissions:
-  contents: read   # least privilege: the workflow only reads the code
+  contents: read
+
+env:
+  IMAGE: ghcr.io/shadmanarko/dk-intelligence
+  PLATFORM: linux/amd64                       # the VPS architecture (uname -m: x86_64)
+  TRIVY: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  GITLEAKS: ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine          # same major version as the VPS warehouse
+        image: postgres:16-alpine          # same major version as the VPS intel-db
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
@@ -23,49 +33,156 @@ jobs:
     env:
       INTEL_TEST_PG_DSN: postgresql://postgres:ci@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0   # full history for the secret scan
+          persist-credentials: false
       # Secret scan of the WHOLE git history (the pre-commit hook only sees staged changes, so it guards commits).
-      - run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.0 git /repo --redact --no-banner
-      - uses: astral-sh/setup-uv@v6
+      - run: docker run --rm -v "$PWD:/repo" "$GITLEAKS" git /repo --redact --no-banner
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           python-version: "3.13"
       - run: uv sync --locked
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-      # The same hooks as on the laptop: lint, format, mypy (strict core), file hygiene, sealed-code lock.
+      # The same hooks as on the laptop: lint, format, mypy (strict core), shellcheck, file hygiene, sealed-code lock.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
+      # Known vulnerabilities in every locked Python package (runtime + dev), checked against the lock's hashes.
+      - run: |
+          uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/req.txt" --require-hashes --disable-pip --progress-spinner off
       # Tests + branch coverage; fails below the floor in pyproject.toml ([tool.coverage.report] fail_under).
       - run: uv run pytest -rs --cov --cov-report=term --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()
         with:
           name: coverage
           path: coverage.xml
 
-  # Door 3: after the tests pass on main, trigger the VPS deploy over a forced-command key that can ONLY run
-  # /opt/dhaka-kacchi/bin/run-intel-deploy.sh (git pull --ff-only + deploy/deploy.sh). The `script` below is
-  # ignored by the server; it only exists because the action requires one. Skips until the secrets are set.
-  deploy:
+  # Build ONCE. On main the image is pushed, then pulled back by digest and scanned: the bytes that are scanned are
+  # the bytes the VPS will run. Pull requests build and scan locally, nothing is pushed.
+  image:
     needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - if: env.PUSH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: date
+        run: echo "now=$(date -u +%FT%TZ)" >> "$GITHUB_OUTPUT"
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: ${{ env.PLATFORM }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.date.outputs.now }}
+          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          push: ${{ env.PUSH == 'true' }}
+          load: ${{ env.PUSH != 'true' }}
+          provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}   # SLSA build provenance, stored with the image
+          sbom: ${{ env.PUSH == 'true' }}                                   # SBOM attestation, stored with the image
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image to scan
+        id: ref
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [ "$PUSH" = "true" ]; then ref="$IMAGE@$DIGEST"; docker pull --quiet "$ref"; else ref="$IMAGE:sha-$GITHUB_SHA"; fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "### Image" >> "$GITHUB_STEP_SUMMARY"; echo "\`$ref\`" >> "$GITHUB_STEP_SUMMARY"
+      # Gate: no HIGH/CRITICAL vulnerability that has a fix. The full report (incl. unfixed) and an SBOM are kept.
+      - name: Vulnerability scan (gate)
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image --quiet --scanners vuln \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format table "$REF"
+      - name: Full report and SBOM
+        if: always()
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          mkdir -p reports
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/reports:/out" "$TRIVY" image --quiet \
+            --scanners vuln --format json --output /out/vulnerabilities.json "$REF"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/reports:/out" "$TRIVY" image --quiet \
+            --format cyclonedx --output /out/sbom.cdx.json "$REF"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: image-reports
+          path: reports/
+
+  # Door 3: a forced-command key that can ONLY run /opt/dhaka-kacchi/bin/run-intel-deploy.sh. The request names the
+  # commit and the scanned digest; deploy.sh validates it strictly, smoke-tests, and rolls back on failure.
+  deploy:
+    needs: [test, image]
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: deploy-vps-intel
+      cancel-in-progress: false
     steps:
       - id: check
         env:
           KEY: ${{ secrets.INTEL_VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.INTEL_VPS_KNOWN_HOSTS }}
         run: |
-          if [ -n "$KEY" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else echo "::notice::INTEL_VPS_* secrets not set, deploy skipped"; fi
+          if [ -n "$KEY" ] && [ -n "$KNOWN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"
+          else echo "::warning::INTEL_VPS_SSH_KEY / INTEL_VPS_KNOWN_HOSTS not set: deploy skipped"; fi
       - if: steps.check.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: ${{ secrets.INTEL_VPS_HOST }}
-          username: ${{ secrets.INTEL_VPS_USER }}
-          key: ${{ secrets.INTEL_VPS_SSH_KEY }}
-          command_timeout: 20m
-          script: echo "triggering dk-intelligence deploy"
+        env:
+          KEY: ${{ secrets.INTEL_VPS_SSH_KEY }}
+          KNOWN: ${{ secrets.INTEL_VPS_KNOWN_HOSTS }}
+          HOST: ${{ secrets.INTEL_VPS_HOST }}
+          USER_: ${{ secrets.INTEL_VPS_USER }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          # StrictHostKeyChecking=yes: the VPS must present the pinned host key (no trust on first use).
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o ConnectTimeout=20 \
+            "$USER_@$HOST" "deploy $GITHUB_SHA $DIGEST"
+
+  # Red CI is never silent: a Telegram message from a separate, send-only CI bot (its token can't read your chats
+  # or control the VPS bot). Skips quietly until CI_TELEGRAM_* secrets are set.
+  alert:
+    needs: [test, image, deploy]
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          TOKEN: ${{ secrets.CI_TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.CI_TELEGRAM_CHAT_ID }}
+          MSG: ${{ github.event.head_commit.message }}
+          RESULTS: "test ${{ needs.test.result }} · image ${{ needs.image.result }} · deploy ${{ needs.deploy.result }}"
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || { echo "::notice::CI_TELEGRAM_* not set: no alert sent"; exit 0; }
+          text="🔴 dk-intelligence CI failed on ${GITHUB_REF_NAME} (${GITHUB_SHA:0:7})
+          ${MSG%%$'\n'*}
+          ${RESULTS}
+          ${URL}"
+          curl -fsS -o /dev/null "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" --data-urlencode "text=${text}" --data-urlencode "disable_web_page_preview=true"

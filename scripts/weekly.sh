@@ -3,7 +3,7 @@
 #   every hour, at login and on Sundays 12:00 with --if-due -> runs once per week, catches up after the Mac was off.
 # By hand: double-click "Run Sunday training.command" in the repo, or: scripts/weekly.sh --live
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH" MLFLOW_DISABLE_AGENT_HINT=1 PYTHONUNBUFFERED=1
 LIVE=0; ARGS=()
 for a in "$@"; do if [ "$a" = "--live" ]; then LIVE=1; else ARGS+=("$a"); fi; done

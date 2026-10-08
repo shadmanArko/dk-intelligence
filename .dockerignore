@@ -1,0 +1,7 @@
+# Only what the image needs goes into the build context: secrets, data and caches never leave the machine.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+src/**/__pycache__

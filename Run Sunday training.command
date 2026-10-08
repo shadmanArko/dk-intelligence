@@ -11,4 +11,5 @@ else
 fi
 echo "Live diagram: double-click 'DK Control Room.command'; VPS: https://vmd206122.tailc055f3.ts.net/training"
 echo
+# shellcheck disable=SC2012  # our own log names (weekly_<timestamp>.log): newest by mtime is what we want
 tail -n 50 -F "$(ls -t data/logs/weekly_2*.log | head -1)"

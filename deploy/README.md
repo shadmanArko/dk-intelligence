@@ -5,7 +5,7 @@ What runs (`docker compose -p dk-intelligence`):
 | Container | What | Memory limit | Reachable from |
 |---|---|---|---|
 | `intel-db` | own Postgres 16 + pgvector: registry, approvals, activations, events (later: ledger) | 384 MB | the `intel` docker network only |
-| `intel-api` | scoring API (`/v1/predict` = harness predictor contract), approval page, inbox watcher, Telegram bot | 512 MB | `127.0.0.1:8710`, published to the tailnet by `tailscale serve` |
+| `intel-api` | image built and scanned by CI, pulled by digest · scoring API (`/v1/predict` = harness predictor contract), approval page, inbox watcher, Telegram bot | 512 MB | `127.0.0.1:8710`, published to the tailnet by `tailscale serve` |
 
 Nothing here touches the harness stack: separate compose project, network, database and volumes.
 
@@ -29,11 +29,17 @@ cd /opt/dhaka-kacchi/dk-intelligence/deploy
 nano .env          # add the line TELEGRAM_BOT_TOKEN=<token from BotFather>
 ```
 
-### 3. First deploy
+### 3. Pull images from GitHub's registry (read-only) and first deploy
+The VPS never builds (ADR 0014): CI builds, scans and pushes `ghcr.io/shadmanarko/dk-intelligence`, and the VPS pulls
+it. GitHub → your avatar → Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Generate:
+note "VPS read dk-intelligence images", expiry 1 year, scope **only `read:packages`**. Then on the VPS (the token is
+typed, not echoed, and never lands in the shell history):
 ```bash
+read -rsp "GHCR token: " T && echo "$T" | docker login ghcr.io -u shadmanarko --password-stdin && unset T
 ./deploy.sh
 ```
-Ends with `{"status":"ready",...}` and `== deployed <commit>`.
+Ends with `OK version <commit>, models {...}` and `== deployed <commit>`. Every deploy is recorded in
+`/opt/dhaka-kacchi/logs/intel-deploys.log` (time, commit, deployed / rolled_back / superseded / refused).
 
 ### 4. Approval page on the tailnet only
 ```bash
@@ -67,7 +73,13 @@ rm ~/.ssh/github_actions_intel_deploy ~/.ssh/github_actions_intel_deploy.pub
 ```
 GitHub → dk-intelligence → Settings → Secrets and variables → Actions → New repository secret:
 `INTEL_VPS_HOST` (same value as the harness `VPS_HOST`), `INTEL_VPS_USER` = `deploy`,
-`INTEL_VPS_SSH_KEY` = the private key printed above. Every push to main then runs tests, then deploys.
+`INTEL_VPS_SSH_KEY` = the private key printed above, and `INTEL_VPS_KNOWN_HOSTS` = the VPS host key, so CI refuses to
+talk to anything else (no trust on first use). Print it on the VPS:
+```bash
+echo "<INTEL_VPS_HOST value> $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+```
+Every push to main then runs tests → builds and scans the image → deploys that exact digest → smoke test, with
+automatic rollback to the previous image if the smoke test fails.
 
 ### 6. Measurement (M6): warehouse access over the harness network
 `intel-api` joins the harness network to read the warehouse as `intelligence_reader` (read-only) and to ask the
@@ -94,7 +106,10 @@ crontab -l | tail -3
 | Status | `docker compose ps` · `curl -s 127.0.0.1:8710/ready` |
 | Logs | `docker compose logs --tail 100 intel-api` |
 | Restart | `docker compose up -d` |
-| Manual deploy | `/opt/dhaka-kacchi/bin/run-intel-deploy.sh` |
+| Manual deploy | `/opt/dhaka-kacchi/bin/run-intel-deploy.sh` (pulls main, runs the CI image of that commit) |
+| Deploy history | `tail /opt/dhaka-kacchi/logs/intel-deploys.log` |
+| Back to the previous app version | `INTEL_IMAGE=dk-intelligence:previous docker compose up -d` |
+| Emergency build on the VPS | `./deploy.sh --local-build` (only if GitHub is down: not scanned) |
 | Database shell | `docker compose exec intel-db psql -U intel intel` |
 | Roll back a model | Telegram `/rollback`, or the button on the page |
 | Live ledger | `curl -s 127.0.0.1:8710/v1/ledger/summary` · Telegram `/status` |

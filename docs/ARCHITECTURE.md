@@ -126,4 +126,8 @@ flowchart TB
 | sealed-code lock | pre-commit, CI | sealed files match `sealed-code.lock.json` (ADR 0011) |
 | secret scan | pre-commit (staged), CI (full history) | gitleaks: no findings |
 | tests + branch coverage | CI | all pass; coverage ≥ floor in `pyproject.toml` |
-| deploy | CI → door 3 | only after the test job passes on `main` |
+| shellcheck + actionlint | pre-commit, CI | deploy/automation scripts and workflows lint-clean |
+| dependency audit | CI | pip-audit over every locked package (with hashes): no known vulnerability |
+| image scan | CI | trivy on the pushed digest: no fixable HIGH/CRITICAL; report + SBOM kept (ADR 0014) |
+| migrations | CI | additive only, unless marked `-- contract:` (ADR 0015) |
+| deploy | CI → door 3 | that exact digest; smoke test in the container; automatic rollback on failure (ADR 0014) |

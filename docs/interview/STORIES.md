@@ -45,3 +45,45 @@ work has to respect the system's invariants, not just the linter.
   rounds before comparing. I made the comparison exact and raised coverage with tests rather than lowering the floor.
 - *Why is coverage 76% and not 90%?* It is a floor that only rises. The uncovered parts are mostly HTML rendering and
   the Mac Control Room; the decision logic is high: judge 98%, ledger 98%, plug-ins 92%, registry 89%.
+
+---
+
+## H1 · Making production run exactly what was tested, and undo itself
+
+**Situation.** Every push rebuilt the service image on the production VPS. Nothing was scanned. The first scan I ran
+found 6 HIGH-severity vulnerabilities with fixes available in the image that was serving: one in our own dependency
+(held back by an old version cap), two inside `pip`, which the service never even uses, plus a package download cache
+left in the image (the image shrank by ~680 MB once caches and build tools were out). A release that started but misbehaved would have stayed live until someone noticed.
+
+**Task.** Guarantee that production runs the bytes CI tested and scanned, recover from a bad release without a human,
+and harden the supply chain, on a single small VPS and at no extra cost.
+
+**Action.**
+- Build once: a multi-stage image (no compiler, package manager or caches at runtime; base images pinned by digest),
+  pushed to the registry, pulled back **by digest** and scanned. The deploy names that digest; the VPS never builds.
+- The deploy request travels over a forced-command SSH key. The server accepts only `deploy <40-hex> sha256:<64-hex>`,
+  skips stale commits, and refuses an image whose revision label doesn't match.
+- Before switching it tags the running image `:previous` and records the active models. A smoke test inside the new
+  container checks the version, that no approved model was lost, and a real prediction. On failure it rolls back and
+  re-verifies the old version, and the pipeline goes red and alerts on Telegram.
+- Made rollback schema-safe with an **expand/contract migration policy** enforced by a test.
+- Supply chain: actions pinned to commit SHAs, tool images to digests, least-privilege tokens, pinned SSH host key,
+  dependency audit against lock-file hashes, SBOM and provenance, Dependabot, shellcheck and actionlint.
+- Tested the deploy script itself (real script, real git, a recording fake Docker) and **rehearsed** a broken
+  release with real Docker before touching production.
+
+**Result.** 6 → 0 fixable HIGH/CRITICAL; image 1.63 GB → 955 MB; rollback rehearsed at about 40 s end to end; every
+deploy recorded; red CI in either repo now pages me on Telegram.
+
+**Trade-off I would defend.** I did not do blue/green (two live containers behind a switch). On a 7.8 GB box shared
+with the ordering system, a second API container costs real memory for a few seconds of saved downtime. Rollback to a
+tagged previous image gives most of the safety at no standing cost. Same for distroless: it would cut the 43
+unfixable base-image findings, but loses the shell I need for incident debugging today; it is noted as the next step.
+
+**Likely follow-up questions.**
+- *What if the new version migrates the database and then rolls back?* That is why migrations are additive only;
+  destructive changes need a marked "contract" migration in a later release, and a test enforces it.
+- *Why not let Trivy fail on every HIGH?* 43 have no fix upstream; failing on them would block every deploy without
+  making anything safer. Fixable ones block; the rest are reported in every build.
+- *How do you know the rollback works?* A unit test of the real script, and a rehearsal with a deliberately broken
+  release in a throwaway environment.
