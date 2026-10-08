@@ -7,10 +7,16 @@ reason (ADR 0010).
 |---|---|---|---|---|
 | mypy errors (default checks) | 200 | **0** (+44 documented typing debt in sealed files) | 0 | pre-commit, CI |
 | Modules passing `--strict` | 0 | **14** | list in `pyproject.toml` only grows | pre-commit, CI |
-| Branch coverage | 72% (line) | **76.7%** (branch) | `fail_under = 76` | CI |
-| Tests | 117 | **130** | all pass | CI |
+| Branch coverage (CI, authoritative) | 72% (line, Mac) | **≈ 76.4%** (77.05% on the Mac*) | `fail_under = 76`, compared to 2 decimals | CI |
+| Tests | 117 | **135** | all pass | CI |
 | Secrets in git history | not scanned | **0** (both repos, full history) | 0 | CI (gitleaks) |
 | Sealed files changed without a model change | not detectable | **0** | 0 | test + pre-commit |
+
+\* The Mac also runs the harness-reproduction test (it needs the private harness repo next to this one), which
+covers `champions/reproduce.py`; CI skips it. The floor is set against the CI number.
+
+**Lesson recorded:** with coverage's default `precision = 0` the total is rounded before the comparison, so 75.99%
+passed a 76% floor while pytest-cov printed "FAIL" (first H0 CI run). `precision = 2` makes the gate exact.
 
 ## Typing debt (sealed model code, ADR 0011)
 

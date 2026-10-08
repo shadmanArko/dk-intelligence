@@ -167,3 +167,73 @@ def test_telegram_text_comes_from_the_plugin():
     assert "Visit-to-order funnel" in approval_text(meta, 1, "https://x.ts.net")
     unknown = {**meta, "name": "something_new"}
     assert "something_new" in approval_text(unknown, 1, None)  # a model without its own text still gets one
+
+
+# ---------- discovery against a fake models package ----------
+
+_PLUGIN_SRC = """
+from intel.plugins import Box, ModelPlugin, StepOutcome
+
+
+class P(ModelPlugin):
+    step, order, label, desc = "{name}", {order}, "{name}", "a test model"
+    inputs, kind = ("pull",), "insights"
+    box = Box(col=9, row={order}, label="{name}")
+    models = {{"{name}": ("models/funnel/spec.yaml",)}}
+
+    def run(self, ctx):
+        return StepOutcome([], "", {{}})
+
+
+PLUGIN = P()
+"""
+
+
+def _fake_package(tmp_path: Path, monkeypatch, name: str, layout: dict[str, str]) -> str:
+    """layout: relative file path -> content, under a fresh package `name` on sys.path."""
+    root = tmp_path / name
+    (root).mkdir()
+    (root / "__init__.py").write_text("")
+    for rel, text in layout.items():
+        f = root / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        (f.parent / "__init__.py").touch()
+        f.write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    return name
+
+
+def test_find_plugins_orders_skips_helpers_and_uses_defaults(tmp_path, monkeypatch):
+    from intel.plugins import find_plugins
+
+    pkg = _fake_package(
+        tmp_path,
+        monkeypatch,
+        "fake_models_ok",
+        {
+            "b/plugin.py": _PLUGIN_SRC.format(name="b", order=2),
+            "a/plugin.py": _PLUGIN_SRC.format(name="a", order=1),
+            "a/spec.yaml": "",
+            "shared/util.py": "X = 1\n",  # a helper package without a plug-in is fine
+        },
+    )
+    ps = find_plugins(pkg)
+    assert [p.step for p in ps] == ["a", "b"]
+    assert ps[0].scores({}) == (None, None) and ps[0].approval_text({}, 1, None) is None  # base-class defaults
+
+
+@pytest.mark.parametrize(
+    ("layout", "error"),
+    [
+        ({"x/plugin.py": "PLUGIN = 42\n"}, "must define PLUGIN"),
+        ({"x/plugin.py": _PLUGIN_SRC.format(name="x", order=1), "y/spec.yaml": ""}, "no plug-in producing them"),
+        ({"x/plugin.py": "import a_module_that_does_not_exist\n"}, "a_module_that_does_not_exist"),
+    ],
+    ids=["not-a-plugin", "orphan-model-folder", "broken-import"],
+)
+def test_find_plugins_fails_loudly(tmp_path, monkeypatch, layout, error):
+    from intel.plugins import find_plugins
+
+    pkg = _fake_package(tmp_path, monkeypatch, f"fake_models_{abs(hash(error))}", layout)
+    with pytest.raises(Exception, match=error):
+        find_plugins(pkg)

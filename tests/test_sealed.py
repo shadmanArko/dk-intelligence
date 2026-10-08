@@ -28,3 +28,15 @@ def test_a_changed_file_is_reported(tmp_path):
     assert diff(p) == sorted(
         [f"{name}: {first} changed", "gone_model: in the lock but no plug-in produces it any more"]
     )
+
+
+def test_cli_check_and_update(tmp_path, monkeypatch, capsys):
+    import intel.sealed as sealed
+
+    lock = tmp_path / "lock.json"
+    monkeypatch.setattr(sealed, "LOCK", lock)
+    assert sealed.main([]) == 1  # no lock yet: every model is new
+    assert "new model" in capsys.readouterr().out
+    assert sealed.main(["--update"]) == 0 and lock.exists()
+    assert sealed.main([]) == 0
+    assert "matches the lock" in capsys.readouterr().out

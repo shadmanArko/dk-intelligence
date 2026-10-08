@@ -16,13 +16,14 @@ set, and SQL rows assumed to exist.
   validates its database setting at construction, not inside a background thread.
 - **`one(cursor)`** states "this query returns exactly one row" and raises if it does not.
 - **Typed shared state:** the API's untyped `state` dict became an `AppState` dataclass.
-- **Coverage floor** in `pyproject.toml` (branch coverage), raised whenever coverage rises; never lowered.
+- **Coverage floor** in `pyproject.toml` (branch coverage, compared to 2 decimals, measured in CI), raised whenever
+  coverage rises; never lowered.
 - **Same checks everywhere:** pre-commit hooks (ruff, mypy, file hygiene, secret scan of staged changes, sealed-code
   lock) run from the locked environment; CI runs the same hooks plus a full-history secret scan and the tests with
   coverage.
 
 ## Consequences
-- Good: 200 → 0 mypy errors outside the documented debt (ADR 0011); 14 modules strict; branch coverage 76.7%.
+- Good: 200 → 0 mypy errors outside the documented debt (ADR 0011); 14 modules strict; branch coverage ≈ 76% in CI.
 - Good: the numbers can only improve without someone deliberately editing the floor in a reviewed change.
 - Cost: annotations on new code; a few minutes per pull request.
 

@@ -117,32 +117,37 @@ def validate(plugins: Sequence[ModelPlugin]) -> None:
                 raise PluginError(f"model {name!r}: source files not found {missing}")
 
 
-@lru_cache
-def discover() -> tuple[ModelPlugin, ...]:
-    """Every `intel.models.<name>.plugin.PLUGIN`, validated, in run order."""
-    import intel.models
-
+def find_plugins(package: str = "intel.models") -> tuple[ModelPlugin, ...]:
+    """Every `<package>.<name>.plugin.PLUGIN`, validated, in run order."""
+    pkg = importlib.import_module(package)
     found: list[ModelPlugin] = []
-    for m in pkgutil.iter_modules(intel.models.__path__):
+    for m in pkgutil.iter_modules(pkg.__path__):
         if not m.ispkg:
             continue
         try:
-            mod = importlib.import_module(f"intel.models.{m.name}.plugin")
+            mod = importlib.import_module(f"{package}.{m.name}.plugin")
         except ModuleNotFoundError as e:
-            if e.name == f"intel.models.{m.name}.plugin":
+            if e.name == f"{package}.{m.name}.plugin":
                 continue  # a helper package without a plug-in (e.g. shared code)
             raise
         plugin = getattr(mod, "PLUGIN", None)
         if not isinstance(plugin, ModelPlugin):
-            raise PluginError(f"intel.models.{m.name}.plugin must define PLUGIN = <ModelPlugin instance>")
+            raise PluginError(f"{package}.{m.name}.plugin must define PLUGIN = <ModelPlugin instance>")
         found.append(plugin)
     found.sort(key=lambda p: p.order)
     validate(found)
     covered = {n for p in found for n in p.models}
-    orphans = sorted(d.parent.name for d in (PKG_ROOT / "models").glob("*/spec.yaml") if d.parent.name not in covered)
+    roots = [Path(r) for r in pkg.__path__]
+    orphans = sorted({d.parent.name for r in roots for d in r.glob("*/spec.yaml")} - covered)
     if orphans:
         raise PluginError(f"model folders with a spec.yaml but no plug-in producing them: {orphans}")
     return tuple(found)
+
+
+@lru_cache
+def discover() -> tuple[ModelPlugin, ...]:
+    """The plug-ins of `intel.models` (cached: discovery runs once per process)."""
+    return find_plugins("intel.models")
 
 
 def model_sources(plugins: Sequence[ModelPlugin] | None = None) -> dict[str, tuple[str, ...]]:

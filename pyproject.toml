@@ -125,6 +125,7 @@ branch = true
 omit = ["src/intel/cli.py"]           # thin typer wrapper; its commands are tested through the functions they call
 
 [tool.coverage.report]
+precision = 2                         # compare unrounded: with 0 decimals, 75.99% passed a 76% floor
 fail_under = 76                       # the floor only moves up (2026-10-08: 76.7% branch coverage; docs/QUALITY.md)
 show_missing = true
 skip_covered = true

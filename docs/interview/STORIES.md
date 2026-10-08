@@ -28,8 +28,8 @@ serving on the VPS.
   with the model) and enforced it with a lock file, a test and a commit hook. The remaining 44 type errors in those
   files are documented debt with an exit plan.
 
-**Result.** 200 → 0 type errors outside documented debt; 117 → 130 tests; the Sunday run's coverage from 50% to 76% with an
-end-to-end test; branch coverage 76.7% with a CI floor; secrets scanned across the full history of both repos (clean);
+**Result.** 200 → 0 type errors outside documented debt; 117 → 135 tests; the Sunday run's coverage from 50% to 76% with an
+end-to-end test; branch coverage ≈ 76% in CI with an exact floor; secrets scanned across the full history of both repos (clean);
 13 architecture decision records. No production package was invalidated.
 
 **Trade-off I would defend.** I chose *not* to make everything strict at once. The sealed-code finding shows why:
@@ -41,5 +41,7 @@ work has to respect the system's invariants, not just the linter.
   registry check (`isinstance`) at discovery; a Protocol would only type-check.
 - *How do you know discovery can't silently miss a model?* It did once, during this change (a missing
   `__init__.py`); now any folder with a `spec.yaml` that no plug-in produces fails start-up.
+- *Did any gate misbehave?* Yes: the first CI run printed "FAIL 75.99% < 76%" and stayed green, because coverage
+  rounds before comparing. I made the comparison exact and raised coverage with tests rather than lowering the floor.
 - *Why is coverage 76% and not 90%?* It is a floor that only rises. The uncovered parts are mostly HTML rendering and
   the Mac Control Room; the decision logic is high: judge 98%, ledger 98%, plug-ins 92%, registry 89%.

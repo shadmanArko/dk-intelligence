@@ -21,8 +21,9 @@ def current() -> dict[str, dict[str, str]]:
     return {name: code_hashes(name) for name in sorted(model_sources())}
 
 
-def diff(lock: Path = LOCK) -> list[str]:
+def diff(lock: Path | None = None) -> list[str]:
     """Human-readable differences between the lock and the code (empty = in sync)."""
+    lock = lock or LOCK
     pinned: dict[str, dict[str, str]] = json.loads(lock.read_text()) if lock.exists() else {}
     now, out = current(), []
     for name in sorted(set(pinned) | set(now)):

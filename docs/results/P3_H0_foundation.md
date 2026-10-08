@@ -26,9 +26,13 @@
 - **A scan that scanned nothing:** the gitleaks pre-commit hook only sees staged files, so in CI it would always pass.
   CI now runs a separate full-history scan.
 - **A per-module `strict = true` in mypy applied strictness to every module.** The flags are now spelled out.
+- **A gate that printed FAIL and passed:** the first CI run measured 75.99% against a 76% floor; coverage rounds to
+  whole percents by default, so the build stayed green. `precision = 2` makes the comparison exact, and new tests for
+  discovery error paths and the sealed-code CLI lift CI coverage above the floor honestly. The CLI test also found a
+  default argument bound at import time (`diff(lock=LOCK)`), now resolved at call time.
 
 ## Verification
-- 130 tests pass (117 before + 13 new: plug-in contract, validation cases, end-to-end weekly run, failing plug-in,
+- 135 tests pass (117 before + 18 new: discovery against fake packages, the sealed-code CLI, plug-in contract, validation cases, end-to-end weekly run, failing plug-in,
   Telegram texts, sealed lock).
 - Pipeline definition before and after: identical steps and boxes; the arrow set differs only by the two missing
   arrows above.
