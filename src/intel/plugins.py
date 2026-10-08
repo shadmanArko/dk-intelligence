@@ -54,6 +54,21 @@ class StepOutcome:
 
 
 @dataclass(frozen=True)
+class ModelCard:
+    """The human part of a model card (ADR 0019): what the model is for, and what it must not be used for."""
+
+    intended_use: str
+    users: str = "The owner of Dhaka Kacchi Berlin (one person), through Telegram and the tailnet web pages."
+    out_of_scope: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    ethics: tuple[str, ...] = (
+        "Never used to target or exclude people by ethnicity, religion or nationality; audiences are areas and "
+        "interests only.",
+        "No personal data of customers or commenters is used or produced.",
+    )
+
+
+@dataclass(frozen=True)
 class Box:
     """Where the step sits in the pipeline diagram (Mac lane)."""
 
@@ -72,6 +87,7 @@ class ModelPlugin(ABC):
     box: ClassVar[Box]
     kind: ClassVar[Kind]
     models: ClassVar[dict[str, tuple[str, ...]]]  # model name -> files (relative to intel/) sealed into its package
+    cards: ClassVar[dict[str, ModelCard]] = {}  # model name -> card text (ADR 0019); missing = a generic card
 
     @abstractmethod
     def run(self, ctx: RunContext) -> StepOutcome:

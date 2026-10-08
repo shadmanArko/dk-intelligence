@@ -41,6 +41,15 @@ groups:
           summary: "No weekly training report for {{ $value | humanizeDuration }}"
           action: "On the Mac: `uv run intel weekly-status`; is the Mac on and the launchd job loaded?"
 
+      - alert: AuditTrailBroken
+        # the hash chain of the governance record no longer verifies: an entry was edited or removed (ADR 0019)
+        expr: intel_audit_chain_ok == 0
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: "The audit trail no longer verifies: a governance record was altered"
+          action: "Open /audit (shows the first broken entry). Do not approve models until explained; check DB access."
+
   - name: host
     rules:
       - alert: HostDiskLow

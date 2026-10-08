@@ -350,6 +350,27 @@ def send_references(
     typer.echo(f"{len(refs)} reference profile(s) {'to send' if dry_run else 'sent'}")
 
 
+@app.command("reproduce")
+def reproduce_cmd(run: str = typer.Argument(..., help="Run folder name in data/runs (or a path)")) -> None:
+    """Train a scorer run again from its recorded snapshots and compare everything (ADR 0019)."""
+    from intel.reproduce import reproduce
+    from intel.settings import get_settings
+
+    d = get_settings().intel_data_dir
+    run_dir = Path(run) if Path(run).exists() else d / "runs" / run
+    r = reproduce(run_dir, d, log=lambda *_: None)
+    typer.echo(
+        f"run {r['run']} ({r['original']}): pull {r['pull']}, market {r['market']}, sealed code {r['sealed_code']}"
+    )
+    if r["identical"]:
+        typer.secho(f"reproducible: identical model, metrics and all {r['test_posts']} test predictions", fg="green")
+        return
+    typer.secho("NOT reproducible:", fg="red")
+    for d_ in r["differences"]:
+        typer.echo(f"  {d_}")
+    raise typer.Exit(1)
+
+
 @app.command("weekly-status")
 def weekly_status() -> None:
     """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""

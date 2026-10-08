@@ -293,8 +293,9 @@ CONTRACTS: tuple[TableContract, ...] = (
         used_by=("occasion_planner",),
         columns={"citizenship": "string", "residents": "int32"},
         # The Berlin statistics office (AfS) mixes country rows with subtotals ("Europa zusammen", "Zusammen",
-        # "Insgesamt"): summing the table counts people 3x. The planner looks countries up by name, so the rule it
-        # relies on is: COUNTRY names are unique. Subtotals are recognised, not counted as duplicates.
+        # "Insgesamt"): summing the table counts people 3x. The pull drops them (mip's is_aggregate), and the planner
+        # looks countries up by name, so the rule it relies on is: COUNTRY names are unique. Subtotals that slip
+        # through (older snapshots) are recognised, not counted as duplicates.
         errors=_schema(
             {
                 "citizenship": pa.Column(

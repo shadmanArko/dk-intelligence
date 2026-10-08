@@ -23,5 +23,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0016](0016-observability-and-slos.md) | Observability: metrics, probes, SLOs and alerts as code | Accepted |
 | [0017](0017-data-contracts-for-ml-inputs.md) | Data contracts for every table a model consumes | Accepted |
 | [0018](0018-model-monitoring-and-drift.md) | Model monitoring: served features, reference profiles, statistically honest drift | Accepted |
+| [0019](0019-governance-lifecycle-audit-reproducibility.md) | Governance: enforced lifecycle, hash-chained audit, model cards v2, reproducibility | Accepted |
 
 Template: [0000-template.md](0000-template.md).

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome
 
 
 def _sources(spec: str) -> tuple[str, ...]:
@@ -34,6 +34,35 @@ class ContentScorer(ModelPlugin):
     inputs = ("market", "pull", "ledger")
     box = Box(col=2, row=1, label="Train candidates")
     kind = "scorer"
+    cards = {
+        "content_scorer": ModelCard(
+            intended_use="Before posting: estimate whether a planned Facebook / Instagram post will get more likes, "
+            "comments and shares than our usual post on that platform, to choose between drafts and posting times.",
+            out_of_scope=(
+                "Judging other accounts or competitors' posts (trained on our own account only).",
+                "Platforms it never saw in training (Threads, YouTube, TikTok): their scores mean nothing.",
+                "Paid / boosted posts (their reach is bought, not earned).",
+            ),
+            limitations=(
+                "Trained on a few hundred posts: moderate accuracy, scores bunch around 0.5; read it as a tie-breaker, "
+                "not a verdict.",
+                "Sees only format, timing and caption features; not the image or video itself.",
+                "Labels mature after 7 days, so live accuracy lags a week (drift is the early signal).",
+            ),
+        ),
+        "reach_scorer": ModelCard(
+            intended_use="Before posting: estimate whether a planned post will reach more people than our last 20 "
+            "posts on the same platform.",
+            out_of_scope=(
+                "Comparing reach across platforms (each platform has its own baseline).",
+                "Paid / boosted posts.",
+            ),
+            limitations=(
+                "Reach depends on platform algorithms that change without notice; monitored for drift.",
+                "Sees only format, timing and caption features; not the creative itself.",
+            ),
+        ),
+    }
     models = {
         "content_scorer": _sources("models/content_scorer/spec.yaml"),
         "reach_scorer": _sources("models/reach_scorer/spec.yaml"),

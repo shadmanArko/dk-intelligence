@@ -54,8 +54,9 @@ OCCASIONS_SQL = """select * from marts.occasion_content_calendar
 RULE_KEYS = ("occasion_presentation", "blocked_words", "home_community", "occasion_audience", "no_occasion_platforms")
 PLAYBOOK_FILE = "config/content/playbook.yaml"
 COMMUNITIES_FILE = "config/taxonomies/communities.yaml"
+# Countries only: the AfS sheet also has subtotal rows ("Asien zusammen", "Insgesamt"), flagged is_aggregate in mip
 CITIZENSHIP_SQL = """select citizenship, residents from staging.stg_afs__citizenship
-    where reference_date = (select max(reference_date) from staging.stg_afs__citizenship)"""
+    where not is_aggregate and reference_date = (select max(reference_date) from staging.stg_afs__citizenship)"""
 # Phase 2.6 creator matcher: non-business TikTok accounts with at least one Berlin post, aggregated per account
 # (public account data only; no commenters). Engagement from the platform's per-post performance mart.
 CREATOR_BASE = """with berlin as (

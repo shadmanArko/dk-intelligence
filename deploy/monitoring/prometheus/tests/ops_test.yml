@@ -86,3 +86,17 @@ tests:
             exp_annotations:
               summary: "node-exporter reports no root filesystem: the disk alerts are blind"
               action: "Check the node-exporter mounts in deploy/monitoring/docker-compose.yml (/:/host:ro, --path.rootfs=/host)."
+
+  - name: a broken audit chain pages within a minute
+    interval: 30s
+    input_series:
+      - {series: 'intel_audit_chain_ok{job="intel-api",instance="intel-api:8000"}', values: '1x4 0x10'}
+    alert_rule_test:
+      - {eval_time: 2m, alertname: AuditTrailBroken, exp_alerts: []}
+      - eval_time: 4m
+        alertname: AuditTrailBroken
+        exp_alerts:
+          - exp_labels: {severity: page, job: intel-api, instance: "intel-api:8000"}
+            exp_annotations:
+              summary: "The audit trail no longer verifies: a governance record was altered"
+              action: "Open /audit (shows the first broken entry). Do not approve models until explained; check DB access."

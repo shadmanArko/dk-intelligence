@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
+from intel.serve.lifecycle import audit_verify, stage
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.monitor import run_monitor, scan_references
 from intel.serve.observability import JsonFormatter, Metrics, StateCollector, instrument
@@ -34,6 +35,7 @@ from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.serve.views import (
     BERLIN,
+    audit_html,
     community_html,
     creators_html,
     funnel_html,
@@ -152,7 +154,8 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
             for rep in reports:
                 if state.telegram:
                     state.telegram.send(run_message(rep))
-            scan_references(state.dsn, s.intel_inbox_dir)  # reference profiles for monitoring (ADR 0018)
+            if scan_references(state.dsn, s.intel_inbox_dir):  # new reference profile (ADR 0018): judge again now
+                state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
             intakes = state.registry.scan_inbox()
             notify_intake(state.telegram, state.registry, s.intel_public_url, intakes)
             for row in state.registry.expire_due():
@@ -454,6 +457,35 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         )
         return _page(request, "Training", diagram + training_html(training_overview(state.dsn), deployed), scripts=True)
 
+    @app.get("/audit", response_class=HTMLResponse)
+    def audit_page(request: Request):
+        """Lifecycle of every model package and the hash-chained audit trail (ADR 0019)."""
+        return _page(request, "Audit", audit_html(*_audit_data(limit=300)))
+
+    @app.get("/v1/audit")
+    def audit_export(limit: int = 1000):
+        chain, packages, entries = _audit_data(limit=min(max(limit, 1), 10_000))
+        return {"chain": chain, "packages": packages, "entries": entries}
+
+    def _audit_data(limit: int) -> tuple[dict, list[dict], list[dict]]:
+        with connect(state.dsn) as c:
+            chain = audit_verify(c)
+            active = {
+                r["package_id"]
+                for r in c.execute("select distinct on (name) package_id from model_activation order by name, id desc")
+            }
+            packages = [
+                {**r, "stage": stage(r["status"], r["id"] in active)}
+                for r in c.execute(
+                    "select id, name, version, purpose, verdict, status, received_at from model_package order by id desc"
+                )
+            ]
+            entries = c.execute(
+                "select id, at, actor, channel, action, subject, detail, hash from audit_log order by id desc limit %s",
+                (limit,),
+            ).fetchall()
+        return chain, packages, entries
+
     @app.get("/static/{name}")
     def static_asset(name: str):
         from fastapi.responses import FileResponse
@@ -688,7 +720,7 @@ nav b{{margin-right:auto}}textarea,input{{width:100%;box-sizing:border-box;paddi
 border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}}label{{display:inline-block;margin:0 12px 8px 0}}
 label input{{width:auto}}
 </style></head><body><nav><b>DK Intelligence</b><a href="/">Approvals</a><a href="/posts">Posts</a>
-<a href="/try">Try a draft</a><a href="/insights">Insights</a><a href="/training">Training</a></nav>{body}</body></html>"""
+<a href="/try">Try a draft</a><a href="/insights">Insights</a><a href="/training">Training</a><a href="/audit">Audit</a></nav>{body}</body></html>"""
 
 
 def configure_logging() -> None:

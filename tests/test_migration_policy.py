@@ -13,7 +13,9 @@ import pytest
 from intel.serve.db import MIGRATIONS
 
 DESTRUCTIVE = re.compile(
-    r"\b(drop\s+(table|column|index|view|type|schema)|rename\s|alter\s+column\s+\w+\s+(type|set\s+not\s+null)|truncate)\b",
+    # TRUNCATE the statement (`truncate [table] name`), not the trigger event (`before truncate on name`)
+    r"\b(drop\s+(table|column|index|view|type|schema)|rename\s|alter\s+column\s+\w+\s+(type|set\s+not\s+null)"
+    r"|truncate\s+(?:table\s+)?(?!on\b)\w+)\b",
     re.IGNORECASE,
 )
 
@@ -36,3 +38,5 @@ def test_the_policy_catches_destructive_sql():
     assert problems("alter table t rename to u;") == ["rename "]
     assert problems("-- contract: nothing reads t.x since v42\nalter table t drop column x;") == []
     assert problems("alter table t add column y int; -- never drop column y") == []
+    assert problems("truncate table t;") == ["truncate table t"] and problems("truncate t;") == ["truncate t"]
+    assert problems("create trigger x before truncate on t for each statement execute function f();") == []

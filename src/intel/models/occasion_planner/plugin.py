@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome, insights_approval
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome, insights_approval
 
 
 class OccasionPlanner(ModelPlugin):
@@ -20,6 +20,19 @@ class OccasionPlanner(ModelPlugin):
     inputs = ("market", "pull")
     box = Box(col=4, row=0, label="Occasion planner", sub="next 30 days")
     kind = "insights"
+    cards = {
+        "occasion_planner": ModelCard(
+            intended_use="Plan the next 30 days of content: which occasions matter to which Berlin audiences, when to "
+            "start posting, and which weekdays and times worked for our posts.",
+            out_of_scope=(
+                "Religious content or ritual wording: greetings stay neutral and are checked against blocked words.",
+            ),
+            limitations=(
+                "Some dates are estimated (moon sighting); marked as estimated in the plan.",
+                "Audience sizes come from citizenship statistics, which undercount naturalised residents.",
+            ),
+        ),
+    }
     models = {"occasion_planner": ("models/occasion_planner/spec.yaml", "models/occasion_planner/run.py")}
 
     def run(self, ctx: RunContext) -> StepOutcome:

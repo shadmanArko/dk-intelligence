@@ -49,29 +49,138 @@ def git_state(repo: Path) -> dict[str, Any]:
     return {"commit": run("rev-parse", "HEAD") or None, "dirty": bool(run("status", "--porcelain", "--", "src"))}
 
 
-def model_card(meta: dict[str, Any]) -> str:
+def _calibration(run_dir: Path | None) -> list[tuple[str, int, float, float]]:
+    """(bin, n, mean predicted, observed share) over the test set, 5 bins of predicted probability."""
+    f = run_dir / "test_predictions.csv" if run_dir else None
+    if f is None or not f.exists():
+        return []
+    import pandas as pd
+
+    tp = pd.read_csv(f)
+    if tp.empty or "challenger_p" not in tp:
+        return []
+    bins = pd.cut(tp["challenger_p"], [0, 0.2, 0.4, 0.6, 0.8, 1.0], include_lowest=True)
+    out = []
+    for interval, g in tp.groupby(bins, observed=True):
+        out.append(
+            (
+                f"{interval.left:.1f}-{interval.right:.1f}",
+                len(g),
+                float(g["challenger_p"].mean()),
+                float(g["label"].mean()),
+            )
+        )
+    return out
+
+
+def _bullets(items: tuple[str, ...] | list[str]) -> str:
+    return "\n".join(f"- {x}" for x in items) or "- (none recorded)"
+
+
+def model_card(meta: dict[str, Any], run_dir: Path | None = None, quality_dir: Path | None = None) -> str:
+    """Model card v2 (ADR 0019): purpose and limits (from the plug-in), lineage, data checks, training coverage,
+    results with uncertainty and per platform, calibration, and the judge's gates."""
+    from intel.plugins import ModelCard, plugin_for_model
+    from intel.sealed import diff as sealed_diff
+
     t, c, j = meta["scores"]["challenger"], meta["scores"]["champion"], meta["judge"]
+    plugin = plugin_for_model(meta["name"])
+    card = (plugin.cards.get(meta["name"]) if plugin else None) or ModelCard(
+        intended_use="(no card text recorded for this model)"
+    )
     gates = "\n".join(f"| {g['gate']} | {g['status']} | {g['detail']} |" for g in j["gates"])
-    return f"""# {meta["name"]} {meta["version"]}
+    sealed = [x for x in sealed_diff() if x.startswith(f"{meta['name']}:")]
+    q = (quality_dir / f"warehouse-{meta['data']['pull_id']}.json") if quality_dir else None
+    quality = "not recorded"
+    if q is not None and q.exists():
+        qd = json.loads(q.read_text())
+        errs = sum(1 for f in qd["findings"] if f["severity"] == "error")
+        warns = sum(1 for f in qd["findings"] if f["severity"] == "warning")
+        quality = f"{len(qd['card'])} tables checked: {errs} errors, {warns} warnings (ADR 0017)"
+    coverage = ""
+    ref_file = run_dir / "reference.json" if run_dir else None
+    if ref_file is not None and ref_file.exists():
+        ref = json.loads(ref_file.read_text())
+        plat = ref["features"].get("platform")
+        shares = (
+            ", ".join(f"{k} {v:.0%}" for k, v in zip(plat["categories"], plat["shares"], strict=False) if v)
+            if plat
+            else "n/a"
+        )
+        coverage = (
+            f"\n## Training data\n{ref['n_train']} posts, positive share {ref['base_rate']:.0%}; platforms: {shares}. "
+            "Anything outside this coverage is out of distribution (monitored, ADR 0018).\n"
+        )
+    perf = ""
+    if t.get("balanced_accuracy") is not None:
+        ci = t.get("balanced_accuracy_ci95")
+        cm = t.get("confusion_matrix")
+        per = t.get("per_platform") or {}
+        rows = "\n".join(f"| {p} | {v.get('n')} | {v.get('balanced_accuracy')} |" for p, v in per.items())
+        perf = f"""
+## Results (newest posts, never seen in training)
+| | Challenger (this) | Champion (today's model) |
+|---|---|---|
+| Balanced accuracy | {t["balanced_accuracy"]}{f" (95% CI {ci[0]}-{ci[1]})" if ci else ""} | {c["balanced_accuracy"]} |
+| AUC | {t["roc_auc"]} | {c["roc_auc"]} |
+| Brier (lower = better calibrated) | {t["brier"]} | {c["brier"]} |
+| Test posts | {t["n"]} | {c["n"]} |
+{f"{chr(10)}Confusion matrix (rows = actual 0/1, columns = predicted 0/1): {cm}" if cm else ""}
+
+| Platform | Test posts | Balanced accuracy |
+|---|---|---|
+{rows or "| (none) | | |"}
+"""
+    cal = _calibration(run_dir)
+    calibration = ""
+    if cal:
+        crow = "\n".join(f"| {b} | {n} | {m:.2f} | {o:.2f} |" for b, n, m, o in cal)
+        calibration = f"""
+## Calibration (test set)
+When the model says X, how often does it happen?
+| Predicted | Posts | Mean predicted | Observed share |
+|---|---|---|---|
+{crow}
+"""
+    m, dd, g = meta["model"], meta["data"], meta["git"]
+    model_line = f"{m['family']} on feature set `{m['features']}`, threshold {m['threshold']}"
+    data_line = f"warehouse pull `{dd['pull_id']}`, market snapshot `{dd['market_id']}`, split {dd['split']}"
+    sealed_line = "match the lock" if not sealed else "DIFFER from the lock: " + "; ".join(sealed)
+    dirty = " (uncommitted changes!)" if g["dirty"] else ""
+    code_line = f"commit `{(g['commit'] or '?')[:10]}`{dirty}; sealed files {sealed_line}"
+    return f"""# Model card: {meta["name"]} {meta["version"]}
 
 **Purpose:** {meta["purpose"]} · **Verdict:** {j["verdict"].upper()} · built {meta["created_at"]}
 
-Question: {meta["question"]}
+{meta["question"]}
 
-| | Challenger (this) | Champion |
-|---|---|---|
-| Test balanced accuracy | {t["balanced_accuracy"]} | {c["balanced_accuracy"]} |
-| AUC | {t["roc_auc"]} | {c["roc_auc"]} |
-| Brier | {t["brier"]} | {c["brier"]} |
-| Test posts | {t["n"]} | {c["n"]} |
+## Intended use
+{card.intended_use}
 
-Model: {meta["model"]["family"]} on feature set `{meta["model"]["features"]}`, threshold {meta["model"]["threshold"]}.
-Data: warehouse pull `{meta["data"]["pull_id"]}`, market snapshot `{meta["data"]["market_id"]}`.
-Code: commit `{(meta["git"]["commit"] or "?")[:10]}`{" (uncommitted changes!)" if meta["git"]["dirty"] else ""}.
+**Users:** {card.users}
 
+## Out of scope
+{_bullets(card.out_of_scope)}
+
+## Lineage
+| | |
+|---|---|
+| Model | {model_line} |
+| Data | {data_line} |
+| Data checks | {quality} |
+| Code | {code_line} |
+| Runtime | Python {meta["runtime"]["python"]}, scikit-learn {meta["runtime"]["scikit_learn"]} |
+{coverage}{perf}{calibration}
+## Judge
 | Gate | Status | Detail |
 |---|---|---|
 {gates}
+
+## Limitations
+{_bullets(card.limitations)}
+
+## Ethical considerations
+{_bullets(card.ethics)}
 """
 
 
@@ -124,7 +233,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         "model.joblib": model_bytes,
         "metadata.json": (json.dumps(meta, indent=2, default=str) + "\n").encode(),
         "report.json": (run_dir / "report.json").read_bytes(),
-        "model_card.md": model_card(meta).encode(),
+        "model_card.md": model_card(meta, run_dir, run_dir.parent.parent / "quality").encode(),
     }
     for rel in model_sources()[name]:
         files[f"source/{rel}"] = (PKG_ROOT / rel).read_bytes()
