@@ -75,6 +75,13 @@ def _pct(x) -> str:
 
 
 def _insights_text(meta: dict, approval_id: int, public_url: str | None) -> str:
+    if meta["name"] == "creator_matcher":
+        tops = "\n".join(f"• {H(t)}" for t in meta.get("top_complaints") or [])
+        link = f'\n\n<a href="{H(public_url)}/insights">Open Insights</a>' if public_url else ""
+        return (
+            f"🎥 <b>Creator shortlist</b> <code>{H(meta['version'])}</code>\n{tops}\n\nDo these look like real "
+            f"food creators to you? Approve once; later weekly versions refresh automatically.{link}"
+        )
     if meta["name"] == "funnel":
         tops = "\n".join(f"• {H(t)}" for t in meta.get("top_complaints") or [])
         link = f'\n\n<a href="{H(public_url)}/insights">Open Insights</a>' if public_url else ""

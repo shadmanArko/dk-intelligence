@@ -55,6 +55,66 @@ PLAYBOOK_FILE = "config/content/playbook.yaml"
 COMMUNITIES_FILE = "config/taxonomies/communities.yaml"
 CITIZENSHIP_SQL = """select citizenship, residents from staging.stg_afs__citizenship
     where reference_date = (select max(reference_date) from staging.stg_afs__citizenship)"""
+# Phase 2.6 creator matcher: non-business TikTok accounts with at least one Berlin post, aggregated per account
+# (public account data only; no commenters). Engagement from the platform's per-post performance mart.
+CREATOR_BASE = """with berlin as (
+      select distinct p.account_id from core.post p
+      where p.platform = 'tiktok' and (p.caption ilike '%berlin%' or 'berlin' = any(p.hashtags))),
+    acc as (select a.* from core.social_account a join berlin b using (account_id)
+            where a.platform = 'tiktok' and a.business_id is null)"""
+CREATORS_SQL = (
+    CREATOR_BASE
+    + """,
+    perf as (select cp.account_id, count(*) posts, max(cp.posted_at) last_post,
+                    count(*) filter (where cp.posted_at > now() - interval '90 days') posts_90d,
+                    percentile_cont(0.5) within group (order by cp.views) median_views,
+                    percentile_cont(0.5) within group (order by (coalesce(cp.likes, 0) + coalesce(cp.comments, 0)
+                        + coalesce(cp.shares, 0))::float / nullif(cp.views, 0)) median_engagement_rate,
+                    max(cp.followers) followers
+             from marts.content_performance cp join acc using (account_id) where cp.mature group by 1),
+    posts as (select p.account_id, count(*) n,
+                     count(*) filter (where p.caption ilike '%berlin%' or 'berlin' = any(p.hashtags)) berlin_posts
+              from core.post p join acc using (account_id) group by 1),
+    tags as (select p.account_id,
+                    count(distinct p.post_id) filter (where ct.tag_type in ('dish', 'rice_dish')) rice_dish_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type in ('dish', 'rice_dish') or (ct.tag_type = 'cue'
+                        and ct.tag_id in ('recipe', 'spicy', 'halal', 'street_food', 'mukbang_asmr', 'delivery',
+                                          'price_value', 'review_test', 'dum_pot_reveal'))) food_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'dish' and ct.tag_id ilike any
+                        (array['%biryani%', '%kacchi%', '%pulao%', '%tehari%'])) biryani_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'community' and ct.tag_id in
+                        ('bangladeshi', 'indian', 'pakistani', 'nepali')) south_asian_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'community' and ct.tag_id in
+                        ('turkish', 'syrian', 'lebanese', 'iraqi', 'afghan', 'iranian', 'levant_gulf_yemen',
+                         'egyptian', 'palestinian', 'kurdish')) meat_rice_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'cue' and ct.tag_id = 'halal') halal_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'cue' and ct.tag_id in
+                        ('review_test', 'tour_vlog', 'ranking_list', 'mukbang_asmr')) review_posts,
+                    count(distinct p.post_id) filter (where ct.tag_type = 'cue'
+                        and ct.tag_id = 'street_food') street_food_posts
+             from core.post p join acc using (account_id) join core.content_tag ct using (post_id) group by 1)
+    select acc.account_id, acc.handle, acc.display_name, left(acc.bio, 200) as bio, acc.website, acc.is_business,
+           acc.link_score, acc.link_decision, posts.n as posts_seen,
+           posts.berlin_posts, perf.posts as measured_posts, perf.posts_90d, perf.last_post, perf.median_views,
+           perf.median_engagement_rate, coalesce(perf.followers, (select s.followers from core.social_account_snapshot s
+               where s.account_id = acc.account_id order by observed_at desc limit 1)) as followers,
+           coalesce(tags.rice_dish_posts, 0) rice_dish_posts, coalesce(tags.food_posts, 0) food_posts,
+           coalesce(tags.biryani_posts, 0) biryani_posts,
+           coalesce(tags.south_asian_posts, 0) south_asian_posts, coalesce(tags.meat_rice_posts, 0) meat_rice_posts,
+           coalesce(tags.halal_posts, 0) halal_posts, coalesce(tags.review_posts, 0) review_posts,
+           coalesce(tags.street_food_posts, 0) street_food_posts
+    from acc left join perf using (account_id) left join posts using (account_id) left join tags using (account_id)"""
+)
+CREATOR_POSTS_SQL = (
+    CREATOR_BASE
+    + """
+    select account_id, permalink, left(coalesce(caption, title, ''), 120) as caption, posted_at, views, likes
+    from (select cp.account_id, p.permalink, p.caption, p.title, cp.posted_at, cp.views, cp.likes, cp.engagement_rate,
+                 row_number() over (partition by cp.account_id order by cp.views desc nulls last) rk
+          from marts.content_performance cp join acc using (account_id) join core.post p using (post_id)
+          where cp.mature and (p.caption ilike '%berlin%' or 'berlin' = any(p.hashtags))) x
+    where rk <= 3"""
+)
 ITEMS = [
     ("marts", "content_feature_performance"),
     ("core", "occasion_day"),
@@ -66,6 +126,8 @@ ITEMS = [
     ("query", "postcode_area", POSTCODE_AREA_SQL),
     ("query", "occasions_next", OCCASIONS_SQL),
     ("query", "afs_citizenship", CITIZENSHIP_SQL),
+    ("query", "creators", CREATORS_SQL),
+    ("query", "creator_posts", CREATOR_POSTS_SQL),
 ]
 CUES_FILE = "config/keywords/social_content.yaml"
 

@@ -52,6 +52,7 @@ ignore = ["S101", "S603", "S607", "S608"]   # asserts in tests; ssh subprocess w
 "src/intel/serve/app.py" = ["E501"]   # inline HTML/CSS templates
 "src/intel/serve/views.py" = ["E501"]
 "src/intel/control.py" = ["E501"]
+"src/intel/models/creator_matcher/run.py" = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Form", "fastapi.Query", "typer.Option", "typer.Argument"]

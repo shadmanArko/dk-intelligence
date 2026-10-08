@@ -525,3 +525,41 @@ Unknown source: <b>{ins["unknown_share"]:.0%}</b> of visits · tracked links so 
 <p class=muted>Without tracked links this is only timing: a visit from Facebook after a Facebook post may have come from
 an older post or the page itself.</p>
 <table><tr><th>Platform</th><th>Posted (UTC)</th><th>Format</th><th>Caption</th><th>Visits</th><th>Carts</th><th>Orders</th></tr>{posts}</table>"""
+
+
+def _creator_row(c: dict) -> str:
+    name = f"<br><span class=muted>{H(c['name'])}</span>" if c.get("name") else ""
+    er = "–" if c["engagement_rate"] is None else f"{c['engagement_rate']:.1%}"
+    examples = "<br>".join(
+        f"<a href='{H(e['url'])}' target=_blank rel=noopener>{H((e['caption'] or 'video')[:50])}</a>"
+        for e in c["examples"]
+    )
+    return (
+        f"<tr><td><a href='{H(c['url'])}' target=_blank rel=noopener>@{H(c['handle'])}</a>{name}</td>"
+        f"<td>{H(c['size'])}</td><td>{c['median_views'] or '–'}</td><td>{er}</td><td>{c['berlin_share']:.0%}</td>"
+        f"<td>{c['posts_90d']}</td><td>{H(', '.join(c['topics'][:3]))}</td><td>{examples}</td></tr>"
+    )
+
+
+def creators_html(bundle: dict | None) -> str:
+    if not bundle:
+        return "<h2>Creators</h2><p class=muted>Not approved yet: built every Sunday and offered for approval in Telegram.</p>"
+    ins = bundle["insights"]
+    head = (
+        "<tr><th>Creator</th><th>Size (typical views)</th><th>Views</th><th>Engagement</th><th>Berlin</th>"
+        "<th>Posts 90d</th><th>Topics</th><th>Best Berlin videos</th></tr>"
+    )
+    top = "".join(_creator_row(c) for c in ins["top"][:25])
+    sa = "".join(_creator_row(c) for c in ins["south_asian_specialists"][:12])
+    biz = ", ".join(
+        f"<a href='{H(b['url'])}' target=_blank rel=noopener>@{H(b['handle'])}</a>" for b in ins["businesses"][:20]
+    )
+    return f"""<h2>Creators: who could make a video with us</h2>
+<p class=muted>{ins["candidates"]} TikTok accounts with Berlin posts; {ins["business_like"]} set aside as restaurants or
+brands; {ins["eligible"]} active food creators ranked by Berlin focus, topic fit, engagement per view and activity
+(nano and micro preferred). Version <code>{H(bundle["version"])}</code>. Public accounts only. Before contacting anyone,
+watch their videos; paid or gifted posts must be labelled "Werbung". Not a creator? Add the handle to
+<code>exclude_handles</code> in the creator_matcher spec.</p>
+<table>{head}{top}</table>
+<h3>South Asian food specialists</h3><table>{head}{sa}</table>
+<h3>Restaurants and brands on TikTok (for competitor watching)</h3><p>{biz}</p>"""

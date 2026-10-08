@@ -483,6 +483,34 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             },
         )
 
+        step = "creators"
+        prog.start("creators")
+        from intel.models.creator_matcher.run import run as creators_run
+
+        crdir = creators_run(market, d / "runs", log=log)
+        crr = json.loads((crdir / "report.json").read_text())
+        ci = json.loads((crdir / "insights.json").read_text())
+        results.append((crdir, crr))
+        rep["models"].append(
+            {
+                "name": "creator_matcher",
+                "version": crr["version"],
+                "verdict": crr["judge"]["verdict"],
+                "new": None,
+                "current": None,
+                "failed_gates": crr["judge"].get("failed", []),
+            }
+        )
+        prog.done(
+            "creators",
+            f"{ci['eligible']} creators ranked",
+            {
+                "candidates": ci["candidates"],
+                "set aside as businesses / brands": ci["business_like"],
+                **{f"#{i + 1}": f"@{c['handle']} ({c['size']})" for i, c in enumerate(ci["top"][:5])},
+            },
+        )
+
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}

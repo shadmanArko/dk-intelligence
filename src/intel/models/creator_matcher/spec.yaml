@@ -1,0 +1,32 @@
+name: creator_matcher
+version_prefix: cr
+kind: insights
+question: "Which Berlin food creators (TikTok) fit Dhaka Kacchi best for collaborations?"
+data: market snapshot creators / creator_posts (non-business TikTok accounts with at least one Berlin post)
+weights:                       # each input is a percentile rank among the candidates
+  berlin_focus: 0.25           # share of their posts about Berlin
+  topic_fit: 0.35              # rice dishes, biryani, South Asian / meat-and-rice food cultures, halal, street food, reviews
+  engagement: 0.25             # median (likes + comments + shares) / views per video
+  activity: 0.15               # posts in the last 90 days
+size_factor:                   # TYPICAL VIEWS per video (TikTok gave no follower counts): realistic and affordable?
+  - {max: 1000, factor: 0.4, label: "under 1k views"}
+  - {max: 10000, factor: 1.0, label: "nano (1k-10k views)"}
+  - {max: 100000, factor: 1.0, label: "micro (10k-100k views)"}
+  - {max: 1000000, factor: 0.7, label: "mid (100k-1M views)"}
+  - {max: 1.0e+12, factor: 0.4, label: "macro (1M+ views)"}
+min_measured_posts: 5
+min_food_share: 0.1            # at least 10% of their videos recognisably about food (the dictionary undercounts)
+exclude_handles: [lollapaloozade, berlinale, berlinmarathon, elamigoberlin, gropiusbau, thealley.germany,
+                  royalsandrice_berlin]   # owner-editable: accounts that are not creators
+# Business / brand detection (listed separately, never ranked as creators): clear words in the handle, display name or
+# bio. (The scraped TikTok business flag is True for every account and cannot be used.)
+business_words: [kebab, kebap, doener, doner, döner, burger, imbiss, restaurant, restaurante, ristorante, cafe, café,
+                 bakery, baeckerei, bäckerei, pizza, pizzeria, grill, chicken, chkn, bistro, kitchen, kueche, küche,
+                 catering, lieferando, wolt, oeffnungszeiten, öffnungszeiten, bestellen, order now, reservieren,
+                 reservation, festival, official, offizielle, visit, tourism, magazin, magazine, verlag, shop, store,
+                 market, markt, foodtruck, food truck, momo, curry, sushi, ramen, eis, gelato, bar, brauerei,
+                 chkn, kuchen, marathon, crafts, events, club, verein, stadt, bbq, museum]
+inactive_days: 120             # no post for this long -> listed separately, not ranked
+gates:
+  min_candidates: 200
+  max_package_mb: 5

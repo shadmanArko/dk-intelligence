@@ -36,6 +36,7 @@ MODEL_SOURCES = {
         "models/content_scorer/spec.yaml",
         "champions/harness_v1/features.py",
     ],
+    "creator_matcher": ["models/creator_matcher/spec.yaml", "models/creator_matcher/run.py"],
     "funnel": ["models/funnel/spec.yaml", "models/funnel/run.py"],
     "occasion_planner": ["models/occasion_planner/spec.yaml", "models/occasion_planner/run.py"],
     "community_map": ["models/community_map/spec.yaml", "models/community_map/run.py"],
