@@ -68,7 +68,8 @@ flowchart LR
     H -- one tap --> J[Rollback to previous]
 ```
 
-1. **Snapshot** (ADR 0004): every input is an immutable, checksummed folder; ids travel with the model.
+1. **Snapshot** (ADR 0004): every input is an immutable, checksummed folder; ids travel with the model. Then the
+   **data contracts** (ADR 0017): a warehouse pull that breaks one stops the run; a bad market snapshot falls back.
 2. **Plug-in run** (ADR 0009): each model is a `ModelPlugin`; the Sunday run executes them in `order`.
 3. **Judge** (ADR 0005): same newest-posts test set for challenger and champion; all gates must pass.
 4. **Package** (ADR 0007): sealed feature code + hashes + model card + judge report + SHA256SUMS.
@@ -87,6 +88,7 @@ src/intel/
   judge.py            gates, paired bootstrap CI, live gate                   (ADR 0005)
   package.py          seal / verify / upload packages                          (ADR 0007)
   sealed.py           sealed-code lock                                         (ADR 0011)
+  quality/            data contracts, validator, data cards                     (ADR 0017)
   models/<name>/      plugin.py + spec.yaml + the model's code (one folder per model)
   serve/              intel-api: app, registry, measure (ledger), runs, telegram, views
   control.py          the Mac Control Room

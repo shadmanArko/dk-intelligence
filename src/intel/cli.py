@@ -284,6 +284,42 @@ def weekly(
         raise typer.Exit(1)
 
 
+@app.command()
+def quality(
+    pull_id: str = typer.Option(None, "--pull", help="Warehouse pull id (default: latest)"),
+    market_id: str = typer.Option(None, "--market", help="Market snapshot id (default: latest)"),
+) -> None:
+    """Data checks (ADR 0017): contracts, volumes, freshness and the data card of a pull and a market snapshot."""
+    from intel.pull import list_pulls
+    from intel.quality.validate import validate_snapshot
+    from intel.settings import get_settings
+
+    d = get_settings().intel_data_dir
+    failed = False
+    for source, root, wanted in (("warehouse", d / "pulls", pull_id), ("market", d / "market", market_id)):
+        snaps = list_pulls(root)
+        if not snaps:
+            typer.echo(f"{source}: no snapshots in {root}")
+            continue
+        snap = next((p for p in snaps if p.name == wanted), None) if wanted else snaps[-1]
+        if snap is None:
+            raise typer.BadParameter(f"{source} snapshot {wanted} not found")
+        earlier = [p for p in snaps if p.name < snap.name]
+        q = validate_snapshot(snap, source, earlier[-1] if earlier else None)  # type: ignore[arg-type]
+        path = q.save(d / "quality")
+        typer.echo(f"== {source} {snap.name}: {len(q.card)} tables, {len(q.errors)} errors, {len(q.warnings)} warnings")
+        for f in q.findings:
+            typer.echo(f"   {f.severity.upper():7} {f.line()}")
+        for table, card in q.card.items():
+            prev = card.get("rows_previous")
+            change = f" ({card['rows'] - prev:+,} vs previous)" if prev is not None else ""
+            age = f", newest {card['age_hours']} h before the snapshot" if "age_hours" in card else ""
+            typer.echo(f"   {table:30} {card.get('rows', 0):>8,} rows{change}{age}")
+        typer.echo(f"   card: {path}")
+        failed |= not q.ok
+    raise typer.Exit(1 if failed else 0)
+
+
 @app.command("weekly-status")
 def weekly_status() -> None:
     """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""

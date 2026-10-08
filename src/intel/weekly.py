@@ -17,13 +17,17 @@ import time
 import traceback
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from intel.pipeline import steps as pipeline_steps
 from intel.plugins import ModelPlugin, RunContext, discover
 from intel.settings import Settings, required
+
+if TYPE_CHECKING:  # the VPS imports this module (serve/runs.py) but has no pandera: Mac-only training group
+    from intel.quality.contracts import Source
+    from intel.quality.validate import QualityReport
 
 
 class StepFailed(RuntimeError):
@@ -200,6 +204,33 @@ class Lock:
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
+def quality_gate(snapshot: Path, source: Source, root: Path, quality_dir: Path) -> QualityReport:
+    """Validate a snapshot against its contracts (ADR 0017), comparing volumes with the snapshot before it."""
+    from intel.pull import list_pulls
+    from intel.quality.validate import validate_snapshot
+
+    earlier = [p for p in list_pulls(root) if p.name < snapshot.name]
+    q = validate_snapshot(snapshot, source, earlier[-1] if earlier else None)
+    q.save(quality_dir)
+    return q
+
+
+def quality_details(q: QualityReport) -> dict[str, Any]:
+    """What the progress page shows about a snapshot's data checks."""
+    out: dict[str, Any] = {
+        "data checks": f"{len(q.card)} tables: {len(q.errors)} errors, {len(q.warnings)} warnings",
+    }
+    for i, f in enumerate([*q.errors, *q.warnings][:5]):
+        out[f"{f.severity} {i + 1}"] = f.line()[:160]
+    return out
+
+
+def quality_error(q: QualityReport) -> str:
+    lines = [f.line() for f in q.errors]
+    more = f" (+{len(lines) - 3} more, see data/quality/{q.source}-{q.snapshot_id}.json)" if len(lines) > 3 else ""
+    return f"data checks failed for {q.source} {q.snapshot_id}: " + "; ".join(lines[:3]) + more
+
+
 def run_weekly(
     s: Settings,
     *,
@@ -266,6 +297,10 @@ def _run_weekly(
         if verify_pull(pull):
             raise RuntimeError("pull verification failed")
         rep["pull_id"] = pull.name
+        wq = quality_gate(pull, "warehouse", d / "pulls", d / "quality")
+        rep["data_quality"] = {"warehouse": wq.summary()}
+        if not wq.ok:  # never train on data that breaks a contract the models rely on
+            raise RuntimeError(quality_error(wq))
         m = json.loads((pull / "manifest.json").read_text())
         t = m["tables"]
         prog.done(
@@ -281,6 +316,7 @@ def _run_weekly(
                 "website events": t.get("raw_posthog_events", {}).get("rows"),
                 "orders": t.get("orders", {}).get("rows"),
                 "checksums": "verified",
+                **quality_details(wq),
             },
         )
 
@@ -301,6 +337,17 @@ def _run_weekly(
             market = existing[-1]
             rep["market_fallback"] = True
             log(f"market snapshot failed ({type(e).__name__}); using {market.name}")
+        mq = quality_gate(market, "market", d / "market", d / "quality")
+        if not mq.ok:  # like an unreachable platform: fall back to the newest earlier snapshot that passes
+            log(quality_error(mq))
+            for older in reversed([p for p in list_pulls(d / "market") if p.name < market.name]):
+                candidate = quality_gate(older, "market", d / "market", d / "quality")
+                if candidate.ok:
+                    market, mq, rep["market_fallback"] = older, candidate, True
+                    break
+            else:
+                raise RuntimeError(quality_error(mq))
+        rep.setdefault("data_quality", {})["market"] = mq.summary()
         rep["market_id"] = market.name
         mm = json.loads((market / "manifest.json").read_text())
         prog.done(
@@ -312,6 +359,7 @@ def _run_weekly(
                 "performance rules": mm["tables"].get("content_feature_performance", {}).get("rows"),
                 "occasion days": mm["tables"].get("occasion_day", {}).get("rows"),
                 "fallback to older snapshot": rep["market_fallback"],
+                **quality_details(mq),
             },
         )
 

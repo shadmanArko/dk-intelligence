@@ -128,3 +128,40 @@ rather than slipping it in.
   tested not to page), page vs ticket severities with different repeat intervals, and inhibition.
 - *What's your SLI if traffic grows?* Add request-based SLIs from the latency histogram alongside the probe; the
   route-template labels are already there.
+
+---
+
+## H2 · Data contracts: bad data stops at the door
+
+**Situation.** Every Sunday the pipeline pulled 17 tables (5 from the business warehouse, 12 from a market-data
+platform) and trained on whatever came back. The only data check was a row count in one model. A renamed column, a
+metrics job that silently stopped, or a calendar that no longer reached into the future would only have shown up as a
+quietly worse model weeks later.
+
+**Task.** Stop bad data before any model sees it, with a reason a human can act on, and without blocking good data.
+
+**Action.**
+- Wrote **consumer-driven contracts**: only the tables and columns the models actually read. Structure is checked on
+  the stable Arrow types, not pandas dtypes (which change when nulls appear). Values are checked with pandera,
+  collecting every failure at once. On top: volume vs last week, freshness with warn and error tiers, calendar
+  horizon, cross-table links, no future timestamps.
+- Designed the gates around the business: the owner's own data blocks the run; market data falls back to the newest
+  snapshot that passes, because last week's market is fine but wrong data is not.
+- **Calibrated on real data before enforcing.** A gate that blocks good data every week gets switched off.
+- Every run leaves a **data card** (rows, change, freshness, per-column nulls and ranges) for the audit trail.
+
+**Result.** 0 false errors on real data. One true finding on the first run: a statistics table that mixes countries
+with subtotals, so summing it inflates the audience 3.6×. A near-miss deployment bug (the server importing a
+training-only library) is now caught by a dedicated test. 14 new tests, one per failure class.
+
+**Trade-off I would defend.** I made the citizenship rule *precise* (country names unique, subtotals recognised)
+instead of "every row unique" or switching the check off. The contract should encode what the consumer relies on.
+The real fix (flag subtotals upstream) went to the team that owns that data, as a separate change.
+
+**Likely follow-up questions.**
+- *Why not just rely on the upstream dbt tests?* They protect the producer's tables. A consumer has its own
+  assumptions (which columns, how fresh, how far ahead), and only the consumer can state them.
+- *Why warnings at all?* Some signals are worth knowing but not worth stopping for, like a posting pause or a few
+  reviews pointing at a delisted restaurant. They travel in the run report and on Telegram.
+- *How is this different from drift monitoring?* Contracts catch broken data (wrong, missing, stale). Drift (H4)
+  catches valid data whose distribution moved enough to hurt the model.

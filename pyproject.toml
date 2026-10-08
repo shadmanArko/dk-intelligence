@@ -33,7 +33,10 @@ dev = [
     "ruff>=0.8,<1",
     "types-pyyaml>=6.0.12.20260906",
 ]
-train = ["mlflow>=3,<4"]          # Mac only; the VPS image installs without it
+train = [
+    "mlflow>=3,<4",
+    "pandera>=0.34,<0.35",
+]          # Mac only; the VPS image installs without it
 
 [tool.uv]
 default-groups = ["dev", "train"]
@@ -96,6 +99,8 @@ module = [
     "intel.serve.db",
     "intel.serve.runs",
     "intel.serve.observability",
+    "intel.quality.contracts",
+    "intel.quality.validate",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true
@@ -128,7 +133,7 @@ omit = ["src/intel/cli.py"]           # thin typer wrapper; its commands are tes
 
 [tool.coverage.report]
 precision = 2                         # compare unrounded: with 0 decimals, 75.99% passed a 76% floor
-fail_under = 76                       # the floor only moves up (2026-10-08: 76.7% branch coverage; docs/QUALITY.md)
+fail_under = 77                       # the floor only moves up (H2: 78.8% on the Mac, ~0.6 lower in CI; docs/QUALITY.md)
 show_missing = true
 skip_covered = true
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@abstractmethod"]

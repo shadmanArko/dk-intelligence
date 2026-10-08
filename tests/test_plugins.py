@@ -104,15 +104,11 @@ def _fake_snapshots(tmp_path: Path, monkeypatch) -> None:
     import intel.pull
     import intel.tunnel
     import intel.weekly as w
+    from tests.quality_fixtures import market_tables, warehouse_tables, write_snapshot
 
-    def snap(kind: str, tables: dict[str, Any]) -> Path:
-        d = tmp_path / kind / "snap-1"
-        d.mkdir(parents=True)
-        (d / "manifest.json").write_text(json.dumps({"tables": tables, "total_rows": 7}))
-        return d
-
-    pull = snap("pull", {"social_post": {"rows": 7}})
-    market = snap("market", {})
+    # valid snapshots: since ADR 0017 the Sunday run checks the data before any model sees it
+    pull = write_snapshot(tmp_path / "pull", "snap-1", warehouse_tables())
+    market = write_snapshot(tmp_path / "market", "snap-1", market_tables())
     monkeypatch.setattr(w, "mip_refresh_running", lambda: False)
     monkeypatch.setattr(intel.tunnel, "warehouse_tunnel", lambda *a, **k: contextlib.nullcontext())
     monkeypatch.setattr(intel.pull, "run_pull", lambda *a, **k: pull)

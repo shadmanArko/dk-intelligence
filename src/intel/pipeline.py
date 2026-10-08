@@ -26,12 +26,15 @@ CORE_STEPS: dict[str, tuple[str, str]] = {
         "Pull the warehouse",
         "Copies your business data from the VPS warehouse: posts, their metrics over time, website visits, Search "
         "Console, orders. Read-only database role, through an SSH tunnel over Tailscale that can only reach the "
-        "database. Saved as a verified, immutable snapshot (Parquet + checksums).",
+        "database. Saved as a verified, immutable snapshot (Parquet + checksums), then checked against the data "
+        "contracts of every table a model reads (columns, types, values, freshness, volume vs last week). A broken "
+        "contract stops the run here: no model ever trains on it.",
     ),
     "market": (
         "Market snapshot",
         "Reads what the data platform learned from ~1.9M public posts: which topics, languages and formats "
-        "perform, the occasion calendar per community, and the topic dictionary.",
+        "perform, the occasion calendar per community, and the topic dictionary. Checked against its data "
+        "contracts; a snapshot that fails falls back to the newest earlier one that passes.",
     ),
     "ledger": (
         "Download the live ledger",

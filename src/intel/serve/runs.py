@@ -45,6 +45,16 @@ class ModelResult(BaseModel):
     failed_gates: list[str] = Field(default_factory=list, max_length=20)
 
 
+class DataQuality(BaseModel):
+    """Summary of the data checks of one snapshot (ADR 0017); the full report stays on the Mac."""
+
+    model_config = ConfigDict(extra="ignore")
+    snapshot: str = Field(max_length=40)
+    tables: int = 0
+    errors: list[str] = Field(default_factory=list, max_length=10)
+    warnings: list[str] = Field(default_factory=list, max_length=10)
+
+
 class RunReport(BaseModel):
     model_config = ConfigDict(extra="ignore")
     kind: Literal["weekly_run"]
@@ -66,6 +76,7 @@ class RunReport(BaseModel):
     failed_gates: list[str] = Field(default_factory=list, max_length=20)
     live: str | None = Field(default=None, max_length=300)
     models: list[ModelResult] = Field(default_factory=list, max_length=10)
+    data_quality: dict[Literal["warehouse", "market"], DataQuality] = Field(default_factory=dict)
 
 
 def scan_run_reports(dsn: str, inbox: Path) -> list[RunReport]:
@@ -116,7 +127,14 @@ def run_message(r: RunReport) -> str:
             f"{_pct(r.champion.balanced_accuracy)}\nAUC           {_pct(r.challenger.roc_auc)}  "
             f"{_pct(r.champion.roc_auc)}\ntest posts    {r.challenger.n or 0:>5}  {r.champion.n or 0:>5}</pre>"
         )
-    extra = "\n(market data from an older snapshot: the data platform was not reachable)" if r.market_fallback else ""
+    extra = (
+        "\n(market data from an older snapshot: the newest was unreachable or failed its data checks)"
+        if r.market_fallback
+        else ""
+    )
+    warns = [w for q in r.data_quality.values() for w in q.warnings]
+    if warns:
+        extra += f"\n🧪 Data checks: {len(warns)} warning(s), e.g. {H(warns[0][:150])}"
     live = f"\nLive check: {H(r.live)}" if r.live else ""
     if r.models:
         sc += "\n" + "\n".join(
