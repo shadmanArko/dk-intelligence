@@ -26,6 +26,10 @@
   deploy added one fake prediction. It now uses `/health/deep` (falls back to `/v1/predict` only for images older than
   this change, i.e. a rollback target).
 - `node-exporter`'s usual `rslave` mount fails on Docker Desktop; a plain read-only mount works on both.
+- **Works on my Mac, fails on Linux:** CI's first H3 run failed in `check.sh`: `amtool: permission denied` on the
+  rendered config. The temp dir is mode 700 and the tool container runs as `nobody`; Docker Desktop ignores bind-mount
+  permissions, Linux enforces them. The check tools now run as the calling user, exactly like Alertmanager runs as the
+  deploy user on the VPS (re-checked: every VPS container can read what it mounts).
 
 ## Rehearsal with real containers (Mac, throwaway clone)
 `deploy.sh --local-build` → app smoke OK → `monitoring/up.sh` started the five services (the first attempt failed on

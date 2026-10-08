@@ -16,10 +16,13 @@ echo "== promtool test rules"
 docker run --rm -v "$PWD/prometheus:/p:ro" --entrypoint promtool "$PROM" test rules /p/tests/slo_test.yml /p/tests/ops_test.yml
 
 echo "== amtool check-config"
+# The rendered files live in a private temp dir (mode 700), so the tool containers run as the calling user: the same
+# way up.sh runs Alertmanager on the VPS (as the deploy user). Docker Desktop on a Mac ignores these permissions;
+# Linux (CI, the VPS) does not.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 sed 's/__TELEGRAM_CHAT_ID__/123456789/' alertmanager/alertmanager.yml > "$tmp/alertmanager.yml"
 printf 'placeholder' > "$tmp/telegram_token"
-docker run --rm -v "$tmp:/runtime:ro" -v "$PWD/alertmanager/templates:/etc/alertmanager/templates:ro" \
+docker run --rm --user "$(id -u):$(id -g)" -v "$tmp:/runtime:ro" -v "$PWD/alertmanager/templates:/etc/alertmanager/templates:ro" \
   --entrypoint amtool "$AM" check-config /runtime/alertmanager.yml
 
 echo "== compose config"
@@ -46,4 +49,4 @@ print("\n".join(problems) or f"{len(uids)} dashboards OK")
 sys.exit(1 if problems else 0)
 PY
 # every dashboard query must parse: promtool checks them as (throwaway) recording rules
-docker run --rm -v "$tmp:/q:ro" --entrypoint sh "$PROM" -c 'promtool check rules /q/*.rules.yml' | grep -E "SUCCESS|FAILED"
+docker run --rm --user "$(id -u):$(id -g)" -v "$tmp:/q:ro" --entrypoint sh "$PROM" -c 'promtool check rules /q/*.rules.yml' | grep -E "SUCCESS|FAILED"
