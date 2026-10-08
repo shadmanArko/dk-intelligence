@@ -31,6 +31,10 @@ First CI-built deploy, 2026-10-08 15:02 UTC: commit `4d09dce`, image `ghcr.io/sh
 (0 fixable HIGH/CRITICAL). The VPS pulled the digest, recorded the 4 active models, started the new container, and the
 smoke test confirmed the same 4 models and the right version 10 s after start.
 
+**Concurrency in production, same day:** two Dependabot merges landed seconds apart (pyarrow `05a89fc`, then mypy
+`396bd1a`). The mypy deploy ran and passed its smoke test; the pyarrow deploy arrived second, found the newer commit
+already checked out, and skipped itself as `superseded` instead of downgrading production.
+
 ## Verification
 - `tests/test_deploy_script.py` runs the real `deploy.sh` against a real git repo with a recording fake `docker`:
   4 malicious/malformed requests refused (never echoed, docker untouched), superseded commit skipped, wrong-commit
