@@ -51,6 +51,12 @@ STEPS: dict[str, tuple[str, str]] = {
         "international food explorers and young small households (public statistics), times a reach factor for the "
         "delivery bands from Leopoldplatz. Flags gaps: big audience, no biryani seller. Chooses AREAS, never people.",
     ),
+    "occasions": (
+        "Occasion planner",
+        "The next 30 days: which occasions matter to which Berlin audience (food role x people who celebrate it), when "
+        "to start posting, greetings and rice-dish bridges, Berlin events for pop-ups, and the weekdays / times when "
+        "our own posts reached most people. Content rules applied and checked automatically (no blocked words).",
+    ),
     "judge": (
         "Judge against the current model",
         "For each question, seven automatic checks on the newest posts, never seen in training, against what we use "
@@ -129,6 +135,15 @@ NODES: list[dict] = [
         "row": 0,
         "step": "community",
     },
+    {
+        "id": "occasions",
+        "label": "Occasion planner",
+        "sub": "next 30 days",
+        "lane": "mac",
+        "col": 4,
+        "row": 0,
+        "step": "occasions",
+    },
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
@@ -168,6 +183,8 @@ EDGES: list[tuple[str, str]] = [
     ("mine", "judge"),
     ("market", "community"),
     ("community", "judge"),
+    ("market", "occasions"),
+    ("occasions", "judge"),
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),

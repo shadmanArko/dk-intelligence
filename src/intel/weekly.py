@@ -421,6 +421,38 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             },
         )
 
+        step = "occasions"
+        prog.start("occasions")
+        from intel.models.occasion_planner.run import run as plan_run
+
+        odir = plan_run(market, pull, d / "runs", log=log)
+        orr = json.loads((odir / "report.json").read_text())
+        op = json.loads((odir / "insights.json").read_text())
+        results.append((odir, orr))
+        rep["models"].append(
+            {
+                "name": "occasion_planner",
+                "version": orr["version"],
+                "verdict": orr["judge"]["verdict"],
+                "new": None,
+                "current": None,
+                "failed_gates": orr["judge"].get("failed", []),
+            }
+        )
+        prog.done(
+            "occasions",
+            f"{len(op['picks'])} occasions in the next 30 days",
+            {
+                **{
+                    f"#{i + 1}": f"{p['label']} ({p['community_id']}, {p['people']:,}) on {p['first_day']}, start "
+                    f"{p['start_posting']}"
+                    for i, p in enumerate(op["picks"][:5])
+                },
+                "respectful notes": len(op["respectful_notes"]),
+                "content rules": next(g["detail"] for g in orr["judge"]["gates"] if g["gate"] == "content_rules"),
+            },
+        )
+
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}

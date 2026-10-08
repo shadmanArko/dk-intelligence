@@ -411,3 +411,65 @@ pop-ups), never to target or exclude people. Your orders so far located: {ins["o
 <h3>Biggest audience regardless of distance (pop-ups, events, ads)</h3><table>{head}{aud}</table>
 <h3>Districts</h3><table><tr><th>District</th><th>Avg score</th><th>Median distance</th><th>South Asian origin</th>
 <th>Meat & rice cultures</th><th>Biryani sellers</th><th>Gaps</th><th>Your orders</th></tr>{dist}</table>"""
+
+
+def planner_html(bundle: dict | None) -> str:
+    if not bundle:
+        return (
+            "<h2>Occasion plan</h2><p class=muted>Not approved yet: it is built every Sunday and offered for approval "
+            "in Telegram (after your first approval it refreshes automatically).</p>"
+        )
+    ins = bundle["insights"]
+
+    def lift(v):
+        return "–" if v is None else (f"<span class=ok>+{v:.2f}</span>" if v > 0 else f"<span class=bad>{v:.2f}</span>")
+
+    rows = (
+        "".join(
+            f"<tr><td><b>{H(p['label'])}</b>{'<br><span class=muted>date estimated</span>' if p['estimated_date'] else ''}</td>"
+            f"<td>{H(p['community_id'])}</td><td>{p['people']:,}</td><td>{p['first_day']}"
+            f"{'–' + p['last_day'] if p['last_day'] != p['first_day'] else ''}</td><td><b>{p['start_posting']}</b></td>"
+            f"<td>{H(p['food_role'])}</td><td>{lift(p['market_lift'])}</td>"
+            f"<td>{H(p['greeting'] or '')}{' <span class=muted>(native check)</span>' if p['greeting'] and p['greeting_needs_review'] else ''}"
+            f"{'<br><span class=muted>' + H(p['greeting_translit']) + '</span>' if p.get('greeting_translit') else ''}</td>"
+            f"<td>{H(', '.join(p['bridge_dishes']))}</td></tr>"
+            for p in ins["picks"]
+        )
+        or "<tr><td colspan=9>nothing above the thresholds</td></tr>"
+    )
+    notes = (
+        "".join(
+            f"<li>{H(n['day'])}: {H(n['label'])} ({H(n['community'])}): {H(n['advice'])}</li>"
+            for n in ins["respectful_notes"]
+        )
+        or "<li>none</li>"
+    )
+    events = (
+        "".join(
+            f"<li>{H(e['event'])} ({H(', '.join(e['days'][:3]))}{'…' if len(e['days']) > 3 else ''})</li>"
+            for e in ins["berlin_events"]
+        )
+        or "<li>none listed</li>"
+    )
+    t = ins.get("timing") or {}
+
+    def tim(col):
+        rows_ = sorted(t.get(col, []), key=lambda r: (r["platform"], -r["above_recent"]))
+        return "".join(
+            f"<tr><td>{H(r['platform'])}</td><td>{H(r[col])}</td><td>{r['above_recent']:.0%}</td><td>{r['posts']}</td></tr>"
+            for r in rows_
+        )
+
+    return f"""<h2>Occasion plan: {ins["from"]} to {ins["to"]}</h2>
+<p class=muted>Version <code>{H(bundle["version"])}</code>. Ranked by food role × √(Berliners who celebrate it); religious
+occasions are shown with their neutral names and greetings (content rules), blocked words are checked automatically.
+"Start posting" is the lead time before the day. Market lift: how posts about this occasion did on TikTok vs usual.</p>
+<table><tr><th>Occasion</th><th>Audience</th><th>Berliners</th><th>Day(s)</th><th>Start posting</th><th>Food role</th>
+<th>Market lift</th><th>Greeting</th><th>Their rice dishes (bridge to kacchi)</th></tr>{rows}</table>
+<h3>Respectful notes (no sales posts)</h3><ul>{notes}</ul>
+<h3>Berlin events (pop-up ideas)</h3><ul>{events}</ul>
+<h3>When our posts reached more people than our recent posts ({t.get("posts", 0)} posts)</h3>
+<p class=muted>Share of posts above the median reach of the previous 20 posts. Small samples: treat differences under
+~15 points as noise.</p>
+<div class=actions><table><tr><th>Platform</th><th>Weekday</th><th>Above recent</th><th>Posts</th></tr>{tim("weekday")}</table>
+<table><tr><th>Platform</th><th>Time (Berlin)</th><th>Above recent</th><th>Posts</th></tr>{tim("band")}</table></div>"""

@@ -27,13 +27,14 @@ from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
-from intel.serve.runs import report_tick, run_message, scan_run_reports, scan_status, training_overview
+from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.serve.views import (
     BERLIN,
     community_html,
     insights_html,
     ledger_rows,
+    planner_html,
     posts_html,
     training_html,
     try_form_html,
@@ -91,7 +92,12 @@ def notify_intake(bot_tg: Telegram | None, reg: Registry, public_url: str | None
         if bot_tg is None:
             continue
         try:
-            if it.approval_id:
+            if it.status == "auto_approved":
+                bot_tg.send(
+                    f"🔄 <b>{H(it.name)}</b> refreshed automatically (<code>{H(it.version)}</code>): it passed "
+                    "every check and you approved this insight before. Undo with /rollback."
+                )
+            elif it.approval_id:
                 a = reg.approval(it.approval_id)
                 mid = bot_tg.send(
                     approval_text(a["metadata"], it.approval_id, public_url), approval_buttons(it.approval_id)
@@ -165,7 +171,13 @@ def report_loop(state: dict, stop: threading.Event) -> None:
     s: Settings = state["settings"]
     while not stop.is_set():
         try:
-            report_tick(s.intel_db_dsn, state["telegram"], s.intel_public_url)
+            op = state["models"].get("occasion_planner")
+            report_tick(
+                s.intel_db_dsn,
+                state["telegram"],
+                s.intel_public_url,
+                coming_up=coming_up_lines(op["bundle"]) if op else None,
+            )
         except Exception:
             log.exception("report loop error")
         stop.wait(300)
@@ -390,7 +402,14 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     @app.get("/insights", response_class=HTMLResponse)
     def insights_page(request: Request):
         cm, wm = state["models"].get("community_map"), state["models"].get("weakness_miner")
-        body = community_html(cm["bundle"] if cm else None) + "<hr>" + insights_html(wm["bundle"] if wm else None)
+        op = state["models"].get("occasion_planner")
+        body = (
+            planner_html(op["bundle"] if op else None)
+            + "<hr>"
+            + community_html(cm["bundle"] if cm else None)
+            + "<hr>"
+            + insights_html(wm["bundle"] if wm else None)
+        )
         return _page(request, "Insights", body)
 
     @app.get("/try", response_class=HTMLResponse)

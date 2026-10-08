@@ -185,7 +185,27 @@ def reminder_due(dsn: str, now: dt.datetime) -> bool:
     return r["since"] is not None and now - r["since"] > REMIND_AFTER
 
 
-def report_tick(dsn: str, tg, public_url: str | None, now: dt.datetime | None = None) -> list[str]:
+def coming_up_lines(bundle: dict, days: int = 14) -> list[str]:
+    """The occasion planner's next 2 weeks, for the Monday report (labels already follow the content rules)."""
+    ins = bundle["insights"]
+    limit = (dt.date.fromisoformat(ins["from"]) + dt.timedelta(days=days)).isoformat()
+    lines = [
+        f"• {H(p['label'])} ({H(p['community_id'])}, {p['people']:,} Berliners) on {p['first_day']}: "
+        f"start posting {p['start_posting']}"
+        for p in ins["picks"]
+        if p["first_day"] <= limit
+    ]
+    lines += [
+        f"• {H(n['day'])}: {H(n['label'])} ({H(n['community'])}): respectful note only"
+        for n in ins["respectful_notes"]
+        if n["day"] <= limit
+    ]
+    return lines
+
+
+def report_tick(
+    dsn: str, tg, public_url: str | None, now: dt.datetime | None = None, coming_up: list[str] | None = None
+) -> list[str]:
     """Called every few minutes. Sends at most one weekly report per ISO week (Monday from 09:00 Berlin) and at most
     one reminder per day. Returns what was sent (for tests)."""
     from zoneinfo import ZoneInfo
@@ -195,7 +215,10 @@ def report_tick(dsn: str, tg, public_url: str | None, now: dt.datetime | None = 
     sent = []
     week_key = f"{local.isocalendar().year}-W{local.isocalendar().week:02d}"
     if local.isoweekday() == 1 and local.hour >= 9 and kv_get(dsn, "weekly_report_sent") != week_key:
-        tg.send(weekly_report(dsn, public_url))
+        text = weekly_report(dsn, public_url)
+        if coming_up:
+            text += "\n\n<b>Coming up (next 2 weeks)</b>\n" + "\n".join(coming_up[:8])
+        tg.send(text)
         kv_set(dsn, "weekly_report_sent", week_key)
         sent.append("weekly_report")
     day_key = local.date().isoformat()

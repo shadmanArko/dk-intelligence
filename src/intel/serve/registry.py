@@ -147,7 +147,24 @@ class Registry:
                     (row["id"], dt.timedelta(days=self.approval_days)),
                 ).fetchone()["id"]
         log_event(self.dsn, "package_received", name=name, version=version, status=status, problems=problems)
+        if approval_id and meta.get("kind") == "insights" and self.human_approved_before(name, row["id"]):
+            # Insights refresh weekly (new dates, new reviews). After the owner approved this insight once, a new
+            # version that passed every gate is applied automatically; Telegram says so, rollback stays one tap.
+            self.approve(approval_id, "auto-refresh", "system")
+            return Intake(row["id"], "auto_approved", name, version, problems, approval_id)
         return Intake(row["id"], status, name, version, problems, approval_id)
+
+    def human_approved_before(self, name: str, exclude_package: int) -> bool:
+        with connect(self.dsn) as c:
+            return (
+                c.execute(
+                    """select 1 from approval a join model_package p on p.id = a.package_id
+                   where p.name = %s and p.id <> %s and a.decision = 'approved' and a.channel <> 'system'
+                   limit 1""",
+                    (name, exclude_package),
+                ).fetchone()
+                is not None
+            )
 
     # ---------- decisions ----------
     def _open_approval(self, c, approval_id: int) -> dict:

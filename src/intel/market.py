@@ -46,6 +46,15 @@ LOR_PLACES_SQL = f"""select l.planning_area_id as area_id, max(l.planning_area) 
 POSTCODE_AREA_SQL = """select postcode, mode() within group (order by planning_area_id) as area_id,
        mode() within group (order by district) as district
     from core.listing where postcode is not null and planning_area_id is not null group by postcode"""
+# Phase 2.4 occasion planner: the next 60 days of the occasion calendar (with audience sizes, greetings, bridge
+# dishes and Berlin events). Presentation rules are applied in dk-intelligence (content_rules.yaml).
+OCCASIONS_SQL = """select * from marts.occasion_content_calendar
+    where day between current_date and current_date + 60"""
+RULE_KEYS = ("occasion_presentation", "blocked_words", "home_community", "occasion_audience", "no_occasion_platforms")
+PLAYBOOK_FILE = "config/content/playbook.yaml"
+COMMUNITIES_FILE = "config/taxonomies/communities.yaml"
+CITIZENSHIP_SQL = """select citizenship, residents from staging.stg_afs__citizenship
+    where reference_date = (select max(reference_date) from staging.stg_afs__citizenship)"""
 ITEMS = [
     ("marts", "content_feature_performance"),
     ("core", "occasion_day"),
@@ -55,6 +64,8 @@ ITEMS = [
     ("query", "lor_stats", LOR_STATS_SQL),
     ("query", "lor_places", LOR_PLACES_SQL),
     ("query", "postcode_area", POSTCODE_AREA_SQL),
+    ("query", "occasions_next", OCCASIONS_SQL),
+    ("query", "afs_citizenship", CITIZENSHIP_SQL),
 ]
 CUES_FILE = "config/keywords/social_content.yaml"
 
@@ -67,6 +78,26 @@ def cue_dictionary_bytes(mip_dir: Path) -> bytes:
     return yaml.safe_dump({"cues": data["cues"]}, allow_unicode=True, sort_keys=True).encode()
 
 
+def content_rules_bytes(mip_dir: Path) -> bytes:
+    """The occasion-presentation and blocked-word rules from the data platform's content playbook."""
+    import yaml
+
+    pb = yaml.safe_load((mip_dir / PLAYBOOK_FILE).read_text())
+    return yaml.safe_dump({k: pb.get(k) for k in RULE_KEYS}, allow_unicode=True, sort_keys=True).encode()
+
+
+def community_countries_bytes(mip_dir: Path) -> bytes:
+    """community -> its countries and the matching AfS citizenship labels (per-country Berlin counts)."""
+    import yaml
+
+    com = yaml.safe_load((mip_dir / COMMUNITIES_FILE).read_text())["communities"]
+    out = {
+        cid: {"countries": c.get("countries") or [], "afs_citizenship": c.get("afs_citizenship") or []}
+        for cid, c in com.items()
+    }
+    return yaml.safe_dump(out, allow_unicode=True, sort_keys=True).encode()
+
+
 def run_market_pull(dsn: str, mip_dir: Path, market_dir: Path, keep: int, log=print) -> Path:
     return run_pull(
         dsn,
@@ -74,6 +105,10 @@ def run_market_pull(dsn: str, mip_dir: Path, market_dir: Path, keep: int, log=pr
         keep=keep,
         log=log,
         items=ITEMS,
-        extra_files={"cues.yaml": cue_dictionary_bytes(mip_dir)},
+        extra_files={
+            "cues.yaml": cue_dictionary_bytes(mip_dir),
+            "content_rules.yaml": content_rules_bytes(mip_dir),
+            "community_countries.yaml": community_countries_bytes(mip_dir),
+        },
         application_name="dk-intelligence-market",
     )

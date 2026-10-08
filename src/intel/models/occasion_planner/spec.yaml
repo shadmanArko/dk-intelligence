@@ -1,0 +1,16 @@
+name: occasion_planner
+version_prefix: op
+kind: insights
+question: "Which occasions in the next 30 days matter to which Berlin audience, when should posting start, and when do our posts reach most people?"
+data: market snapshot occasions_next (+ content_rules.yaml, content_feature_performance); warehouse pull (own posts, for timing)
+horizon_days: 30
+# Same weighting idea as the data platform's content briefs: food role x sqrt(people) (x closeness when planning a day)
+role_weight: {feast: 3.0, fasting_evening: 3.0, gift_season: 1.6, family_meal: 1.4, party: 1.0, remembrance: 0.0}
+skip_types: [payday, other, national_other]
+min_people: 5000
+min_people_national_day: 20000
+gates:
+  min_days_covered: 30          # the calendar must reach at least 30 days ahead
+  max_package_mb: 5
+  # content_rules: NO blocked word may appear anywhere in the output (automatic, always enforced)
+auto_refresh: true              # after the owner's first approval, weekly versions that pass every gate apply automatically
