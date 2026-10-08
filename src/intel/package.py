@@ -24,34 +24,13 @@ import subprocess
 import tarfile
 import zlib
 from pathlib import Path
+from typing import Any
 
 import sklearn
 
 from intel import __version__
+from intel.plugins import model_sources
 
-MODEL_SOURCES = {
-    "content_scorer": [
-        "models/content_scorer/features.py",
-        "models/content_scorer/predict.py",
-        "models/content_scorer/spec.yaml",
-        "champions/harness_v1/features.py",
-    ],
-    "creator_matcher": ["models/creator_matcher/spec.yaml", "models/creator_matcher/run.py"],
-    "funnel": ["models/funnel/spec.yaml", "models/funnel/run.py"],
-    "occasion_planner": ["models/occasion_planner/spec.yaml", "models/occasion_planner/run.py"],
-    "community_map": ["models/community_map/spec.yaml", "models/community_map/run.py"],
-    "weakness_miner": [
-        "models/weakness_miner/spec.yaml",
-        "models/weakness_miner/aspects.yaml",
-        "models/weakness_miner/mine.py",
-    ],
-    "reach_scorer": [
-        "models/content_scorer/features.py",
-        "models/content_scorer/predict.py",
-        "models/reach_scorer/spec.yaml",
-        "champions/harness_v1/features.py",
-    ],
-}
 PKG_ROOT = Path(__file__).parent
 
 
@@ -60,17 +39,17 @@ def sha256_bytes(b: bytes) -> str:
 
 
 def code_hashes(name: str) -> dict[str, str]:
-    return {rel: sha256_bytes((PKG_ROOT / rel).read_bytes()) for rel in MODEL_SOURCES[name]}
+    return {rel: sha256_bytes((PKG_ROOT / rel).read_bytes()) for rel in model_sources()[name]}
 
 
-def git_state(repo: Path) -> dict:
+def git_state(repo: Path) -> dict[str, Any]:
     def run(*a: str) -> str:
         return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True, check=False).stdout.strip()
 
     return {"commit": run("rev-parse", "HEAD") or None, "dirty": bool(run("status", "--porcelain", "--", "src"))}
 
 
-def model_card(meta: dict) -> str:
+def model_card(meta: dict[str, Any]) -> str:
     t, c, j = meta["scores"]["challenger"], meta["scores"]["champion"], meta["judge"]
     gates = "\n".join(f"| {g['gate']} | {g['status']} | {g['detail']} |" for g in j["gates"])
     return f"""# {meta["name"]} {meta["version"]}
@@ -147,7 +126,7 @@ def build_package(run_dir: Path, out_dir: Path, repo: Path, allow_fail: bool = F
         "report.json": (run_dir / "report.json").read_bytes(),
         "model_card.md": model_card(meta).encode(),
     }
-    for rel in MODEL_SOURCES[name]:
+    for rel in model_sources()[name]:
         files[f"source/{rel}"] = (PKG_ROOT / rel).read_bytes()
     files["SHA256SUMS"] = "".join(f"{sha256_bytes(b)}  {n}\n" for n, b in sorted(files.items())).encode()
 

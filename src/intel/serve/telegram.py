@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import logging
+from typing import Any
 
 import httpx
 
@@ -25,7 +26,7 @@ class Telegram:
         self._base = f"https://api.telegram.org/bot{token}/"
         self._http = client or httpx.Client(timeout=40)
 
-    def call(self, method: str, **params) -> dict | list | bool:
+    def call(self, method: str, **params: Any) -> Any:  # Telegram's JSON `result`: shape depends on the method
         r = self._http.post(self._base + method, json=params)
         data = r.json()
         if not data.get("ok"):
@@ -75,43 +76,15 @@ def _pct(x) -> str:
 
 
 def _insights_text(meta: dict, approval_id: int, public_url: str | None) -> str:
-    if meta["name"] == "creator_matcher":
-        tops = "\n".join(f"• {H(t)}" for t in meta.get("top_complaints") or [])
-        link = f'\n\n<a href="{H(public_url)}/insights">Open Insights</a>' if public_url else ""
-        return (
-            f"🎥 <b>Creator shortlist</b> <code>{H(meta['version'])}</code>\n{tops}\n\nDo these look like real "
-            f"food creators to you? Approve once; later weekly versions refresh automatically.{link}"
-        )
-    if meta["name"] == "funnel":
-        tops = "\n".join(f"• {H(t)}" for t in meta.get("top_complaints") or [])
-        link = f'\n\n<a href="{H(public_url)}/insights">Open Insights</a>' if public_url else ""
-        return (
-            f"🧭 <b>Visit-to-order funnel</b> <code>{H(meta['version'])}</code>\n{tops}\n\nOnly counts, no visitor "
-            f"data. Approve once; later weekly versions then refresh automatically.{link}"
-        )
-    if meta["name"] == "occasion_planner":
-        tops = "\n".join(f"• {H(t)}" for t in meta.get("top_complaints") or [])
-        link = f'\n\n<a href="{H(public_url)}/insights">Open Insights</a>' if public_url else ""
-        return (
-            f"📅 <b>Occasion plan, next 30 days</b> <code>{H(meta['version'])}</code>\n{tops}\n\n"
-            f"Content rules checked: no blocked words. Approve once; later weekly plans then refresh "
-            f"automatically.{link}"
-        )
-    if meta["name"] == "community_map":
-        tops = "\n".join(f"{i + 1}. {H(t)}" for i, t in enumerate(meta.get("top_complaints") or []))
-        link = f'\n\n<a href="{H(public_url)}/packages/{approval_id}">Open details</a>' if public_url else ""
-        return (
-            f"🗺 <b>Community map ready</b>\n\n<code>{H(meta['version'])}</code>\nTop areas for delivery:\n{tops}\n\n"
-            f"Do these look right to you? Approving shows the map on the Insights page.{link}"
-        )
-    c = meta.get("check") or {}
-    tops = ", ".join(meta.get("top_complaints") or []) or "–"
-    link = f'\n\n<a href="{H(public_url)}/packages/{approval_id}">Open details</a>' if public_url else ""
-    return (
-        f"🔎 <b>New insights passed the checks</b>\n\n<b>{H(meta['name'])}</b> <code>{H(meta['version'])}</code>\n"
-        f"Your check: aspect precision {c.get('aspect_precision')}, recall {c.get('aspect_recall')}, "
-        f"tone accuracy {c.get('polarity_accuracy')} on {c.get('checked')} sentences\n"
-        f"Top complaints: {H(tops)}\nApproving shows them on the Insights page.{link}"
+    from intel.plugins import plugin_for_model
+
+    p = plugin_for_model(meta["name"])
+    if p and (text := p.approval_text(meta, approval_id, public_url)):
+        return text
+    from intel.plugins import insights_approval  # a model without its own text: the common shape
+
+    return insights_approval(
+        "🔎", f"New insights: {meta['name']}", meta, public_url, "Approving shows them on the Insights page."
     )
 
 

@@ -23,7 +23,15 @@ dependencies = [
 intel = "intel.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8.3,<9", "ruff>=0.8,<1"]
+dev = [
+    "mypy>=1.13,<2",
+    "pandas-stubs>=3.0.5.260914",
+    "pre-commit>=4,<5",
+    "pytest>=8.3,<9",
+    "pytest-cov>=6,<8",
+    "ruff>=0.8,<1",
+    "types-pyyaml>=6.0.12.20260906",
+]
 train = ["mlflow>=3,<4"]          # Mac only; the VPS image installs without it
 
 [tool.uv]
@@ -56,3 +64,68 @@ ignore = ["S101", "S603", "S607", "S608"]   # asserts in tests; ssh subprocess w
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Form", "fastapi.Query", "typer.Option", "typer.Argument"]
+
+# ---------- type checking (ADR 0010: gradual typing with a ratchet) ----------
+# The whole package passes mypy's default checks; modules listed under STRICT also pass --strict. The list only grows:
+# a module joins it when it is touched and brought up to standard. CI runs `mypy` (this config).
+[tool.mypy]
+python_version = "3.13"
+files = ["src"]
+ignore_missing_imports = true          # sklearn, joblib, pyarrow, mlflow ship no type information
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+no_implicit_reexport = true
+strict_equality = true
+
+[[tool.mypy.overrides]]   # STRICT: the MLOps core
+module = [
+    "intel.plugins",
+    "intel.pipeline",
+    "intel.settings",
+    "intel.tunnel",
+    "intel.datasets.content",
+    "intel.judge",
+    "intel.evaluate",
+    "intel.package",
+    "intel.data",
+    "intel.pull",
+    "intel.market",
+    "intel.weekly",
+    "intel.serve.db",
+    "intel.serve.runs",
+]
+# --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+check_untyped_defs = true
+warn_return_any = true
+extra_checks = true
+
+[[tool.mypy.overrides]]   # TYPING DEBT, sealed model code (ADR 0011): fixed together with the next real model change
+module = [
+    "intel.champions.harness_v1.features",          # vendored from the harness, pinned by hash: never edited here
+    "intel.models.content_scorer.features",
+    "intel.models.community_map.run",
+    "intel.models.creator_matcher.run",
+    "intel.models.funnel.run",
+    "intel.models.occasion_planner.run",
+    "intel.models.weakness_miner.mine",
+]
+ignore_errors = true
+
+# ---------- coverage (ADR 0010) ----------
+[tool.coverage.run]
+source = ["intel"]
+branch = true
+omit = ["src/intel/cli.py"]           # thin typer wrapper; its commands are tested through the functions they call
+
+[tool.coverage.report]
+fail_under = 76                       # the floor only moves up (2026-10-08: 76.7% branch coverage; docs/QUALITY.md)
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@abstractmethod"]

@@ -180,7 +180,7 @@ def test_posts_page_and_try_a_draft(intel, warehouse, tmp_path):
         assert "Halal kacchi Saturday" in page  # caption read live from the warehouse
         assert "Current predictor" in page and "✗ wrong" in page and "▲ above" in page
         assert "after 7d" in page and "<b>0%</b> right of 1" in page
-        c.app.state.intel["models"].loaded["content_scorer"] = Models().m
+        c.app.state.intel.models.loaded["content_scorer"] = Models().m
         form = c.get("/try")
         token = c.cookies.get("intel_csrf")
         r = c.post(

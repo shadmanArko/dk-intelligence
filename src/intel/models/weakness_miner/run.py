@@ -11,7 +11,9 @@ import hashlib
 import io
 import json
 import random
+from collections.abc import Hashable
 from pathlib import Path
+from typing import Any, cast
 
 import joblib
 import pandas as pd
@@ -90,11 +92,12 @@ def summarise(clauses: pd.DataFrame, reviews: pd.DataFrame, listings: pd.DataFra
 
     lst = listings.set_index("listing_id")
     rv = reviews.groupby("listing_id").agg(reviews=("review_id", "nunique"), rating=("rating_norm", "mean"))
-    competitors = []
+    stats: dict[Hashable, dict[Hashable, Any]] = rv.to_dict("index")
+    competitors: list[dict[str, Any]] = []
     for lid, g in ex.groupby("listing_id"):
-        if lid not in rv.index or rv.loc[lid, "reviews"] < 20:
+        if lid not in stats or stats[lid]["reviews"] < 20:
             continue
-        rows = [t for t in table(g, int(rv.loc[lid, "reviews"])) if t["mentions"] >= MIN_MENTIONS]
+        rows = [t for t in table(g, int(stats[lid]["reviews"])) if t["mentions"] >= MIN_MENTIONS]
         base = {t["aspect"]: t["negative_rate"] for t in overall}
         weak = sorted(
             (t for t in rows if t["negative_rate"] > base.get(t["aspect"], 1) + 0.10),
@@ -104,14 +107,17 @@ def summarise(clauses: pd.DataFrame, reviews: pd.DataFrame, listings: pd.DataFra
             (t for t in rows if t["negative_rate"] < base.get(t["aspect"], 0) - 0.10),
             key=lambda t: t["negative_rate"] - base[t["aspect"]],
         )[:3]
-        info = lst.loc[lid].where(lst.loc[lid].notna(), None) if lid in lst.index else {}
+        info: dict[Hashable, Any] = {}
+        if lid in lst.index:
+            rec = cast(pd.Series, lst.loc[lid])
+            info = rec.where(rec.notna(), None).to_dict()
         competitors.append(
             {
                 "listing_id": str(lid),
                 "name": info.get("name"),
                 "district": info.get("district"),
-                "reviews": int(rv.loc[lid, "reviews"]),
-                "rating": round(float(rv.loc[lid, "rating"]) * 5, 2),
+                "reviews": int(stats[lid]["reviews"]),
+                "rating": round(float(stats[lid]["rating"]) * 5, 2),
                 "biryani_items": int(info.get("biryani_items") or 0),
                 "weak": [
                     {
@@ -136,7 +142,7 @@ def summarise(clauses: pd.DataFrame, reviews: pd.DataFrame, listings: pd.DataFra
     competitors.sort(key=lambda c: -c["reviews"])
 
     ex = ex.merge(listings[["listing_id", "district"]], on="listing_id", how="left")
-    districts = []
+    districts: list[dict[str, Any]] = []
     for dname, g in ex.dropna(subset=["district"]).groupby("district"):
         nrev = g["review_id"].nunique()
         if nrev < 50:
@@ -190,11 +196,11 @@ def check_sample(clauses: pd.DataFrame, path: Path, seed: int = 7) -> list[dict]
     picked: dict[str, dict] = {}
     for a in sorted(dictionary()["aspects"]):
         rows = pool[pool["aspects"].map(lambda x, a=a: a in x)]
-        for r in rows.sample(min(SAMPLE_PER_ASPECT, len(rows)), random_state=rnd.randint(0, 10**6)).itertuples():
-            picked.setdefault(f"{r.review_id}:{r.clause_idx}", r._asdict())
+        for r in rows.sample(min(SAMPLE_PER_ASPECT, len(rows)), random_state=rnd.randint(0, 10**6)).to_dict("records"):
+            picked.setdefault(f"{r['review_id']}:{r['clause_idx']}", r)
     none = pool[pool["aspects"].str.len() == 0]
-    for r in none.sample(min(SAMPLE_NO_ASPECT, len(none)), random_state=rnd.randint(0, 10**6)).itertuples():
-        picked.setdefault(f"{r.review_id}:{r.clause_idx}", r._asdict())
+    for r in none.sample(min(SAMPLE_NO_ASPECT, len(none)), random_state=rnd.randint(0, 10**6)).to_dict("records"):
+        picked.setdefault(f"{r['review_id']}:{r['clause_idx']}", r)
     items = [{"key": k, "clause": v["clause"], "rating": v["rating"]} for k, v in picked.items()]
     rnd.shuffle(items)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -214,8 +220,8 @@ def check_metrics(clauses: pd.DataFrame, labels: list[dict]) -> dict:
         row = clauses[(clauses["review_id"].astype(str) == rid) & (clauses["clause_idx"] == int(idx))]
         if row.empty:
             continue
-        pred = analyse_text(row.iloc[0]["clause"], row.iloc[0]["rating"])
-        pred = pred[0] if pred else {"aspects": [], "polarity": "neutral"}
+        hits = analyse_text(str(row.iloc[0]["clause"]), cast(float | None, row.iloc[0]["rating"]))
+        pred: dict[str, Any] = hits[0] if hits else {"aspects": [], "polarity": "neutral"}
         p, t = set(pred["aspects"]), set(lab.get("aspects", []))
         tp, fp, fn = tp + len(p & t), fp + len(p - t), fn + len(t - p)
         if lab.get("polarity"):

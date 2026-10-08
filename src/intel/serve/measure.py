@@ -30,7 +30,7 @@ from sklearn.metrics import balanced_accuracy_score
 
 from intel.datasets.content import REACH_MIN_PRIOR, REACH_WINDOW
 from intel.models.content_scorer.predict import predict as cs_predict
-from intel.serve.db import connect
+from intel.serve.db import connect, one
 
 log = logging.getLogger("intel.measure")
 HORIZONS = {"24h": dt.timedelta(hours=24), "72h": dt.timedelta(hours=72), "7d": dt.timedelta(days=7)}
@@ -326,12 +326,14 @@ def live_summary(intel_dsn: str, horizon: str = "7d") -> dict:
                where p.source = 'shadow'""",
             (horizon,),
         ).fetchall()
-        counts = c.execute(
-            """select (select count(*) from ledger_post) as posts,
+        counts = one(
+            c.execute(
+                """select (select count(*) from ledger_post) as posts,
                       (select count(*) from prediction where source='shadow') as shadow_predictions,
                       (select count(*) from prediction where source='api') as api_predictions,
                       (select count(*) from post_outcome) as outcomes"""
-        ).fetchone()
+            )
+        )
     out = {"horizon": horizon, **counts, "models": {}, "reach": {}}
     df = pd.DataFrame(rows, columns=["model_name", "model_version", "predicted_label", "label", "label_reach"])
 
@@ -347,7 +349,8 @@ def live_summary(intel_dsn: str, horizon: str = "7d") -> dict:
             "balanced_accuracy": round(float(balanced_accuracy_score(y, yhat)), 4) if y.nunique() == 2 else None,
         }
 
-    for name, g in df.groupby("model_name"):
+    for key, g in df.groupby("model_name"):
+        name = str(key)
         if (a := acc(g, MODEL_LABEL.get(name, "label"))) is not None:
             out["models"][name] = a
         if (r := acc(g, "label_reach")) is not None:

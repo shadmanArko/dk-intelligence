@@ -98,4 +98,3 @@ crontab -l | tail -3
 | Database shell | `docker compose exec intel-db psql -U intel intel` |
 | Roll back a model | Telegram `/rollback`, or the button on the page |
 | Live ledger | `curl -s 127.0.0.1:8710/v1/ledger/summary` · Telegram `/status` |
-

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 from sklearn.metrics import balanced_accuracy_score
 
 
-def paired_gain_ci(y, champ_pred, chall_pred, n: int = 2000, seed: int = 0) -> tuple[float, float]:
+def paired_gain_ci(
+    y: ArrayLike, champ_pred: ArrayLike, chall_pred: ArrayLike, n: int = 2000, seed: int = 0
+) -> tuple[float, float]:
     """95% bootstrap interval of (challenger - champion) balanced accuracy on the SAME resampled posts."""
     y, a, b = (np.asarray(v) for v in (y, champ_pred, chall_pred))
     rng = np.random.default_rng(seed)
@@ -20,14 +25,14 @@ def paired_gain_ci(y, champ_pred, chall_pred, n: int = 2000, seed: int = 0) -> t
     return round(float(lo), 4), round(float(hi), 4)
 
 
-def gate(name: str, ok: bool | None, detail: str) -> dict:
+def gate(name: str, ok: bool | None, detail: str) -> dict[str, Any]:
     return {"gate": name, "status": "pass" if ok else ("pending" if ok is None else "fail"), "detail": detail}
 
 
 def judge(
-    champ: dict,
-    chall: dict,
-    g: dict,
+    champ: dict[str, Any],
+    chall: dict[str, Any],
+    g: dict[str, Any],
     *,
     data_ok: tuple[bool, str],
     leakage_ok: tuple[bool, str],
@@ -35,7 +40,7 @@ def judge(
     size_mb: float,
     latency_ms: float,
     gain_ci: tuple[float, float],
-) -> dict:
+) -> dict[str, Any]:
     gain = round(chall["balanced_accuracy"] - champ["balanced_accuracy"], 4)
     drops = {
         p: round(champ["per_platform"][p]["balanced_accuracy"] - v["balanced_accuracy"], 4)
@@ -80,8 +85,8 @@ def judge(
 
 def live_gate(
     test: pd.DataFrame,
-    chall_pred,
-    ledger_rows: list[dict] | None,
+    chall_pred: ArrayLike,
+    ledger_rows: list[dict[str, Any]] | None,
     min_posts: int,
     model_name: str = "content_scorer",
     label_key: str = "label",
@@ -99,7 +104,7 @@ def live_gate(
         if r.get("model_name") == model_name and o.get(label_key) is not None:
             logged[str(r["post_id"])] = (int(r["predicted_label"]), int(o[label_key]))
     ids = test["id"].astype(str).tolist()
-    pairs = [(int(p), *logged[i]) for i, p in zip(ids, chall_pred, strict=True) if i in logged]
+    pairs = [(int(p), *logged[i]) for i, p in zip(ids, np.asarray(chall_pred).tolist(), strict=True) if i in logged]
     n = len(pairs)
     if n < min_posts:
         return None, f"{n} test posts have live 7-day results (need {min_posts})"

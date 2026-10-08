@@ -15,8 +15,9 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -64,7 +65,8 @@ class Models:
     """Active bundles in memory; reloaded when the active package of a name changes."""
 
     def __init__(self, registry: Registry):
-        self.reg, self._lock, self.loaded = registry, threading.Lock(), {}
+        self.reg, self._lock = registry, threading.Lock()
+        self.loaded: dict[str, dict[str, Any]] = {}
 
     def refresh(self) -> None:
         active = self.reg.active()
@@ -86,6 +88,20 @@ class Models:
             return sorted(n for n, m in self.loaded.items() if m["bundle"].get("kind", "scorer") == kind)
 
 
+@dataclass
+class AppState:
+    """Everything the routes and background workers share. Built once in create_app; workers start in lifespan."""
+
+    settings: Settings
+    dsn: str
+    registry: Registry
+    models: Models
+    telegram: Telegram | None = None
+    started_at: dt.datetime | None = None
+    last_inbox_scan: dt.datetime | None = None
+    last_measure: dict[str, Any] | None = None
+
+
 # ---------- background workers ----------
 
 
@@ -101,6 +117,8 @@ def notify_intake(bot_tg: Telegram | None, reg: Registry, public_url: str | None
                 )
             elif it.approval_id:
                 a = reg.approval(it.approval_id)
+                if a is None:
+                    continue
                 mid = bot_tg.send(
                     approval_text(a["metadata"], it.approval_id, public_url), approval_buttons(it.approval_id)
                 )
@@ -115,68 +133,76 @@ def notify_intake(bot_tg: Telegram | None, reg: Registry, public_url: str | None
             log.exception("telegram notify failed")
 
 
-def inbox_loop(state: dict, stop: threading.Event) -> None:
-    s: Settings = state["settings"]
+def inbox_loop(state: AppState, stop: threading.Event) -> None:
+    s: Settings = state.settings
     while not stop.is_set():
         try:
-            scan_status(s.intel_db_dsn, s.intel_inbox_dir)
-            reports = scan_run_reports(s.intel_db_dsn, s.intel_inbox_dir)  # before packages: summary first
+            scan_status(state.dsn, s.intel_inbox_dir)
+            reports = scan_run_reports(state.dsn, s.intel_inbox_dir)  # before packages: summary first
             for rep in reports:
-                if state.get("telegram"):
-                    state["telegram"].send(run_message(rep))
-            intakes = state["registry"].scan_inbox()
-            notify_intake(state.get("telegram"), state["registry"], s.intel_public_url, intakes)
-            for row in state["registry"].expire_due():
-                if state.get("telegram") and row["telegram_message_id"]:
-                    state["telegram"].edit(
+                if state.telegram:
+                    state.telegram.send(run_message(rep))
+            intakes = state.registry.scan_inbox()
+            notify_intake(state.telegram, state.registry, s.intel_public_url, intakes)
+            for row in state.registry.expire_due():
+                if state.telegram and row["telegram_message_id"]:
+                    state.telegram.edit(
                         row["telegram_message_id"], "⌛ Expired without a decision. The current model keeps running."
                     )
-            state["models"].refresh()
-            state["last_inbox_scan"] = dt.datetime.now(dt.UTC)
+            state.models.refresh()
+            state.last_inbox_scan = dt.datetime.now(dt.UTC)
         except Exception:
             log.exception("inbox loop error")
         stop.wait(s.intel_inbox_interval_s)
 
 
-def telegram_loop(state: dict, stop: threading.Event) -> None:
-    s: Settings = state["settings"]
-    bot = Bot(state["telegram"], state["registry"], s.intel_public_url, on_change=state["models"].refresh)
-    offset = kv_get(s.intel_db_dsn, "telegram_offset")
+def telegram_loop(state: AppState, stop: threading.Event) -> None:
+    s: Settings = state.settings
+    tg = state.telegram
+    if tg is None:
+        return
+    bot = Bot(tg, state.registry, s.intel_public_url, on_change=state.models.refresh)
+    offset = kv_get(state.dsn, "telegram_offset")
     while not stop.is_set():
         try:
-            for u in state["telegram"].updates(offset, timeout=25):
+            for u in tg.updates(offset, timeout=25):
                 offset = u["update_id"] + 1
-                kv_set(s.intel_db_dsn, "telegram_offset", offset)  # before handling: never replay an action
+                kv_set(state.dsn, "telegram_offset", offset)  # before handling: never replay an action
                 bot.handle(u)
         except Exception:
             log.exception("telegram loop error")
             stop.wait(10)
 
 
-def measure_loop(state: dict, stop: threading.Event) -> None:
-    s: Settings = state["settings"]
-    m = Measurer(s.intel_db_dsn, s.intel_warehouse_dsn, s.intel_ledger_start, state["models"], s.harness_predictor_url)
+def measure_loop(state: AppState, stop: threading.Event) -> None:
+    s: Settings = state.settings
+    if not s.intel_warehouse_dsn:
+        return
+    m = Measurer(state.dsn, s.intel_warehouse_dsn, s.intel_ledger_start, state.models, s.harness_predictor_url)
     stop.wait(20)  # let the inbox loop load the active model first
     while not stop.is_set():
         try:
             r = m.run_once()
-            state["last_measure"] = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
+            state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
             if r.new_posts or r.outcomes or r.errors:
-                log_event(s.intel_db_dsn, "measure_run", **r.__dict__)
+                log_event(state.dsn, "measure_run", **r.__dict__)
         except Exception:
             log.exception("measure loop error")
-            state["last_measure"] = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "failed": True}
+            state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "failed": True}
         stop.wait(s.intel_measure_interval_s)
 
 
-def report_loop(state: dict, stop: threading.Event) -> None:
-    s: Settings = state["settings"]
+def report_loop(state: AppState, stop: threading.Event) -> None:
+    s: Settings = state.settings
+    tg = state.telegram
+    if tg is None:
+        return
     while not stop.is_set():
         try:
-            op = state["models"].get("occasion_planner")
+            op = state.models.get("occasion_planner")
             report_tick(
-                s.intel_db_dsn,
-                state["telegram"],
+                state.dsn,
+                tg,
                 s.intel_public_url,
                 coming_up=coming_up_lines(op["bundle"]) if op else None,
             )
@@ -190,15 +216,16 @@ def report_loop(state: dict, stop: threading.Event) -> None:
 
 def create_app(settings: Settings | None = None, start_workers: bool = True) -> FastAPI:
     s = settings or get_settings()
-    state: dict = {"settings": s}
+    if not s.intel_db_dsn:
+        raise RuntimeError("INTEL_DB_DSN is not set")
+    registry = Registry(s.intel_db_dsn, s.intel_inbox_dir, s.intel_store_dir, s.intel_approval_days)
+    state = AppState(settings=s, dsn=s.intel_db_dsn, registry=registry, models=Models(registry))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if not s.intel_db_dsn:
-            raise RuntimeError("INTEL_DB_DSN is not set")
         for attempt in range(30):  # the database container may still be starting
             try:
-                applied = migrate(s.intel_db_dsn)
+                applied = migrate(state.dsn)
                 break
             except Exception:
                 if attempt == 29:
@@ -207,25 +234,23 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         if applied:
             log.info("migrations applied: %s", applied)
         s.intel_store_dir.mkdir(parents=True, exist_ok=True)
-        state["registry"] = Registry(s.intel_db_dsn, s.intel_inbox_dir, s.intel_store_dir, s.intel_approval_days)
-        state["models"] = Models(state["registry"])
-        state["models"].refresh()
+        state.models.refresh()
         if s.telegram_bot_token and s.telegram_chat_id:
-            state["telegram"] = Telegram(s.telegram_bot_token, s.telegram_chat_id)
+            state.telegram = Telegram(s.telegram_bot_token, s.telegram_chat_id)
         stop = threading.Event()
         threads = []
         if start_workers:
             threads.append(threading.Thread(target=inbox_loop, args=(state, stop), daemon=True, name="inbox"))
             if s.intel_warehouse_dsn:
                 threads.append(threading.Thread(target=measure_loop, args=(state, stop), daemon=True, name="measure"))
-            if state.get("telegram"):
+            if state.telegram:
                 threads.append(threading.Thread(target=report_loop, args=(state, stop), daemon=True, name="reports"))
-            if state.get("telegram") and s.telegram_polling:
+            if state.telegram and s.telegram_polling:
                 threads.append(threading.Thread(target=telegram_loop, args=(state, stop), daemon=True, name="telegram"))
             for t in threads:
                 t.start()
-        log_event(s.intel_db_dsn, "api_started", workers=[t.name for t in threads])
-        state["started_at"] = dt.datetime.now(dt.UTC)
+        log_event(state.dsn, "api_started", workers=[t.name for t in threads])
+        state.started_at = dt.datetime.now(dt.UTC)
         app.state.intel = state
         yield
         stop.set()
@@ -239,17 +264,17 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/ready")
     def ready():
-        with connect(s.intel_db_dsn) as c:
+        with connect(state.dsn) as c:
             c.execute("select 1")
         return {
             "status": "ready",
             "version": s.intel_git_sha,
-            "models": {n: m["version"] for n, m in state["models"].loaded.items()},
+            "models": {n: m["version"] for n, m in state.models.loaded.items()},
         }
 
     # ----- scoring: same contract as the harness predictor -----
     def _score(body: PredictRequest) -> dict:
-        m = state["models"].get("content_scorer")
+        m = state.models.get("content_scorer")
         if m is None:
             raise HTTPException(503, "no approved content_scorer model is active yet")
         if body.planned_posted_at.tzinfo is None:
@@ -270,7 +295,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     def predict(body: PredictRequest):
         r = _score(body)
         try:
-            log_api_prediction(s.intel_db_dsn, body, r)
+            log_api_prediction(state.dsn, body, r)
         except Exception:
             log.exception("could not log api prediction")
         return {
@@ -292,7 +317,8 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
                 }
             ]
         )
-        return {n: cs_predict(state["models"].get(n)["bundle"], row)[0] for n in state["models"].names()}
+        active = {n: state.models.get(n) for n in state.models.names()}
+        return {n: cs_predict(m["bundle"], row)[0] for n, m in active.items() if m is not None}
 
     @app.post("/v1/score")
     def score(body: PredictRequest):
@@ -304,12 +330,12 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     # ----- ledger (read-only; tailnet) -----
     @app.get("/v1/ledger/summary")
     def ledger_summary(horizon: Literal["24h", "72h", "7d"] = "7d"):
-        return {**live_summary(s.intel_db_dsn, horizon), "last_measure": state.get("last_measure")}
+        return {**live_summary(state.dsn, horizon), "last_measure": state.last_measure}
 
     @app.get("/v1/ledger/export")
     def ledger_export():
         """Every shadow prediction with its outcomes (no captions), for the Sunday training run on the Mac."""
-        with connect(s.intel_db_dsn) as c:
+        with connect(state.dsn) as c:
             rows = c.execute(
                 """select p.post_id, p.platform, p.planned_at, p.model_name, p.model_version, p.probability,
                           p.threshold, p.predicted_label, p.created_at,
@@ -350,20 +376,18 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/posts", response_class=HTMLResponse)
     def posts_page(request: Request):
-        summaries = {h: live_summary(s.intel_db_dsn, h) for h in ("24h", "72h", "7d")}
-        return _page(request, "Posts", posts_html(ledger_rows(s.intel_db_dsn, s.intel_warehouse_dsn), summaries))
+        summaries = {h: live_summary(state.dsn, h) for h in ("24h", "72h", "7d")}
+        return _page(request, "Posts", posts_html(ledger_rows(state.dsn, s.intel_warehouse_dsn), summaries))
 
     @app.get("/training", response_class=HTMLResponse)
     def training_page(request: Request):
-        deployed = {"sha": s.intel_git_sha, "started_at": state.get("started_at")}
+        deployed = {"sha": s.intel_git_sha, "started_at": state.started_at}
         diagram = (
             '<link rel=stylesheet href="/static/pipeline.css"><div id=pipeline class=pl-wrap '
             'data-def="/api/pipeline" data-state="/api/training-state"></div>'
             '<script src="/static/pipeline.js"></script>'
         )
-        return _page(
-            request, "Training", diagram + training_html(training_overview(s.intel_db_dsn), deployed), scripts=True
-        )
+        return _page(request, "Training", diagram + training_html(training_overview(state.dsn), deployed), scripts=True)
 
     @app.get("/static/{name}")
     def static_asset(name: str):
@@ -382,7 +406,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/api/training-state")
     def api_training_state():
-        o = training_overview(s.intel_db_dsn)
+        o = training_overview(state.dsn)
         p = o["progress"]
         return {
             "progress": p,
@@ -403,10 +427,10 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/insights", response_class=HTMLResponse)
     def insights_page(request: Request):
-        cm, wm = state["models"].get("community_map"), state["models"].get("weakness_miner")
-        op = state["models"].get("occasion_planner")
-        fn = state["models"].get("funnel")
-        crm = state["models"].get("creator_matcher")
+        cm, wm = state.models.get("community_map"), state.models.get("weakness_miner")
+        op = state.models.get("occasion_planner")
+        fn = state.models.get("funnel")
+        crm = state.models.get("creator_matcher")
         sections = [
             planner_html(op["bundle"] if op else None),
             community_html(cm["bundle"] if cm else None),
@@ -434,8 +458,8 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         form = {"platform": platform, "content_type": content_type, "when": when, "caption": caption}
         try:
             planned = dt.datetime.fromisoformat(when).replace(tzinfo=BERLIN)
-            body = PredictRequest(
-                platform=platform, content_type=content_type, caption=caption, planned_posted_at=planned
+            body = PredictRequest.model_validate(  # validated like an API call (ValidationError is a ValueError)
+                {"platform": platform, "content_type": content_type, "caption": caption, "planned_posted_at": planned}
             )
         except ValueError as e:
             return _page(request, "Try a draft", try_form_html(form=form, error=f"Please check the inputs: {e}"))
@@ -444,14 +468,14 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         except HTTPException as e:
             return _page(request, "Try a draft", try_form_html(form=form, error=str(e.detail)))
         try:
-            log_api_prediction(s.intel_db_dsn, body, result)
+            log_api_prediction(state.dsn, body, result)
         except Exception:
             log.exception("could not log api prediction")
         return _page(request, "Try a draft", try_form_html(result=result, form=form))
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        reg = state["registry"]
+        reg = state.registry
         act, pend = reg.active(), reg.pending()
         rows = (
             "".join(
@@ -469,7 +493,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             f"<td>{p['received_at']:%Y-%m-%d %H:%M}</td><td>{H(p['decided_by'] or '')} {H(p['reason_code'] or '')}</td></tr>"
             for p in reg.packages()
         )
-        scan = state.get("last_inbox_scan")
+        scan = state.last_inbox_scan
         return _page(
             request,
             "DK Intelligence",
@@ -509,20 +533,20 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
 
     @app.get("/approvals/{approval_id}", response_class=HTMLResponse)
     def approval_page(approval_id: int, request: Request):
-        a = state["registry"].approval(approval_id)
+        a = state.registry.approval(approval_id)
         if a is None:
             raise HTTPException(404)
         return RedirectResponse(f"/packages/{a['package_id']}", status_code=303)
 
     @app.get("/packages/{package_id}", response_class=HTMLResponse)
     def package_page(package_id: int, request: Request):
-        p = state["registry"].package(package_id)
+        p = state.registry.package(package_id)
         if p is None:
             raise HTTPException(404)
         card = ""
         if p["store_path"]:
             try:
-                card = (state["settings"].intel_store_dir / p["name"] / p["version"] / "model_card.md").read_text()
+                card = (state.settings.intel_store_dir / p["name"] / p["version"] / "model_card.md").read_text()
             except OSError:
                 card = ""
         problems = "".join(f"<li>{H(x)}</li>" for x in p["problems"])
@@ -543,14 +567,14 @@ verdict {H(p["verdict"])} · file <code>{H(p["file_name"])}</code></p>
             fn()
         except RegistryError as e:
             raise HTTPException(409, str(e)) from e
-        state["models"].refresh()
+        state.models.refresh()
         return RedirectResponse("/", status_code=303)
 
     @app.post("/approvals/{approval_id}/approve")
     def web_approve(approval_id: int, request: Request, csrf: str = Form("")):
         _csrf(request, csrf)
         who = _who(request)
-        resp = _decide(lambda: state["registry"].approve(approval_id, who, "web"), request)
+        resp = _decide(lambda: state.registry.approve(approval_id, who, "web"), request)
         _sync_telegram(approval_id, "✅ <b>Approved on the web page</b>. Undo any time with /rollback.")
         return resp
 
@@ -558,7 +582,7 @@ verdict {H(p["verdict"])} · file <code>{H(p["file_name"])}</code></p>
     def web_reject(approval_id: int, request: Request, csrf: str = Form(""), reason: str = Form("other")):
         _csrf(request, csrf)
         who = _who(request)
-        resp = _decide(lambda: state["registry"].reject(approval_id, who, "web", reason), request)
+        resp = _decide(lambda: state.registry.reject(approval_id, who, "web", reason), request)
         _sync_telegram(approval_id, f"❌ <b>Rejected on the web page</b> ({H(REASON_CODES.get(reason, reason))}).")
         return resp
 
@@ -566,10 +590,10 @@ verdict {H(p["verdict"])} · file <code>{H(p["file_name"])}</code></p>
     def web_rollback(name: str, request: Request, csrf: str = Form("")):
         _csrf(request, csrf)
         who = _who(request)
-        return _decide(lambda: state["registry"].rollback(name, who, "web"), request)
+        return _decide(lambda: state.registry.rollback(name, who, "web"), request)
 
     def _sync_telegram(approval_id: int, text: str) -> None:
-        tg, a = state.get("telegram"), state["registry"].approval(approval_id)
+        tg, a = state.telegram, state.registry.approval(approval_id)
         if tg and a and a["telegram_message_id"]:
             tg.edit(a["telegram_message_id"], text)
 

@@ -3,14 +3,20 @@
 - the Control Room on the Mac and the Training page on the VPS (the diagram),
 - Telegram /training.
 
-To add something later (a new model, data source or step): add a STEP (if the Sunday run executes it) and a NODE
-(where it sits in the diagram, what it does) plus its EDGES. Nothing else needs to change for it to be shown.
+A new MODEL needs nothing here: its plug-in (`intel.models.<name>.plugin`) brings its step, box and arrows, and
+they are placed between the ledger download and the judge. To add a non-model step (a data source, a stage of the
+run): add a CORE step / node / edges below.
 """
 
 from __future__ import annotations
 
-# Steps the Sunday run executes, in order. key -> (label, what it does)
-STEPS: dict[str, tuple[str, str]] = {
+from collections.abc import Sequence
+from typing import Any
+
+from intel.plugins import ModelPlugin, discover
+
+# Core steps the Sunday run executes. key -> (label, what it does). Model steps go between "ledger" and "judge".
+CORE_STEPS: dict[str, tuple[str, str]] = {
     "wait": (
         "Wait for the data refresh",
         "The market data platform refreshes every Sunday at 01:00 on this Mac (Wolt, Lieferando, Reddit, YouTube, "
@@ -31,43 +37,6 @@ STEPS: dict[str, tuple[str, str]] = {
         "Download the live ledger",
         "Fetches from the VPS what each model predicted for every real post BEFORE its results existed, plus "
         "the real results after 24h / 72h / 7 days. Used to check new models against reality.",
-    ),
-    "train": (
-        "Train candidate models",
-        "Two questions, one model each: content_scorer (more likes + comments + shares than usual?) and reach_scorer "
-        "(more people reached than our last 20 posts?). Features use only what is known before posting; several "
-        "candidates per question are trained on all posts except the newest 20% and chosen by time-ordered "
-        "cross-validation.",
-    ),
-    "mine": (
-        "Mine competitor reviews",
-        "Reads ~13.7k Lieferando reviews of the Berlin places that sell biryani, splits them into clauses and finds "
-        "14 topics (delivery time, rice, meat, portion, wrong items, ...) with praise or complaint, per competitor "
-        "and district. Every decision is a readable dictionary phrase; your 200-sentence check measures accuracy.",
-    ),
-    "community": (
-        "Community map",
-        "Scores all 542 Berlin planning areas: residents of South Asian origin, meat-and-rice food cultures, "
-        "international food explorers and young small households (public statistics), times a reach factor for the "
-        "delivery bands from Leopoldplatz. Flags gaps: big audience, no biryani seller. Chooses AREAS, never people.",
-    ),
-    "occasions": (
-        "Occasion planner",
-        "The next 30 days: which occasions matter to which Berlin audience (food role x people who celebrate it), when "
-        "to start posting, greetings and rice-dish bridges, Berlin events for pop-ups, and the weekdays / times when "
-        "our own posts reached most people. Content rules applied and checked automatically (no blocked words).",
-    ),
-    "funnel": (
-        "Funnel and attribution",
-        "From the website analytics: where visits come from (Facebook, Instagram, WhatsApp, Google, unknown), how far "
-        "they get (menu, cart, checkout, order) and what stops them at checkout; orders matched to visits; visits "
-        "after each post (an estimate until every post carries a tracked link). Only counts leave this step.",
-    ),
-    "creators": (
-        "Creator matcher",
-        "Ranks Berlin food creators on TikTok (865 accounts with Berlin posts; restaurants and brands set aside): "
-        "Berlin focus, topic fit (rice dishes, biryani, South Asian / Middle Eastern food, halal, street food), "
-        "engagement per view and activity, preferring nano and micro creators. A shortlist for collaborations.",
     ),
     "judge": (
         "Judge against the current model",
@@ -93,7 +62,7 @@ STEPS: dict[str, tuple[str, str]] = {
 
 # Diagram. lane: source | mac | vps. col/row: grid position. step: which run step drives its colour (None = a
 # service that is always there).
-NODES: list[dict] = [
+CORE_NODES: list[dict[str, Any]] = [
     {
         "id": "mip",
         "label": "Market data platform",
@@ -128,44 +97,6 @@ NODES: list[dict] = [
     {"id": "market", "label": "Market snapshot", "lane": "mac", "col": 1, "row": 0, "step": "market"},
     {"id": "pull", "label": "Warehouse pull", "lane": "mac", "col": 1, "row": 1, "step": "pull"},
     {"id": "ledger", "label": "Ledger download", "lane": "mac", "col": 1, "row": 2, "step": "ledger"},
-    {"id": "train", "label": "Train candidates", "lane": "mac", "col": 2, "row": 1, "step": "train"},
-    {
-        "id": "mine",
-        "label": "Review miner",
-        "sub": "competitor weaknesses",
-        "lane": "mac",
-        "col": 2,
-        "row": 0,
-        "step": "mine",
-    },
-    {
-        "id": "community",
-        "label": "Community map",
-        "sub": "542 Berlin areas",
-        "lane": "mac",
-        "col": 3,
-        "row": 0,
-        "step": "community",
-    },
-    {
-        "id": "occasions",
-        "label": "Occasion planner",
-        "sub": "next 30 days",
-        "lane": "mac",
-        "col": 4,
-        "row": 0,
-        "step": "occasions",
-    },
-    {"id": "funnel", "label": "Funnel", "sub": "visits → orders", "lane": "mac", "col": 2, "row": 2, "step": "funnel"},
-    {
-        "id": "creators",
-        "label": "Creator matcher",
-        "sub": "Berlin food creators",
-        "lane": "mac",
-        "col": 3,
-        "row": 2,
-        "step": "creators",
-    },
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
@@ -193,24 +124,10 @@ NODES: list[dict] = [
         "results: this is the live ledger the next training uses.",
     },
 ]
-EDGES: list[tuple[str, str]] = [
+CORE_EDGES: list[tuple[str, str]] = [
     ("mip", "market"),
     ("warehouse", "pull"),
     ("ledger_src", "ledger"),
-    ("market", "train"),
-    ("pull", "train"),
-    ("ledger", "train"),
-    ("train", "judge"),
-    ("market", "mine"),
-    ("mine", "judge"),
-    ("market", "community"),
-    ("community", "judge"),
-    ("market", "occasions"),
-    ("occasions", "judge"),
-    ("pull", "funnel"),
-    ("funnel", "judge"),
-    ("market", "creators"),
-    ("creators", "judge"),
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),
@@ -221,16 +138,46 @@ EDGES: list[tuple[str, str]] = [
 LANES = {"source": "Data sources", "mac": "Your Mac: weekly training", "vps": "VPS: approval and serving (24/7)"}
 
 
-def definition() -> dict:
-    nodes = []
-    for n in NODES:
+def steps(plugins: Sequence[ModelPlugin] | None = None) -> dict[str, tuple[str, str]]:
+    """All steps of the Sunday run in order: core steps with the model plug-ins' steps before the judge."""
+    ps = discover() if plugins is None else plugins
+    keys = list(CORE_STEPS)
+    at = keys.index("judge")
+    ordered = keys[:at] + [p.step for p in ps] + keys[at:]
+    own = {p.step: (p.label, p.desc) for p in ps}
+    return {k: own.get(k) or CORE_STEPS[k] for k in ordered}
+
+
+def nodes(plugins: Sequence[ModelPlugin] | None = None) -> list[dict[str, Any]]:
+    ps = discover() if plugins is None else plugins
+    boxes = [
+        {"id": p.step, "label": p.box.label, "lane": "mac", "col": p.box.col, "row": p.box.row, "step": p.step}
+        | ({"sub": p.box.sub} if p.box.sub else {})
+        for p in ps
+    ]
+    return CORE_NODES + boxes
+
+
+def edges(plugins: Sequence[ModelPlugin] | None = None) -> list[tuple[str, str]]:
+    ps = discover() if plugins is None else plugins
+    return CORE_EDGES + [(i, p.step) for p in ps for i in p.inputs] + [(p.step, "judge") for p in ps]
+
+
+STEPS = steps()
+NODES = nodes()
+EDGES = edges()
+
+
+def definition(plugins: Sequence[ModelPlugin] | None = None) -> dict[str, Any]:
+    st, ns = steps(plugins), []
+    for n in nodes(plugins):
         n = dict(n)
         if n.get("step") and "desc" not in n:
-            n["desc"] = STEPS[n["step"]][1]
-        nodes.append(n)
+            n["desc"] = st[n["step"]][1]
+        ns.append(n)
     return {
-        "steps": [{"key": k, "label": v[0], "desc": v[1]} for k, v in STEPS.items()],
-        "nodes": nodes,
-        "edges": EDGES,
+        "steps": [{"key": k, "label": v[0], "desc": v[1]} for k, v in st.items()],
+        "nodes": ns,
+        "edges": edges(plugins),
         "lanes": LANES,
     }

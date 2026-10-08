@@ -1,6 +1,6 @@
 # dk-intelligence — Phase 3 plan: a production-grade MLOps platform
 
-Status: DRAFT for owner approval · 2026-10-08 · MCP + RAG move to Phase 4
+Status: APPROVED 2026-10-08 · MCP + RAG move to Phase 4 · H0 done ([results](results/P3_H0_foundation.md))
 
 ## 1. Goal
 
@@ -242,7 +242,7 @@ next safer.
 
 | # | Milestone | Sessions | Depends on |
 |---|---|---|---|
-| H0 | Engineering foundation | 2 | — |
+| H0 ✅ | Engineering foundation | 2 | — |
 | H1 | CI/CD + supply chain | 2 | H0 |
 | H3 | Observability + SLOs | 2 | H1 (deploy by digest) |
 | H2 | Data quality for ML | 1 | H0 |

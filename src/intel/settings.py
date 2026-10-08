@@ -57,6 +57,17 @@ class Settings(BaseSettings):
         return urlsplit(self.dk_warehouse_dsn).port or 5432
 
 
+class MissingSetting(RuntimeError):
+    pass
+
+
+def required[T](value: T | None, env: str) -> T:
+    """A setting this code path cannot run without: fail with the variable's name instead of a None error later."""
+    if value is None or value == "":
+        raise MissingSetting(f"{env} is not set (see .env.example)")
+    return value
+
+
 def redact(dsn: str | None) -> str:
     """postgresql://user:secret@host:5435/db -> postgresql://user:***@host:5435/db"""
     if not dsn:

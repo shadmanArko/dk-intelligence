@@ -8,6 +8,7 @@ model wins (logreg < tree; fewer features < more).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -165,7 +166,7 @@ def train(X: pd.DataFrame, y: pd.Series, log=lambda **_: None) -> Trained:
         board.append(row)
         log(candidate=cand["name"], params=cand["params"], cv_balanced_accuracy=ba)
     # best config per model name, then the simplest within TIE of the best
-    top_per = {}
+    top_per: dict[str, dict[str, Any]] = {}
     for r in board:
         if r["name"] not in top_per or r["cv_balanced_accuracy@0.5"] > top_per[r["name"]]["cv_balanced_accuracy@0.5"]:
             top_per[r["name"]] = r

@@ -15,14 +15,15 @@ import json
 import subprocess
 import time
 import traceback
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import httpx
 
-from intel.pipeline import STEPS as PIPELINE_STEPS
-from intel.settings import Settings
-
-STEPS = tuple(PIPELINE_STEPS)
+from intel.pipeline import steps as pipeline_steps
+from intel.plugins import ModelPlugin, RunContext, discover
+from intel.settings import Settings, required
 
 
 class StepFailed(RuntimeError):
@@ -38,7 +39,7 @@ def mip_refresh_running() -> bool:
     return r.returncode == 0
 
 
-def wait_for_mip(max_wait_s: int, log, poll_s: int = 300) -> int:
+def wait_for_mip(max_wait_s: int, log: Callable[[str], None], poll_s: int = 300) -> int:
     waited = 0
     while mip_refresh_running():
         if waited >= max_wait_s:
@@ -50,7 +51,7 @@ def wait_for_mip(max_wait_s: int, log, poll_s: int = 300) -> int:
     return waited
 
 
-def fetch_ledger(api_url: str, out_dir: Path, client: httpx.Client | None = None) -> tuple[list[dict], Path]:
+def fetch_ledger(api_url: str, out_dir: Path, client: httpx.Client | None = None) -> tuple[list[dict[str, Any]], Path]:
     http = client or httpx.Client(timeout=60)
     r = http.get(f"{api_url.rstrip('/')}/v1/ledger/export")
     r.raise_for_status()
@@ -63,13 +64,6 @@ def fetch_ledger(api_url: str, out_dir: Path, client: httpx.Client | None = None
     return rows, path
 
 
-def _scores(t: dict | None) -> dict | None:
-    if not t:
-        return None
-    return {k: t.get(k) for k in ("balanced_accuracy", "roc_auc", "brier", "n")}
-
-
-STEP_LABELS = {k: v[0] for k, v in PIPELINE_STEPS.items()}
 RETRY_AFTER = dt.timedelta(hours=6)
 
 
@@ -77,11 +71,18 @@ class Progress:
     """Step-by-step state of the current run: written to data/weekly/current.json and (best effort) uploaded as
     weekly-<run_id>.status.json so the VPS Training page and Telegram /training can show it live."""
 
-    def __init__(self, run_id: str, out_dir: Path, uploader=None):
-        self.path, self.uploader, self.upload_error = out_dir / "current.json", uploader, None
+    def __init__(
+        self,
+        run_id: str,
+        out_dir: Path,
+        uploader: Callable[[Path], None] | None = None,
+        steps: dict[str, tuple[str, str]] | None = None,
+    ):
+        self.path, self.uploader = out_dir / "current.json", uploader
+        self.upload_error: str | None = None
         self.remote = out_dir / f"weekly-{run_id}.status.json"
         now = _now()
-        self.state = {
+        self.state: dict[str, Any] = {
             "kind": "weekly_status",
             "run_id": run_id,
             "state": "running",
@@ -89,7 +90,7 @@ class Progress:
             "updated_at": now,
             "seq": 0,
             "current_step": None,
-            "steps": {k: {"label": v, "status": "pending"} for k, v in STEP_LABELS.items()},
+            "steps": {k: {"label": v[0], "status": "pending"} for k, v in (steps or pipeline_steps()).items()},
         }
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +111,7 @@ class Progress:
         self.state["current_step"] = step
         self._save()
 
-    def done(self, step: str, note: str | None = None, details: dict | None = None) -> None:
+    def done(self, step: str, note: str | None = None, details: dict[str, Any] | None = None) -> None:
         self.state["steps"][step].update(status="done", finished_at=_now(), note=note, details=details or {})
         self._save()
 
@@ -144,7 +145,7 @@ def last_sunday_noon(now: dt.datetime) -> dt.datetime:
     return anchor.astimezone(dt.UTC)
 
 
-def run_history(weekly_dir: Path) -> list[dict]:
+def run_history(weekly_dir: Path) -> list[dict[str, Any]]:
     out = []
     for f in sorted(weekly_dir.glob("weekly-*.run.json")):
         try:
@@ -177,7 +178,7 @@ class Lock:
     def __init__(self, weekly_dir: Path):
         self.dir = weekly_dir / ".lock"
 
-    def __enter__(self):
+    def __enter__(self) -> Lock:
         import os
 
         self.dir.parent.mkdir(parents=True, exist_ok=True)
@@ -193,28 +194,41 @@ class Lock:
         (self.dir / "pid").write_text(str(os.getpid()))
         return self
 
-    def __exit__(self, *exc):
+    def __exit__(self, *exc: object) -> None:
         import shutil
 
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
-def run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, log=print) -> dict:
+def run_weekly(
+    s: Settings,
+    *,
+    upload: bool = True,
+    wait_max_s: int = 8 * 3600,
+    log: Callable[[str], None] = print,
+    plugins: Sequence[ModelPlugin] | None = None,
+) -> dict[str, Any]:
     with Lock(s.intel_data_dir / "weekly"):
-        return _run_weekly(s, upload=upload, wait_max_s=wait_max_s, log=log)
+        return _run_weekly(s, upload=upload, wait_max_s=wait_max_s, log=log, plugins=plugins)
 
 
-def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600, log=print) -> dict:
+def _run_weekly(
+    s: Settings,
+    *,
+    upload: bool = True,
+    wait_max_s: int = 8 * 3600,
+    log: Callable[[str], None] = print,
+    plugins: Sequence[ModelPlugin] | None = None,
+) -> dict[str, Any]:
     from intel.market import run_market_pull
-    from intel.models.content_scorer.run import TARGETS
-    from intel.models.content_scorer.run import run as train_run
     from intel.package import build_package, verify_package
     from intel.package import upload as upload_file
     from intel.pull import list_pulls, run_pull, verify_pull
     from intel.tunnel import warehouse_tunnel
 
+    plugins = discover() if plugins is None else plugins
     started = dt.datetime.now(dt.UTC)
-    rep: dict = {
+    rep: dict[str, Any] = {
         "kind": "weekly_run",
         "format_version": 1,
         "run_id": f"{started:%Y%m%dT%H%M%SZ}",
@@ -228,7 +242,7 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
     }
     d = s.intel_data_dir
     uploader = (lambda f: _upload_report(f, s)) if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key else None
-    prog = Progress(rep["run_id"], d / "weekly", uploader)
+    prog = Progress(rep["run_id"], d / "weekly", uploader, pipeline_steps(plugins))
     step = "wait"
     try:
         prog.start("wait")
@@ -243,7 +257,12 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
         prog.start("pull")
         log("pulling the warehouse")
         with warehouse_tunnel(s.dk_warehouse_ssh, s.dk_warehouse_ssh_key, s.warehouse_local_port):
-            pull = run_pull(s.dk_warehouse_dsn, d / "pulls", keep=s.intel_keep_pulls, log=lambda *_: None)
+            pull = run_pull(
+                required(s.dk_warehouse_dsn, "DK_WAREHOUSE_DSN"),
+                d / "pulls",
+                keep=s.intel_keep_pulls,
+                log=lambda *_: None,
+            )
         if verify_pull(pull):
             raise RuntimeError("pull verification failed")
         rep["pull_id"] = pull.name
@@ -268,7 +287,13 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
         step = "market"
         prog.start("market")
         try:
-            market = run_market_pull(s.mip_reader_dsn, s.mip_dir, d / "market", s.intel_keep_pulls, log=lambda *_: None)
+            market = run_market_pull(
+                required(s.mip_reader_dsn, "MIP_READER_DSN"),
+                s.mip_dir,
+                d / "market",
+                s.intel_keep_pulls,
+                log=lambda *_: None,
+            )
         except Exception as e:  # market data changes slowly: last week's is acceptable
             existing = list_pulls(d / "market")
             if not existing:
@@ -309,212 +334,43 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             },
         )
 
-        step = "train"
-        prog.start("train")
-        log("training and judging")
-        mlflow_uri = f"sqlite:///{(d / 'mlflow.db').resolve()}"
-        results = []  # one per question; engagement first (its numbers stay the report's headline)
-        for target in TARGETS:
-            run_dir = train_run(pull, market, d / "runs", mlflow_uri, log=log, ledger=ledger, target=target)
-            results.append((run_dir, json.loads((run_dir / "report.json").read_text())))
-        _, r = results[0]
-        j = r["judge"]
-        rep.update(
-            version=r["version"],
-            posts=r["split"]["train"] + r["split"]["test"],
-            challenger=_scores(r["challenger"]["test"]),
-            champion=_scores(r["champion"]["test"]),
-            gain=j.get("gain"),
-            failed_gates=j.get("failed", []),
-            live=next((g["detail"] for g in j["gates"] if g["gate"] == "live_evidence"), None),
-            models=[
-                {
-                    "name": rr["kind"].removesuffix("_run"),
-                    "version": rr["version"],
-                    "verdict": rr["judge"]["verdict"],
-                    "new": rr["challenger"]["test"]["balanced_accuracy"],
-                    "current": rr["champion"]["test"]["balanced_accuracy"],
-                    "failed_gates": rr["judge"].get("failed", []),
-                }
-                for _, rr in results
-            ],
+        ctx = RunContext(
+            pull=pull,
+            market=market,
+            ledger=ledger,
+            runs_dir=d / "runs",
+            checks_dir=d / "checks",
+            mlflow_uri=f"sqlite:///{(d / 'mlflow.db').resolve()}",
+            log=log,
         )
-        train_details = {
-            "training posts": r["split"]["train"],
-            "test posts (newest, unseen)": r["split"]["test"],
-            "test period from": r["split"]["cutoff"][:10],
-        }
-        for _, rr in results:
-            name = rr["kind"].removesuffix("_run")
-            train_details[f"{name}: chosen"] = f"{rr['challenger']['model']} {rr['challenger']['params']}"
-            train_details[f"{name}: candidates (CV)"] = (
-                ", ".join(f"{c['name']} {c['cv_balanced_accuracy@0.5']}" for c in rr.get("leaderboard_cv", [])) or "–"
-            )
-        prog.done("train", f"{len(results)} models trained", train_details)
-
-        step = "mine"
-        prog.start("mine")
-        log("mining competitor reviews")
-        from intel.models.weakness_miner.run import run as mine_run
-
-        mdir = mine_run(market, d / "runs", d / "checks", log=log)
-        mr = json.loads((mdir / "report.json").read_text())
-        ins = json.loads((mdir / "insights.json").read_text())
-        results.append((mdir, mr))
-        rep["models"].append(
-            {
-                "name": "weakness_miner",
-                "version": mr["version"],
-                "verdict": mr["judge"]["verdict"],
-                "new": mr["check"]["aspect_precision"],
-                "current": None,
-                "failed_gates": mr["judge"].get("failed", []),
-            }
-        )
-        prog.done(
-            "mine",
-            f"{ins['reviews']:,} reviews, top complaint: {ins['overall'][0]['label']}",
-            {
-                "reviews": ins["reviews"],
-                "places": ins["listings"],
-                "clauses": ins["clauses"],
-                "clauses with a topic": ins["clauses_with_aspect"],
-                **{
-                    f"#{i + 1} complaint": f"{a['label']} ({a['negative']}, {a['negative_rate']:.0%} negative)"
-                    for i, a in enumerate(ins["overall"][:5])
-                },
-                "your check": f"{mr['check']['checked']} sentences checked",
-            },
-        )
-
-        step = "community"
-        prog.start("community")
-        from intel.models.community_map.run import run as map_run
-
-        cdir = map_run(market, pull, d / "runs", log=log)
-        cr = json.loads((cdir / "report.json").read_text())
-        cm = json.loads((cdir / "insights.json").read_text())
-        results.append((cdir, cr))
-        rep["models"].append(
-            {
-                "name": "community_map",
-                "version": cr["version"],
-                "verdict": cr["judge"]["verdict"],
-                "new": None,
-                "current": None,
-                "failed_gates": cr["judge"].get("failed", []),
-            }
-        )
-        top = cm["areas"][0]
-        prog.done(
-            "community",
-            f"top area: {top['name']} ({top['district']})",
-            {
-                "areas scored": cm["n_areas"],
-                "located": cm["located"],
-                **{
-                    f"#{i + 1}": f"{a['name']} ({a['district']}, {a['distance_km']} km){' · gap' if a['gap'] else ''}"
-                    for i, a in enumerate(cm["areas"][:5])
-                },
-                "gaps (big audience, no biryani seller)": sum(1 for a in cm["areas"] if a["gap"]),
-                "your orders located": cm["orders_located"],
-            },
-        )
-
-        step = "occasions"
-        prog.start("occasions")
-        from intel.models.occasion_planner.run import run as plan_run
-
-        odir = plan_run(market, pull, d / "runs", log=log)
-        orr = json.loads((odir / "report.json").read_text())
-        op = json.loads((odir / "insights.json").read_text())
-        results.append((odir, orr))
-        rep["models"].append(
-            {
-                "name": "occasion_planner",
-                "version": orr["version"],
-                "verdict": orr["judge"]["verdict"],
-                "new": None,
-                "current": None,
-                "failed_gates": orr["judge"].get("failed", []),
-            }
-        )
-        prog.done(
-            "occasions",
-            f"{len(op['picks'])} occasions in the next 30 days",
-            {
-                **{
-                    f"#{i + 1}": f"{p['label']} ({p['community_id']}, {p['people']:,}) on {p['first_day']}, start "
-                    f"{p['start_posting']}"
-                    for i, p in enumerate(op["picks"][:5])
-                },
-                "respectful notes": len(op["respectful_notes"]),
-                "content rules": next(g["detail"] for g in orr["judge"]["gates"] if g["gate"] == "content_rules"),
-            },
-        )
-
-        step = "funnel"
-        prog.start("funnel")
-        from intel.models.funnel.run import run as funnel_run
-
-        fdir = funnel_run(pull, d / "runs", log=log)
-        fr = json.loads((fdir / "report.json").read_text())
-        fi = json.loads((fdir / "insights.json").read_text())
-        results.append((fdir, fr))
-        rep["models"].append(
-            {
-                "name": "funnel",
-                "version": fr["version"],
-                "verdict": fr["judge"]["verdict"],
-                "new": None,
-                "current": None,
-                "failed_gates": fr["judge"].get("failed", []),
-            }
-        )
-        t = fi["totals"]
-        prog.done(
-            "funnel",
-            f"{t['visit']} visits → {t['ordered']} orders",
-            {
-                **{f"{k}": v for k, v in t.items()},
-                "unknown source": f"{fi['unknown_share']:.0%}",
-                "tracked links": fi["tracked_links"],
-                "stuck at checkout": fi["checkout_friction"]["stuck_sessions"],
-            },
-        )
-
-        step = "creators"
-        prog.start("creators")
-        from intel.models.creator_matcher.run import run as creators_run
-
-        crdir = creators_run(market, d / "runs", log=log)
-        crr = json.loads((crdir / "report.json").read_text())
-        ci = json.loads((crdir / "insights.json").read_text())
-        results.append((crdir, crr))
-        rep["models"].append(
-            {
-                "name": "creator_matcher",
-                "version": crr["version"],
-                "verdict": crr["judge"]["verdict"],
-                "new": None,
-                "current": None,
-                "failed_gates": crr["judge"].get("failed", []),
-            }
-        )
-        prog.done(
-            "creators",
-            f"{ci['eligible']} creators ranked",
-            {
-                "candidates": ci["candidates"],
-                "set aside as businesses / brands": ci["business_like"],
-                **{f"#{i + 1}": f"@{c['handle']} ({c['size']})" for i, c in enumerate(ci["top"][:5])},
-            },
-        )
+        results: list[tuple[Path, dict[str, Any]]] = []
+        rep["models"] = []
+        for plugin in plugins:
+            step = plugin.step
+            prog.start(step)
+            outcome = plugin.run(ctx)
+            if not rep.get("version"):
+                rep.update(outcome.headline)  # the first scorer's numbers are the run report's headline
+            for run_dir in outcome.run_dirs:
+                rr = json.loads((run_dir / "report.json").read_text())
+                results.append((run_dir, rr))
+                new, current = plugin.scores(rr)
+                rep["models"].append(
+                    {
+                        "name": rr["kind"].removesuffix("_run"),
+                        "version": rr["version"],
+                        "verdict": rr["judge"]["verdict"],
+                        "new": new,
+                        "current": current,
+                        "failed_gates": rr["judge"].get("failed", []),
+                    }
+                )
+            prog.done(step, outcome.note, outcome.details)
 
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}
-        judge_details: dict = {}
+        judge_details: dict[str, Any] = {}
         for _, rr in results:
             name, jj = rr["kind"].removesuffix("_run"), rr["judge"]
             judge_details[f"{name}: verdict"] = (
@@ -546,7 +402,9 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
                 step = "upload"
                 prog.start("upload")
                 for tgz in tgzs:
-                    upload_file(tgz, s.dk_inbox_ssh, s.dk_inbox_ssh_key)
+                    upload_file(
+                        tgz, required(s.dk_inbox_ssh, "DK_INBOX_SSH"), required(s.dk_inbox_ssh_key, "DK_INBOX_SSH_KEY")
+                    )
                 prog.done(
                     "upload",
                     f"{len(tgzs)} arrived intact",
@@ -585,4 +443,7 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
 def _upload_report(path: Path, s: Settings) -> None:
     from intel.package import rsync_command
 
-    subprocess.run(rsync_command([path], s.dk_inbox_ssh, s.dk_inbox_ssh_key), check=True, capture_output=True)
+    cmd = rsync_command(
+        [path], required(s.dk_inbox_ssh, "DK_INBOX_SSH"), required(s.dk_inbox_ssh_key, "DK_INBOX_SSH_KEY")
+    )
+    subprocess.run(cmd, check=True, capture_output=True)

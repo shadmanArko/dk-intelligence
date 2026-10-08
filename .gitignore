@@ -9,3 +9,6 @@ mlruns/
 mlflow.db
 .DS_Store
 ._*
+.coverage
+coverage.xml
+htmlcov/

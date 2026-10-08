@@ -9,4 +9,5 @@ import pyarrow.parquet as pq
 
 
 def load_table(pull_dir: Path, table: str, columns: list[str] | None = None) -> pd.DataFrame:
-    return pq.read_table(pull_dir / f"{table}.parquet", columns=columns).to_pandas()
+    df: pd.DataFrame = pq.read_table(pull_dir / f"{table}.parquet", columns=columns).to_pandas()
+    return df

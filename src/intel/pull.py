@@ -17,7 +17,7 @@ import datetime as dt
 import hashlib
 import json
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -131,14 +131,14 @@ def column_specs(cur: psycopg.Cursor) -> list[ColumnSpec]:
     return out
 
 
-def _batch(cols: list[list], specs: list[ColumnSpec], schema: pa.Schema) -> pa.RecordBatch:
+def _batch(cols: list[list[Any]], specs: list[ColumnSpec], schema: pa.Schema) -> pa.RecordBatch:
     return pa.RecordBatch.from_arrays(
         [pa.array(c, type=s.arrow) for c, s in zip(cols, specs, strict=True)], schema=schema
     )
 
 
-def _batches(rows: Iterable[tuple], specs: list[ColumnSpec], schema: pa.Schema) -> Iterable[pa.RecordBatch]:
-    cols: list[list] = [[] for _ in specs]
+def _batches(rows: Iterable[tuple[Any, ...]], specs: list[ColumnSpec], schema: pa.Schema) -> Iterable[pa.RecordBatch]:
+    cols: list[list[Any]] = [[] for _ in specs]
     n = 0
     for row in rows:
         for i, (v, s) in enumerate(zip(row, specs, strict=True)):
@@ -161,7 +161,9 @@ def pull_table(
         if query
         else sql.SQL("select * from {}.{}").format(sql.Identifier(schema), sql.Identifier(table))
     )
-    expected = conn.execute(sql.SQL("select count(*) from ({}) q").format(source)).fetchone()[0]
+    counted = conn.execute(sql.SQL("select count(*) from ({}) q").format(source)).fetchone()
+    assert counted is not None  # count(*) always returns one row
+    expected = counted[0]
     with conn.cursor(name=f"pull_{table}") as cur:  # server-side cursor: constant memory
         cur.itersize = BATCH_ROWS
         cur.execute(source)
@@ -197,8 +199,8 @@ def run_pull(
     tables: list[str] | None = None,
     keep: int = 12,
     schema: str = "public",
-    log=print,
-    items: list[tuple] | None = None,
+    log: Callable[..., None] = print,
+    items: list[tuple[Any, ...]] | None = None,
     extra_files: dict[str, bytes] | None = None,
     application_name: str = "dk-intelligence-pull",
 ) -> Path:
@@ -215,9 +217,11 @@ def run_pull(
             conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
             with conn.transaction():
                 conn.execute("set local time zone 'UTC'")
-                snap_at, server, db, user = conn.execute(
+                info = conn.execute(
                     "select now(), current_setting('server_version'), current_database(), current_user"
                 ).fetchone()
+                assert info is not None  # a select without FROM always returns one row
+                snap_at, server, db, user = info
                 if items is None:
                     available = list_tables(conn, schema)
                     wanted = tables or available

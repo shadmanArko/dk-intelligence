@@ -216,7 +216,7 @@ guess: your answers measure how well the computer reads reviews.</p>
         valid = set(dictionary()["labels"])
         rec = {
             "key": key,
-            "aspects": sorted(a for a in aspects if a in valid),
+            "aspects": sorted(a for a in aspects or [] if a in valid),
             "polarity": polarity if polarity in ("positive", "negative", "neutral") else None,
             "skip": bool(skip),
             "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),

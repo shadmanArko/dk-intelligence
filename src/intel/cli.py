@@ -48,9 +48,11 @@ def doctor() -> None:
                 f"on localhost:{s.warehouse_local_port}"
             )
             with psycopg.connect(s.dk_warehouse_dsn, connect_timeout=15) as c:
-                user, db, ro = c.execute(
+                info = c.execute(
                     "select current_user, current_database(), current_setting('default_transaction_read_only')"
                 ).fetchone()
+                assert info is not None  # a select without FROM always returns one row
+                user, db, ro = info
                 n = len(list_tables(c))
             typer.echo(f"login         : {user}@{db}, read-only={ro}, readable tables={n}")
             if ro != "on":

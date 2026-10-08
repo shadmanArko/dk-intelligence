@@ -1,7 +1,9 @@
 # dk-intelligence
 
 Models and MLOps for Dhaka Kacchi Berlin. **Train on the Mac (Sundays), judge, approve on Telegram, serve and
-measure on the VPS.** The plan and milestones are in [docs/PHASE1_PLAN.md](docs/PHASE1_PLAN.md).
+measure on the VPS.** Start with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the
+[decision records](docs/adr/README.md). Plans: [Phase 1](docs/PHASE1_PLAN.md), [Phase 2](docs/PHASE2_PLAN.md),
+[Phase 3 (MLOps)](docs/PHASE3_MLOPS_PLAN.md). Quality numbers: [docs/QUALITY.md](docs/QUALITY.md).
 
 | Repo | Role |
 |---|---|
@@ -14,7 +16,14 @@ measure on the VPS.** The plan and milestones are in [docs/PHASE1_PLAN.md](docs/
 uv sync
 cp .env.example .env      # then fill in; never commit .env
 uv run intel doctor       # settings, tunnel, read-only login
+uv run pre-commit install # the same checks as CI before every commit
 ```
+
+## Adding a model
+Create `src/intel/models/<name>/` with `spec.yaml`, the model's code and a `plugin.py` defining
+`PLUGIN = <ModelPlugin subclass>()` (see [ADR 0009](docs/adr/0009-model-plugin-interface.md) and any existing
+plug-in). The Sunday run, packaging, the pipeline diagram and Telegram pick it up; no other file changes. Then run
+`uv run python -m intel.sealed --update` to add its sealed files to the lock, and commit both.
 
 ## Commands
 ```bash
@@ -29,7 +38,10 @@ uv run intel weekly               # the full Sunday run now (also: double-click 
 uv run intel weekly --if-due      # what launchd runs hourly: only if this week's run has not happened
 uv run intel weekly-status        # current run step by step, recent runs, due or not
 uv run mlflow ui --backend-store-uri sqlite:///data/mlflow.db   # browse runs at http://127.0.0.1:5000
-uv run pytest                     # set INTEL_TEST_PG_DSN to also run the Postgres round-trip test
+uv run pytest --cov               # set INTEL_TEST_PG_DSN to also run the Postgres tests; coverage floor in pyproject
+uv run mypy                       # whole package; the strict core list is in pyproject.toml
+uv run pre-commit run --all-files # every hook: lint, format, types, file hygiene, secrets, sealed-code lock
+uv run python -m intel.sealed     # sealed model code vs sealed-code.lock.json (--update after a model change)
 ```
 
 ## How the warehouse is reached (door 1)

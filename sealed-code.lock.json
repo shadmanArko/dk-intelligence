@@ -1,0 +1,35 @@
+{
+  "community_map": {
+    "models/community_map/run.py": "12f28009f14cd148468b754e790554cad846c67cacf6cb71bdc3a2b3fa07da90",
+    "models/community_map/spec.yaml": "eef1400b2074dcce5a967cda651497a5a1c08357be8d391750d24bf63f0d75f3"
+  },
+  "content_scorer": {
+    "champions/harness_v1/features.py": "de413b4d03b6d81c0fe1add899bf14a202042558bc90bbccd0efaa5dd283cf1b",
+    "models/content_scorer/features.py": "3c8b38294b2d654e667a90ba3160622725f5456539ae799dcb4c982149fc635d",
+    "models/content_scorer/predict.py": "d45df97dad20006656163a9587b0bf9a98deb8f81f8e6d8c1ca015423b7c5a6f",
+    "models/content_scorer/spec.yaml": "da83b2ae54b2148afbbce97a9a30acad472a5407b1f84b03687277de5161e9cf"
+  },
+  "creator_matcher": {
+    "models/creator_matcher/run.py": "03de3c78cf3ac5336180f0a94847d3574b9873d6c854d70e2d5a76013babe9e7",
+    "models/creator_matcher/spec.yaml": "cc8e426b833ac5be2c159c369e12181f0af2c6593743d49c1915326bf7829806"
+  },
+  "funnel": {
+    "models/funnel/run.py": "828a6848e559de7576aea40bb379419c35a7587571a97f947f7f1b217b64da2d",
+    "models/funnel/spec.yaml": "30cb0144ed4c09545f6b44e696a096b68dbda57b19ad71a12319ea06a8efcb68"
+  },
+  "occasion_planner": {
+    "models/occasion_planner/run.py": "964f87ac908bccac1d49967be63c4281f096ef26f5a2325810eef13151260aeb",
+    "models/occasion_planner/spec.yaml": "04868f1c53b094e67c43d4677f18ac37f215c77746f8ae84124965bafaf92881"
+  },
+  "reach_scorer": {
+    "champions/harness_v1/features.py": "de413b4d03b6d81c0fe1add899bf14a202042558bc90bbccd0efaa5dd283cf1b",
+    "models/content_scorer/features.py": "3c8b38294b2d654e667a90ba3160622725f5456539ae799dcb4c982149fc635d",
+    "models/content_scorer/predict.py": "d45df97dad20006656163a9587b0bf9a98deb8f81f8e6d8c1ca015423b7c5a6f",
+    "models/reach_scorer/spec.yaml": "d79f324ec77eca1251a9bca73148c795289468e8966d023b5017a0cef1284af0"
+  },
+  "weakness_miner": {
+    "models/weakness_miner/aspects.yaml": "7c78cee2470bd4e7f7ae9f1b1299a8bd276da9dc3ace6a05acdf198e7982c0ab",
+    "models/weakness_miner/mine.py": "f26e3ef97ae7a7ca8c929efc534cd50ee4c059eb8c8cb8056a009df5e385829a",
+    "models/weakness_miner/spec.yaml": "8c92124e4d300d6f661bb564d27d7ba16cc02f396dc5c6c847f3f3671227758e"
+  }
+}

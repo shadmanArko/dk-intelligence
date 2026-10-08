@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 from sklearn.metrics import balanced_accuracy_score, brier_score_loss, confusion_matrix, roc_auc_score
 
 
-def _safe_auc(y, p) -> float | None:
-    return float(roc_auc_score(y, p)) if len(set(y)) == 2 else None
+def _safe_auc(y: ArrayLike, p: ArrayLike) -> float | None:
+    return float(roc_auc_score(y, p)) if len(set(np.asarray(y).tolist())) == 2 else None
 
 
 def bootstrap_ci(y: np.ndarray, pred: np.ndarray, n: int = 2000, seed: int = 0) -> tuple[float, float]:
@@ -23,7 +26,7 @@ def bootstrap_ci(y: np.ndarray, pred: np.ndarray, n: int = 2000, seed: int = 0) 
     return float(lo), float(hi)
 
 
-def score(y, proba, threshold: float, platform: pd.Series | None = None) -> dict:
+def score(y: ArrayLike, proba: ArrayLike, threshold: float, platform: pd.Series | None = None) -> dict[str, Any]:
     y = np.asarray(y, dtype=int)
     proba = np.asarray(proba, dtype=float)
     pred = (proba >= threshold).astype(int)

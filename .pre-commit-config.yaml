@@ -1,0 +1,45 @@
+# Runs before every commit (`uv run pre-commit install` once per clone). CI runs the same checks, so a skipped hook
+# is caught there. ruff, mypy and the sealed-code check run from the locked dev environment (uv.lock): one version
+# of each tool for the laptop, the hooks and CI.
+exclude: ^\.idea/          # IDE settings are not ours to rewrite
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        exclude: ^deploy/
+      - id: check-toml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 2ca41cc1372d1e939a6a879f18cdc19fc1cac1ce  # frozen: v8.30.0
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: ruff-lint
+        name: ruff lint
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (ratcheted strict core)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: sealed-code
+        name: sealed model code matches its lock (ADR 0011)
+        entry: uv run python -m intel.sealed
+        language: system
+        pass_filenames: false
+        files: ^(src/intel/(models|champions)/|sealed-code\.lock\.json)

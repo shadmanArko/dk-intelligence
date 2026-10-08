@@ -22,7 +22,7 @@ from pathlib import Path
 import joblib
 
 from intel.package import code_hashes, sha256_bytes, verify_package
-from intel.serve.db import connect, log_event
+from intel.serve.db import connect, log_event, one
 
 APPROVABLE = {("candidate", "pass"), ("baseline", "baseline")}
 REASON_CODES = {
@@ -129,23 +129,27 @@ class Registry:
             store_path = str(dest)
 
         with connect(self.dsn) as c:
-            row = c.execute(
-                """insert into model_package (name, version, file_name, sha256, purpose, verdict, status, problems,
+            row = one(
+                c.execute(
+                    """insert into model_package (name, version, file_name, sha256, purpose, verdict, status, problems,
                                               metadata, store_path)
                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    on conflict (name, version) do update set problems = model_package.problems || excluded.problems
                    returning id, (xmax = 0) as inserted""",
-                (name, version, tgz.name, outer, purpose, verdict, status, problems, json.dumps(meta), store_path),
-            ).fetchone()
+                    (name, version, tgz.name, outer, purpose, verdict, status, problems, json.dumps(meta), store_path),
+                )
+            )
             if not row["inserted"]:  # same version uploaded again with different bytes
                 log_event(self.dsn, "duplicate_version", name=name, version=version, sha256=outer)
                 return Intake(row["id"], "invalid", name, version, ["version already registered"], None)
             approval_id = None
             if status == "pending_approval":
-                approval_id = c.execute(
-                    "insert into approval (package_id, expires_at) values (%s, now() + %s) returning id",
-                    (row["id"], dt.timedelta(days=self.approval_days)),
-                ).fetchone()["id"]
+                approval_id = one(
+                    c.execute(
+                        "insert into approval (package_id, expires_at) values (%s, now() + %s) returning id",
+                        (row["id"], dt.timedelta(days=self.approval_days)),
+                    )
+                )["id"]
         log_event(self.dsn, "package_received", name=name, version=version, status=status, problems=problems)
         if approval_id and meta.get("kind") == "insights" and self.human_approved_before(name, row["id"]):
             # Insights refresh weekly (new dates, new reviews). After the owner approved this insight once, a new
@@ -246,7 +250,7 @@ class Registry:
                 "insert into model_activation (name, package_id, activated_by, reason) values (%s,%s,%s,'rollback')",
                 (name, previous, f"{channel}:{by}"),
             )
-            v = c.execute("select version from model_package where id=%s", (previous,)).fetchone()["version"]
+            v = one(c.execute("select version from model_package where id=%s", (previous,)))["version"]
         log_event(self.dsn, "rollback", name=name, to_version=v, by=by, channel=channel)
         return {"name": name, "version": v}
 

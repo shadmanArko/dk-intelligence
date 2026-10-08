@@ -10,6 +10,7 @@ Stored like a warehouse pull (Parquet + manifest + SHA256SUMS) under data/market
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from intel.pull import run_pull
@@ -160,7 +161,7 @@ def community_countries_bytes(mip_dir: Path) -> bytes:
     return yaml.safe_dump(out, allow_unicode=True, sort_keys=True).encode()
 
 
-def run_market_pull(dsn: str, mip_dir: Path, market_dir: Path, keep: int, log=print) -> Path:
+def run_market_pull(dsn: str, mip_dir: Path, market_dir: Path, keep: int, log: Callable[..., None] = print) -> Path:
     return run_pull(
         dsn,
         market_dir,

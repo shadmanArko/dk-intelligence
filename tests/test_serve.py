@@ -203,8 +203,8 @@ BODY = {
 def test_predict_web_approval_and_protections(client, tmp_path):
     st = client.app.state.intel
     assert client.post("/v1/predict", json=BODY).status_code == 503
-    drop(tmp_path, st["registry"].inbox, "cs-web")
-    (a,) = st["registry"].scan_inbox()
+    drop(tmp_path, st.registry.inbox, "cs-web")
+    (a,) = st.registry.scan_inbox()
 
     page = client.get("/")
     assert page.status_code == 200 and "cs-web" in page.text and page.headers["x-frame-options"] == "DENY"

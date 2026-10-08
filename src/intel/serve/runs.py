@@ -12,11 +12,14 @@ import html
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from intel.serve.db import connect, kv_get, kv_set, log_event
+from intel.serve.db import connect, kv_get, kv_set, log_event, one
+
+if TYPE_CHECKING:
+    from intel.serve.telegram import Telegram
 
 log = logging.getLogger("intel.runs")
 H = html.escape
@@ -142,11 +145,13 @@ def weekly_report(dsn: str, public_url: str | None) -> str:
             """select distinct on (a.name) a.name, a.activated_at, p.version from model_activation a
                join model_package p on p.id = a.package_id order by a.name, a.id desc"""
         ).fetchall()
-        week = c.execute(
-            """select (select count(*) from ledger_post where first_seen_at > now() - interval '7 days') as scored,
+        week = one(
+            c.execute(
+                """select (select count(*) from ledger_post where first_seen_at > now() - interval '7 days') as scored,
                       (select count(*) from post_outcome where recorded_at > now() - interval '7 days') as outcomes,
                       (select count(*) from approval where decision is null and expires_at > now()) as pending"""
-        ).fetchone()
+            )
+        )
         last = c.execute("select * from training_run order by received_at desc limit 1").fetchone()
     live = live_summary(dsn, "7d")
     lines = ["📊 <b>Weekly report</b>"]
@@ -178,14 +183,16 @@ def weekly_report(dsn: str, public_url: str | None) -> str:
 
 def reminder_due(dsn: str, now: dt.datetime) -> bool:
     with connect(dsn) as c:
-        r = c.execute(
-            """select coalesce((select max(received_at) from training_run),
+        r = one(
+            c.execute(
+                """select coalesce((select max(received_at) from training_run),
                                (select min(at) from event_log where kind = 'api_started')) as since"""
-        ).fetchone()
+            )
+        )
     return r["since"] is not None and now - r["since"] > REMIND_AFTER
 
 
-def coming_up_lines(bundle: dict, days: int = 14) -> list[str]:
+def coming_up_lines(bundle: dict[str, Any], days: int = 14) -> list[str]:
     """The occasion planner's next 2 weeks, for the Monday report (labels already follow the content rules)."""
     ins = bundle["insights"]
     limit = (dt.date.fromisoformat(ins["from"]) + dt.timedelta(days=days)).isoformat()
@@ -204,7 +211,11 @@ def coming_up_lines(bundle: dict, days: int = 14) -> list[str]:
 
 
 def report_tick(
-    dsn: str, tg, public_url: str | None, now: dt.datetime | None = None, coming_up: list[str] | None = None
+    dsn: str,
+    tg: Telegram,
+    public_url: str | None,
+    now: dt.datetime | None = None,
+    coming_up: list[str] | None = None,
 ) -> list[str]:
     """Called every few minutes. Sends at most one weekly report per ISO week (Monday from 09:00 Berlin) and at most
     one reminder per day. Returns what was sent (for tests)."""
@@ -264,7 +275,7 @@ class StatusFile(BaseModel):
 
     @field_validator("steps")
     @classmethod
-    def _known_steps(cls, v: dict) -> dict:
+    def _known_steps(cls, v: dict[str, Any]) -> dict[str, Any]:
         from intel.pipeline import STEPS
 
         unknown = set(v) - set(STEPS)
@@ -292,7 +303,7 @@ def scan_status(dsn: str, inbox: Path) -> bool:
     return True
 
 
-def training_overview(dsn: str, now: dt.datetime | None = None) -> dict:
+def training_overview(dsn: str, now: dt.datetime | None = None) -> dict[str, Any]:
     from intel.weekly import RETRY_AFTER, last_sunday_noon
 
     now = now or dt.datetime.now(dt.UTC)

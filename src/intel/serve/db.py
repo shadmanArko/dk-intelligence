@@ -6,17 +6,26 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 
 
 @contextmanager
-def connect(dsn: str) -> Iterator[psycopg.Connection]:
+def connect(dsn: str) -> Iterator[psycopg.Connection[DictRow]]:
     with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10) as conn:
         yield conn
+
+
+def one(cur: psycopg.Cursor[DictRow]) -> DictRow:
+    """The single row a statement must return (INSERT ... RETURNING, aggregates); raises instead of returning None."""
+    row = cur.fetchone()
+    if row is None:
+        raise LookupError("query returned no row")
+    return row
 
 
 def migrate(dsn: str) -> list[str]:
@@ -36,18 +45,18 @@ def migrate(dsn: str) -> list[str]:
     return applied
 
 
-def log_event(dsn: str, kind: str, **detail) -> None:
+def log_event(dsn: str, kind: str, **detail: Any) -> None:
     with connect(dsn) as c:
         c.execute("insert into event_log (kind, detail) values (%s, %s)", (kind, json.dumps(detail, default=str)))
 
 
-def kv_get(dsn: str, key: str, default=None):
+def kv_get(dsn: str, key: str, default: Any = None) -> Any:
     with connect(dsn) as c:
         row = c.execute("select value from kv where key = %s", (key,)).fetchone()
     return row["value"] if row else default
 
 
-def kv_set(dsn: str, key: str, value) -> None:
+def kv_set(dsn: str, key: str, value: Any) -> None:
     with connect(dsn) as c:
         c.execute(
             "insert into kv (key, value) values (%s, %s) on conflict (key) do update set value = excluded.value",
