@@ -20,7 +20,7 @@ sudo tailscale serve --bg --https=8443 http://127.0.0.1:3330
 ## Prove the alert path (once, and after changing Telegram settings)
 ```bash
 docker compose exec alertmanager amtool alert add alertname=AlertPathTest severity=ticket \
-  --annotation=summary="Test: monitoring alerts reach you" --annotation=action="Nothing to do." \
+  --annotation='summary="Test: monitoring alerts reach you"' --annotation='action="Nothing to do."' \
   --alertmanager.url=http://127.0.0.1:9093
 ```
 A 🟠 message arrives within ~30 s; a ✅ "Resolved" follows when it expires (about 5 minutes later).
