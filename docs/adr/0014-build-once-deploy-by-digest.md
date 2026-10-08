@@ -37,7 +37,11 @@ Until H1 the VPS rebuilt the image from source on every deploy (`docker compose 
 - Good: the scanned bytes are the deployed bytes; a bad release is rolled back in about a minute without a human
   (rehearsed with real Docker: a broken release was detected, rolled back and re-verified); every deploy is logged.
 - Good: 6 → 0 fixable HIGH/CRITICAL; image 1.63 GB → 955 MB; known-vulnerable pytest replaced.
-- Cost: the VPS needs a read-only registry token (expires yearly); GitHub Actions minutes for the image build.
+- Cost: the VPS needs a read-only registry token (classic PAT, `read:packages` only, expires yearly); GitHub Actions
+  minutes for the image build.
+- Accepted: Docker keeps that login unencrypted in `~deploy/.docker/config.json` (mode 600). A credential helper needs
+  a keyring or GPG agent a headless server does not have; the token can only read images, and `deploy` can already
+  run Docker.
 - Known limits: 43 HIGH findings without an upstream fix remain in Debian base packages (reported, not gating); a
   distroless base would cut them, at the cost of a shell for debugging. Artifact attestations signed by GitHub need
   a paid plan for private repos; buildx provenance is stored unsigned.
