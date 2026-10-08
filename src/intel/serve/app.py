@@ -152,7 +152,8 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
             for rep in reports:
                 if state.telegram:
                     state.telegram.send(run_message(rep))
-            scan_references(state.dsn, s.intel_inbox_dir)  # reference profiles for monitoring (ADR 0018)
+            if scan_references(state.dsn, s.intel_inbox_dir):  # new reference profile (ADR 0018): judge again now
+                state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
             intakes = state.registry.scan_inbox()
             notify_intake(state.telegram, state.registry, s.intel_public_url, intakes)
             for row in state.registry.expire_due():
