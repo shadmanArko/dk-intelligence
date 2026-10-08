@@ -17,7 +17,11 @@ source ./metrics.sh
 BACKUPS="${INTEL_BACKUP_DIR:-/opt/dhaka-kacchi/backups}"
 IMAGE="${INTEL_DRILL_IMAGE:-pgvector/pgvector:pg16}"   # the same image as intel-db
 NAME="intel-restore-drill-$$"
-TABLES="model_package approval model_activation event_log kv ledger_post prediction post_outcome training_run model_reference audit_log schema_migrations"
+# table:migration that creates it. A backup is checked against ITS OWN schema version (the migrations recorded in the
+# restored copy): a dump taken before migration 0006 rightly has no audit_log.
+TABLES="schema_migrations:0001_registry model_package:0001_registry approval:0001_registry model_activation:0001_registry
+event_log:0001_registry kv:0001_registry ledger_post:0002_ledger prediction:0002_ledger post_outcome:0002_ledger
+training_run:0003_training_run model_reference:0005_monitoring audit_log:0006_governance"
 
 fail() {
   echo "!! restore drill FAILED: $1"
@@ -58,17 +62,25 @@ gunzip -c "$dump" | docker exec -i "$NAME" psql -q -v ON_ERROR_STOP=1 -U intel -
 restore_s=$(( $(date +%s) - start ))
 
 q() { docker exec "$NAME" psql -At -U intel -d intel -c "$1"; }
-for t in $TABLES; do
-  [[ "$(q "select to_regclass('public.$t') is not null")" == "t" ]] || fail "table $t missing after restore"
+applied="$(q 'select version from schema_migrations' 2>/dev/null)" || fail "schema_migrations missing after restore"
+latest="$(sort <<<"$applied" | tail -1)"
+for pair in $TABLES; do
+  t="${pair%%:*}"; m="${pair#*:}"
+  grep -qx "$m" <<<"$applied" || continue  # the backup predates this table
+  [[ "$(q "select to_regclass('public.$t') is not null")" == "t" ]] || fail "table $t missing after restore ($m applied)"
 done
 packages="$(q 'select count(*) from model_package')"
-audit="$(q 'select count(*) from audit_log')"
 [[ "$packages" -gt 0 ]] || fail "registry is empty"
-[[ "$audit" -gt 0 ]] || fail "audit trail is empty"
-bad="$(q 'select coalesce(audit_verify()::text, '"''"')')"
-[[ -z "$bad" ]] || fail "audit chain broken at entry $bad in the restored copy"
+audit_note="no audit trail yet (backup from before 0006)"
+if grep -qx 0006_governance <<<"$applied"; then
+  audit="$(q 'select count(*) from audit_log')"
+  [[ "$audit" -gt 0 ]] || fail "audit trail is empty"
+  bad="$(q 'select coalesce(audit_verify()::text, '"''"')')"
+  [[ -z "$bad" ]] || fail "audit chain broken at entry $bad in the restored copy"
+  audit_note="${audit} audit entries (chain verified)"
+fi
 predictions="$(q 'select count(*) from prediction')"
-echo "== restored in ${restore_s}s: ${packages} packages, ${audit} audit entries (chain verified), ${predictions} predictions"
+echo "== restored in ${restore_s}s: schema ${latest}, ${packages} packages, ${audit_note}, ${predictions} predictions"
 
 write_metrics intel_restore_drill <<METRICS
 # HELP intel_restore_drill_last_run_timestamp_seconds When the restore drill last ran.

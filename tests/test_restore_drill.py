@@ -109,6 +109,47 @@ def test_drill_restores_and_verifies_a_real_backup_then_catches_a_tampered_one(s
     assert "intel_restore_drill_ok 0" in (metrics / "intel_restore_drill.prom").read_text()
 
 
+def test_an_older_backup_is_checked_against_its_own_schema(source_db, tmp_path):
+    """A dump taken before migrations 0005/0006 has no model_reference / audit_log, and that is not a failure."""
+    container, _ = source_db
+    _sh("docker", "exec", container, "psql", "-U", "intel", "-d", "postgres", "-c", "drop database if exists old")
+    _sh("docker", "exec", container, "psql", "-U", "intel", "-d", "postgres", "-c", "create database old")
+    from intel.serve.db import MIGRATIONS
+
+    for f in sorted(MIGRATIONS.glob("*.sql"))[:4]:  # the schema as of migration 0004
+        sql = f.read_text() + f"\ninsert into schema_migrations (version) values ('{f.stem}');"
+        if f.stem == "0001_registry":
+            sql = (
+                "create table schema_migrations (version text primary key, applied_at timestamptz default now());\n"
+                + sql
+            )
+        r = _sh(
+            "docker", "exec", "-i", container, "psql", "-v", "ON_ERROR_STOP=1", "-U", "intel", "-d", "old", input=sql
+        )
+        assert r.returncode == 0, r.stderr
+    _sh(
+        "docker",
+        "exec",
+        container,
+        "psql",
+        "-U",
+        "intel",
+        "-d",
+        "old",
+        "-c",
+        "insert into model_package (name, version, file_name, sha256, purpose, verdict, status) "
+        "values ('m','v','f','s','baseline','baseline','approved')",
+    )
+    backups, metrics = tmp_path / "b", tmp_path / "m"
+    backups.mkdir()
+    metrics.mkdir()
+    dump = _sh("docker", "exec", container, "pg_dump", "-U", "intel", "--no-owner", "old").stdout
+    (backups / "intel_old.sql.gz").write_bytes(gzip.compress(dump.encode()))
+    r = _drill(backups, metrics)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "schema 0004_reach_outcome" in r.stdout and "no audit trail yet" in r.stdout
+
+
 def test_drill_fails_without_a_backup(tmp_path):
     (tmp_path / "b").mkdir()
     (tmp_path / "m").mkdir()
