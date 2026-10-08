@@ -193,6 +193,9 @@ def test_scorers_are_never_auto_approved(db, tmp_path):
 
 @pytest.fixture
 def db():
+    from tests.test_serve import DSN
     from tests.test_serve import db as _db
 
+    if not DSN:  # like every other Postgres test: skip, don't error, without INTEL_TEST_PG_DSN
+        pytest.skip("INTEL_TEST_PG_DSN not set")
     yield from _db.__wrapped__()
