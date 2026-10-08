@@ -1,0 +1,61 @@
+# promtool unit tests for the SLO burn-rate alerts (run: see deploy/monitoring/README.md, and CI).
+rule_files: [../rules/slo.yml]
+evaluation_interval: 30s
+
+tests:
+  - name: healthy service raises nothing
+    interval: 30s
+    input_series:
+      - {series: 'probe_success{job="blackbox-deep",instance="x"}',          values: '1x200'}
+      - {series: 'probe_duration_seconds{job="blackbox-deep",instance="x"}', values: '0.05x200'}
+    alert_rule_test:
+      - {eval_time: 90m, alertname: IntelApiAvailabilityBurnFast, exp_alerts: []}
+      - {eval_time: 90m, alertname: IntelApiLatencyBurnFast, exp_alerts: []}
+
+  - name: a hard outage pages within minutes, a single failed probe does not
+    interval: 30s
+    input_series:
+      # healthy for 60 min, one failed probe, healthy 10 min, then down for good
+      - {series: 'probe_success{job="blackbox-deep",instance="x"}', values: '1x120 0 1x20 0x60'}
+      - {series: 'probe_duration_seconds{job="blackbox-deep",instance="x"}', values: '0.05x202'}
+    alert_rule_test:
+      - {eval_time: 65m, alertname: IntelApiAvailabilityBurnFast, exp_alerts: []}   # one blip: no page
+      - eval_time: 82m
+        alertname: IntelApiAvailabilityBurnFast
+        exp_alerts:
+          - exp_labels: {severity: page, slo: availability, job: blackbox-deep, instance: x}
+            exp_annotations:
+              summary: "intel-api is failing its health probe: 100% of probes failed in the last 5 min"
+              action: "docs/runbooks: API down. Check `docker compose ps`, `docker compose logs --tail 100 intel-api`, the last line of intel-deploys.log."
+
+  - name: slow but successful answers burn the latency budget, not availability
+    interval: 30s
+    input_series:
+      - {series: 'probe_success{job="blackbox-deep",instance="x"}',          values: '1x230'}
+      # 60 min fast, then slow. A fast burn on a 5% budget needs > 72% slow over the hour (14.4 x 5%):
+      # 40 slow minutes (66%) must NOT page, 50 slow minutes (83%) must.
+      - {series: 'probe_duration_seconds{job="blackbox-deep",instance="x"}', values: '0.05x120 0.9x110'}
+    alert_rule_test:
+      - {eval_time: 100m, alertname: IntelApiLatencyBurnFast, exp_alerts: []}
+      - {eval_time: 110m, alertname: IntelApiAvailabilityBurnFast, exp_alerts: []}
+      - eval_time: 110m
+        alertname: IntelApiLatencyBurnFast
+        exp_alerts:
+          - exp_labels: {severity: page, slo: latency, job: blackbox-deep, instance: x}
+            exp_annotations:
+              summary: "intel-api is slow: 100% of probes took over 300 ms in the last 5 min"
+              action: "Check host load and memory (VPS dashboard), and intel-db."
+
+  - name: error budget arithmetic
+    interval: 30s
+    input_series:
+      # 2 failed probes out of 200 -> 1% errors -> twice the 0.5% budget -> -1 remaining
+      - {series: 'probe_success{job="blackbox-deep",instance="x"}', values: '1x98 0 1x98 0'}
+      # 1 failed probe out of 200 -> 0.5% -> the budget exactly spent -> 0 remaining
+      - {series: 'probe_success{job="blackbox-deep",instance="y"}', values: '1x98 0 1x99'}
+    promql_expr_test:
+      - expr: round(slo:availability:budget_remaining, 0.01)
+        eval_time: 99m30s
+        exp_samples:
+          - {labels: '{instance="x", job="blackbox-deep"}', value: -1}
+          - {labels: '{instance="y", job="blackbox-deep"}', value: 0}

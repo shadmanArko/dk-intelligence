@@ -9,6 +9,7 @@ dependencies = [
     "joblib==1.6.0",
     "numpy==2.5.3",
     "pandas==3.0.6",
+    "prometheus-client>=0.21,<1",
     "psycopg[binary]>=3.2,<4",
     "pyarrow>=23.0.1,<26",
     "pydantic-settings>=2.6,<3",
@@ -94,6 +95,7 @@ module = [
     "intel.weekly",
     "intel.serve.db",
     "intel.serve.runs",
+    "intel.serve.observability",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

@@ -6,15 +6,16 @@ reason (ADR 0010).
 | Measure | 2026-10-08 (H0 start) | Now | Floor / rule | Enforced by |
 |---|---|---|---|---|
 | mypy errors (default checks) | 200 | **0** (+44 documented typing debt in sealed files) | 0 | pre-commit, CI |
-| Modules passing `--strict` | 0 | **14** | list in `pyproject.toml` only grows | pre-commit, CI |
+| Modules passing `--strict` | 0 | **15** | list in `pyproject.toml` only grows | pre-commit, CI |
 | Branch coverage (CI, authoritative) | 72% (line, Mac) | **≈ 76.4%** (77.05% on the Mac*) | `fail_under = 76`, compared to 2 decimals | CI |
-| Tests | 117 | **152** | all pass | CI |
+| Tests | 117 | **160** + 9 alert-rule test cases | all pass | CI |
 | Secrets in git history | not scanned | **0** (both repos, full history) | 0 | CI (gitleaks) |
 | Sealed files changed without a model change | not detectable | **0** | 0 | test + pre-commit |
 | Fixable HIGH/CRITICAL vulnerabilities in the production image | 6 (never scanned) | **0** | 0 | CI (trivy, gates the deploy) |
 | Known-vulnerable locked Python packages | 2 (pyarrow, pytest) | **0** | 0 | CI (pip-audit with hashes) |
 | Production image size | 1.63 GB | **955 MB** | watched | CI summary |
 | Unpinned GitHub Actions / tool images | all | **0** | 0 | review + Dependabot |
+| Alert rules without a unit test | n/a (no alerts) | **0 of the SLO / paging alerts** | every paging alert tested | CI (promtool) |
 
 \* The Mac also runs the harness-reproduction test (it needs the private harness repo next to this one), which
 covers `champions/reproduce.py`; CI skips it. The floor is set against the CI number.

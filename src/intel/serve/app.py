@@ -15,7 +15,7 @@ import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
+from intel.serve.observability import JsonFormatter, Metrics, StateCollector, instrument
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
@@ -45,6 +46,7 @@ from intel.serve.views import (
 from intel.settings import Settings, get_settings
 
 log = logging.getLogger("intel.api")
+PROBE_DRAFT = {"platform": "instagram", "content_type": "reel", "caption": "Probe: kacchi biryani, slow-cooked dum"}
 TOKEN_RE = re.compile(r"bot\d{6,12}:[A-Za-z0-9_-]{30,}")
 H = html.escape
 
@@ -100,6 +102,7 @@ class AppState:
     started_at: dt.datetime | None = None
     last_inbox_scan: dt.datetime | None = None
     last_measure: dict[str, Any] | None = None
+    metrics: Metrics = field(default_factory=Metrics)
 
 
 # ---------- background workers ----------
@@ -151,7 +154,9 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
                     )
             state.models.refresh()
             state.last_inbox_scan = dt.datetime.now(dt.UTC)
+            state.metrics.worker_ok("inbox")
         except Exception:
+            state.metrics.worker_failed("inbox")
             log.exception("inbox loop error")
         stop.wait(s.intel_inbox_interval_s)
 
@@ -169,7 +174,9 @@ def telegram_loop(state: AppState, stop: threading.Event) -> None:
                 offset = u["update_id"] + 1
                 kv_set(state.dsn, "telegram_offset", offset)  # before handling: never replay an action
                 bot.handle(u)
+            state.metrics.worker_ok("telegram")  # one long poll (<= 25 s) finished cleanly
         except Exception:
+            state.metrics.worker_failed("telegram")
             log.exception("telegram loop error")
             stop.wait(10)
 
@@ -184,9 +191,12 @@ def measure_loop(state: AppState, stop: threading.Event) -> None:
         try:
             r = m.run_once()
             state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
+            state.metrics.predictions.labels("all", "shadow").inc(r.predictions)
+            state.metrics.worker_ok("measure")
             if r.new_posts or r.outcomes or r.errors:
                 log_event(state.dsn, "measure_run", **r.__dict__)
         except Exception:
+            state.metrics.worker_failed("measure")
             log.exception("measure loop error")
             state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), "failed": True}
         stop.wait(s.intel_measure_interval_s)
@@ -206,7 +216,9 @@ def report_loop(state: AppState, stop: threading.Event) -> None:
                 s.intel_public_url,
                 coming_up=coming_up_lines(op["bundle"]) if op else None,
             )
+            state.metrics.worker_ok("reports")
         except Exception:
+            state.metrics.worker_failed("reports")
             log.exception("report loop error")
         stop.wait(300)
 
@@ -256,6 +268,8 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         stop.set()
 
     app = FastAPI(title="dk-intelligence", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    state.metrics.registry.register(StateCollector(state))
+    instrument(app, state.metrics)
 
     # ----- health -----
     @app.get("/health")
@@ -271,6 +285,36 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             "version": s.intel_git_sha,
             "models": {n: m["version"] for n, m in state.models.loaded.items()},
         }
+
+    @app.get("/health/deep")
+    def health_deep():
+        """What the prober calls every 30 s (ADR 0016): database + a real prediction for a fixed draft. Nothing is
+        written to the ledger, unlike /v1/predict."""
+        t0 = time.perf_counter()
+        with connect(state.dsn) as c:
+            c.execute("select 1")
+        m = state.models.get("content_scorer")
+        prediction = None
+        if m is not None:
+            row = pd.DataFrame([{**PROBE_DRAFT, "posted_at": dt.datetime.now(dt.UTC) + dt.timedelta(days=1)}])
+            p = cs_predict(m["bundle"], row)[0]["probability"]
+            if not 0 <= p <= 1:
+                raise HTTPException(500, "content_scorer returned a probability outside [0, 1]")
+            prediction = {"model": m["version"], "probability": round(float(p), 4)}
+        return {
+            "status": "ok",
+            "version": s.intel_git_sha,
+            "models": {n: x["version"] for n, x in state.models.loaded.items()},
+            "prediction": prediction,
+            "ms": round((time.perf_counter() - t0) * 1000, 1),
+        }
+
+    @app.get("/metrics")
+    def metrics():
+        from fastapi.responses import Response
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+        return Response(generate_latest(state.metrics.registry), media_type=CONTENT_TYPE_LATEST)
 
     # ----- scoring: same contract as the harness predictor -----
     def _score(body: PredictRequest) -> dict:
@@ -294,6 +338,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     @app.post("/v1/predict")
     def predict(body: PredictRequest):
         r = _score(body)
+        state.metrics.predictions.labels("content_scorer", "api").inc()
         try:
             log_api_prediction(state.dsn, body, r)
         except Exception:
@@ -325,7 +370,10 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         """Every active model's answer (content_scorer: engagement question, reach_scorer: reach question)."""
         if body.planned_posted_at.tzinfo is None:
             raise HTTPException(400, "planned_posted_at needs a timezone")
-        return {"models": _score_all(body)}
+        answers = _score_all(body)
+        for name in answers:
+            state.metrics.predictions.labels(name, "score").inc()
+        return {"models": answers}
 
     # ----- ledger (read-only; tailnet) -----
     @app.get("/v1/ledger/summary")
@@ -467,6 +515,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             result = _score(body)
         except HTTPException as e:
             return _page(request, "Try a draft", try_form_html(form=form, error=str(e.detail)))
+        state.metrics.predictions.labels("content_scorer", "try").inc()
         try:
             log_api_prediction(state.dsn, body, result)
         except Exception:
@@ -626,7 +675,9 @@ label input{{width:auto}}
 
 
 def configure_logging() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter())  # one JSON object per line, with the request id (ADR 0016)
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
     # httpx/httpcore log every request URL at INFO, and Telegram puts the bot token IN the URL. Never let them.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -647,7 +698,15 @@ def main() -> None:
     import uvicorn
 
     configure_logging()
-    uvicorn.run(create_app(), host="0.0.0.0", port=8000, proxy_headers=True, forwarded_allow_ips="127.0.0.1")  # noqa: S104
+    uvicorn.run(  # access_log off: the middleware logs one structured line per request instead
+        create_app(),
+        host="0.0.0.0",  # noqa: S104
+        port=8000,
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
+        access_log=False,
+        log_config=None,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,54 @@
+# SLOs for intel-api (docs/SLO.md, ADR 0016). Ground truth: the blackbox probe of /health/deep every 30 s.
+#   availability : 99.5% of probes succeed                        error budget 0.5%  (~3.6 h / 30 days)
+#   latency      : 95% of successful probes answer within 300 ms  error budget 5%
+# Alerts use multi-window, multi-burn-rate (Google SRE Workbook, ch. 5): a long window proves it is real, a short
+# window proves it is still happening. The SHORT window comes first in each `and`: an alert's $value is the left side's,
+# and the summaries quote the short window (a unit test caught the 1 h ratio being shown as "last 5 min").
+#   page   : burn rate 14.4 over 1 h and 5 min  -> 2% of the 30-day budget spent in one hour
+#   ticket : burn rate 6 over 6 h and 30 min    -> 5% of the budget spent in six hours
+groups:
+  - name: slo-recording
+    rules:
+      - record: probe:deep_slow:bool
+        # 1 = a SUCCESSFUL probe that took longer than 300 ms (failed probes count against availability, not latency)
+        expr: (probe_duration_seconds{job="blackbox-deep"} > bool 0.3) * (probe_success{job="blackbox-deep"} == bool 1)
+      - {record: slo:availability_errors:ratio_rate5m,  expr: '1 - avg_over_time(probe_success{job="blackbox-deep"}[5m])'}
+      - {record: slo:availability_errors:ratio_rate30m, expr: '1 - avg_over_time(probe_success{job="blackbox-deep"}[30m])'}
+      - {record: slo:availability_errors:ratio_rate1h,  expr: '1 - avg_over_time(probe_success{job="blackbox-deep"}[1h])'}
+      - {record: slo:availability_errors:ratio_rate6h,  expr: '1 - avg_over_time(probe_success{job="blackbox-deep"}[6h])'}
+      - {record: slo:availability_errors:ratio_rate30d, expr: '1 - avg_over_time(probe_success{job="blackbox-deep"}[30d])'}
+      - {record: slo:latency_slow:ratio_rate5m,  expr: 'avg_over_time(probe:deep_slow:bool[5m])'}
+      - {record: slo:latency_slow:ratio_rate30m, expr: 'avg_over_time(probe:deep_slow:bool[30m])'}
+      - {record: slo:latency_slow:ratio_rate1h,  expr: 'avg_over_time(probe:deep_slow:bool[1h])'}
+      - {record: slo:latency_slow:ratio_rate6h,  expr: 'avg_over_time(probe:deep_slow:bool[6h])'}
+      - {record: slo:latency_slow:ratio_rate30d, expr: 'avg_over_time(probe:deep_slow:bool[30d])'}
+      # remaining error budget over 30 days, 1 = untouched, 0 = spent, < 0 = SLO missed
+      - {record: slo:availability:budget_remaining, expr: '1 - slo:availability_errors:ratio_rate30d / 0.005'}
+      - {record: slo:latency:budget_remaining,      expr: '1 - slo:latency_slow:ratio_rate30d / 0.05'}
+
+  - name: slo-alerts
+    rules:
+      - alert: IntelApiAvailabilityBurnFast
+        expr: slo:availability_errors:ratio_rate5m > (14.4 * 0.005) and slo:availability_errors:ratio_rate1h > (14.4 * 0.005)
+        labels: {severity: page, slo: availability}
+        annotations:
+          summary: "intel-api is failing its health probe: {{ $value | humanizePercentage }} of probes failed in the last 5 min"
+          action: "docs/runbooks: API down. Check `docker compose ps`, `docker compose logs --tail 100 intel-api`, the last line of intel-deploys.log."
+      - alert: IntelApiAvailabilityBurnSlow
+        expr: slo:availability_errors:ratio_rate30m > (6 * 0.005) and slo:availability_errors:ratio_rate6h > (6 * 0.005)
+        labels: {severity: ticket, slo: availability}
+        annotations:
+          summary: "intel-api availability error budget is burning: {{ $value | humanizePercentage }} of probes failed in the last 30 min"
+          action: "Intermittent failures: look for restarts (`docker compose ps`) and errors in the logs."
+      - alert: IntelApiLatencyBurnFast
+        expr: slo:latency_slow:ratio_rate5m > (14.4 * 0.05) and slo:latency_slow:ratio_rate1h > (14.4 * 0.05)
+        labels: {severity: page, slo: latency}
+        annotations:
+          summary: "intel-api is slow: {{ $value | humanizePercentage }} of probes took over 300 ms in the last 5 min"
+          action: "Check host load and memory (VPS dashboard), and intel-db."
+      - alert: IntelApiLatencyBurnSlow
+        expr: slo:latency_slow:ratio_rate30m > (6 * 0.05) and slo:latency_slow:ratio_rate6h > (6 * 0.05)
+        labels: {severity: ticket, slo: latency}
+        annotations:
+          summary: "intel-api latency error budget is burning: {{ $value | humanizePercentage }} of probes over 300 ms (30 min)"
+          action: "Look at the latency panel by route; compare with the last deploy."

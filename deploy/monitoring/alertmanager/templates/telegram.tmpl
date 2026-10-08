@@ -1,0 +1,10 @@
+{{ define "dk.telegram" -}}
+{{ range .Alerts -}}
+{{ if eq .Status "resolved" }}✅ <b>Resolved</b>{{ else if eq .Labels.severity "page" }}🔴 <b>Act now</b>{{ else }}🟠 <b>Today</b>{{ end }} · {{ .Labels.alertname }}
+{{ .Annotations.summary }}
+{{- if ne .Status "resolved" }}
+<i>{{ .Annotations.action }}</i>
+{{- end }}
+
+{{ end -}}
+{{- end }}

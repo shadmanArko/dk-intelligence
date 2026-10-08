@@ -1,0 +1,88 @@
+# promtool unit tests for the operational alerts. In promtool, time() starts at 0, so a timestamp gauge with value 0
+# means "last success at the start of the test".
+rule_files: [../rules/ops.yml]
+evaluation_interval: 30s
+
+tests:
+  - name: intel-api scrape down pages after 3 minutes, not before
+    interval: 30s
+    input_series:
+      - {series: 'up{job="intel-api",instance="intel-api:8000"}', values: '1x10 0x20'}
+    alert_rule_test:
+      - {eval_time: 6m, alertname: IntelApiDown, exp_alerts: []}
+      - eval_time: 9m
+        alertname: IntelApiDown
+        exp_alerts:
+          - exp_labels: {severity: page, job: intel-api, instance: "intel-api:8000"}
+            exp_annotations:
+              summary: "Prometheus cannot scrape intel-api for 3 minutes"
+              action: "`docker compose ps` in /opt/dhaka-kacchi/dk-intelligence/deploy; logs; last deploy in intel-deploys.log."
+
+  - name: each worker has its own staleness threshold
+    interval: 1m
+    input_series:
+      # inbox succeeded at t=0 then stopped; measure succeeded at t=0 (hourly worker: 15 min is fine)
+      - {series: 'intel_worker_last_success_timestamp_seconds{worker="inbox"}',   values: '0x30'}
+      - {series: 'intel_worker_last_success_timestamp_seconds{worker="measure"}', values: '0x30'}
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: IntelWorkerStalled
+        exp_alerts:
+          - exp_labels: {severity: ticket, worker: inbox}
+            exp_annotations:
+              summary: "Background worker inbox has not completed a loop for 15m 0s"
+              action: "`docker compose logs --tail 200 intel-api | grep inbox`; a restart (`docker compose up -d`) is safe."
+
+  - name: disk thresholds and the inhibition-friendly split
+    interval: 1m
+    input_series:
+      - {series: 'node_filesystem_size_bytes{mountpoint="/",fstype="ext4"}',  values: '100x40'}
+      - {series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="ext4"}', values: '10x40'}
+    alert_rule_test:
+      - {eval_time: 10m, alertname: HostDiskLow, exp_alerts: []}             # needs 15 minutes
+      - eval_time: 20m
+        alertname: HostDiskLow
+        exp_alerts:
+          - exp_labels: {severity: ticket, mountpoint: "/", fstype: ext4}
+            exp_annotations:
+              summary: "VPS disk: only 10% free"
+              action: "`docker system df`; `docker image prune`; old backups in /opt/dhaka-kacchi/backups."
+      - {eval_time: 20m, alertname: HostDiskCritical, exp_alerts: []}
+
+  - name: backups, collector and training freshness
+    interval: 1h
+    input_series:
+      - {series: 'intel_backup_last_success_timestamp_seconds',                 values: '0x30'}
+      - {series: 'mip_collector_last_success_timestamp_seconds{job="daily"}',  values: '0x30'}
+      - {series: 'mip_collector_last_run_failed_steps{job="daily"}',           values: '0x24 2x6'}
+    alert_rule_test:
+      - {eval_time: 25h, alertname: BackupStale, exp_alerts: []}
+      - eval_time: 27h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "No successful intel-db backup for 1d 3h 0m 0s"
+              action: "`tail /opt/dhaka-kacchi/logs/intel-backup.log`; run deploy/backup.sh by hand."
+      - eval_time: 27h
+        alertname: CollectorStepsFailing
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: daily}
+            exp_annotations:
+              summary: "The last daily collector run had 2 failed step(s)"
+              action: "`grep '!! failed' /opt/dhaka-kacchi/logs/mip-collector.log | tail`"
+
+  - name: a missing root-disk series is an alert of its own (the disk alerts cannot see it)
+    interval: 1m
+    input_series:
+      - {series: 'up{job="node",instance="node-exporter:9100"}', values: '1x60'}
+      - {series: 'node_filesystem_size_bytes{mountpoint="/var/lib",fstype="ext4"}', values: '100x60'}
+    alert_rule_test:
+      - {eval_time: 20m, alertname: HostDiskMetricMissing, exp_alerts: []}
+      - eval_time: 40m
+        alertname: HostDiskMetricMissing
+        exp_alerts:
+          - exp_labels: {severity: ticket, mountpoint: "/"}   # absent() keeps the label it looked for
+            exp_annotations:
+              summary: "node-exporter reports no root filesystem: the disk alerts are blind"
+              action: "Check the node-exporter mounts in deploy/monitoring/docker-compose.yml (/:/host:ro, --path.rootfs=/host)."

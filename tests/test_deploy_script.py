@@ -45,7 +45,7 @@ def _git(repo: Path, *args: str) -> str:
 def vps(tmp_path):
     repo = tmp_path / "dk-intelligence"
     (repo / "deploy").mkdir(parents=True)
-    for f in ("deploy.sh", "smoke.py"):
+    for f in ("deploy.sh", "smoke.py", "metrics.sh"):
         shutil.copy(ROOT / "deploy" / f, repo / "deploy" / f)
     (repo / "deploy" / ".env").write_text("INTEL_DB_PASSWORD=x\n")
     _git(repo, "init", "-q", "-b", "main")
@@ -59,6 +59,8 @@ def vps(tmp_path):
     docker.write_text(FAKE_DOCKER)
     docker.chmod(docker.stat().st_mode | stat.S_IEXEC)
     log, history = tmp_path / "docker.log", tmp_path / "deploys.log"
+    metrics_dir = tmp_path / "metrics"
+    metrics_dir.mkdir()
 
     def run(request: str | None = None, *args: str, **fake: str) -> subprocess.CompletedProcess[str]:
         env = {
@@ -67,6 +69,7 @@ def vps(tmp_path):
             "FAKE_LOG": str(log),
             "INTEL_DEPLOY_HISTORY": str(history),
             "INTEL_DEPLOY_SETTLE_S": "0",
+            "INTEL_METRICS_DIR": str(metrics_dir),
             **fake,
         }
         if request is not None:
@@ -81,7 +84,7 @@ def vps(tmp_path):
     def outcomes() -> list[str]:
         return [line.split("\t")[2] for line in history.read_text().splitlines()] if history.exists() else []
 
-    return {"run": run, "calls": calls, "outcomes": outcomes, "head": head, "first": first}
+    return {"run": run, "calls": calls, "outcomes": outcomes, "head": head, "first": first, "metrics": metrics_dir}
 
 
 @pytest.mark.parametrize(
@@ -120,6 +123,9 @@ def test_good_deploy_runs_the_exact_digest_and_keeps_the_previous_image(vps):
     assert f"docker tag {image} dk-intelligence:current | INTEL_IMAGE=" in calls
     assert '{"content_scorer": "cs-1"}' in r.stdout  # models before the deploy were read for the smoke test
     assert vps["outcomes"]() == ["deployed"]
+    prom = (vps["metrics"] / "intel_deploy.prom").read_text()  # published for the dashboard (textfile collector)
+    assert f'intel_deploy_last_info{{outcome="deployed",commit="{head[:12]}"}} 1' in prom
+    assert not list(vps["metrics"].glob(".*"))  # written atomically: no temp file left behind
 
 
 def test_failed_smoke_test_rolls_back_to_the_previous_image(vps):
@@ -173,12 +179,13 @@ def live_api(tmp_path):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(create_app(s, start_workers=False), port=port, log_level="warning"))
+    app = create_app(s, start_workers=False)
+    server = uvicorn.Server(uvicorn.Config(app, port=port, log_level="warning"))
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
     while not server.started:
         time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
+    yield f"http://127.0.0.1:{port}", app
     server.should_exit = True
     t.join(5)
     _dropdb(name)
@@ -194,12 +201,65 @@ def _smoke(base: str, **env: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_smoke_passes_on_the_expected_version(live_api):
-    r = _smoke(live_api, EXPECT_SHA="c" * 40, EXPECT_MODELS="{}")
+    url, _ = live_api
+    r = _smoke(url, EXPECT_SHA="c" * 40, EXPECT_MODELS="{}")
     assert r.returncode == 0 and r.stdout.startswith("OK"), r.stdout
 
 
+def test_smoke_checks_a_real_prediction_without_touching_the_ledger(live_api):
+    from intel.serve.db import connect
+    from tests.test_measure import Models
+
+    url, app = live_api
+    app.state.intel.models.loaded["content_scorer"] = Models().m
+    r = _smoke(url, EXPECT_SHA="c" * 40, EXPECT_MODELS='{"content_scorer": "cs-t"}')
+    assert r.returncode == 0 and "content_scorer" in r.stdout, r.stdout
+    with connect(app.state.intel.dsn) as c:
+        assert c.execute("select count(*) n from prediction").fetchone()["n"] == 0
+
+
+def test_smoke_falls_back_to_predict_on_an_older_image():
+    """A rollback target from before /health/deep existed is still verified through /v1/predict."""
+    import http.server
+    import json as _json
+    import threading
+
+    class Old(http.server.BaseHTTPRequestHandler):
+        def _send(self, code: int, body: dict) -> None:
+            data = _json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):  # noqa: N802
+            if self.path == "/ready":
+                self._send(200, {"version": "e" * 40, "models": {"content_scorer": "cs-old"}})
+            else:
+                self._send(404, {"detail": "Not Found"})
+
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers["Content-Length"]))
+            self._send(200, {"probability": 0.42})
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Old)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        r = _smoke(
+            f"http://127.0.0.1:{srv.server_port}", EXPECT_SHA="e" * 40, EXPECT_MODELS='{"content_scorer": "cs-old"}'
+        )
+    finally:
+        srv.shutdown()
+    assert r.returncode == 0, r.stdout
+
+
 def test_smoke_fails_on_wrong_version_or_a_lost_model(live_api):
-    r = _smoke(live_api, EXPECT_SHA="d" * 40, EXPECT_MODELS='{"content_scorer": "cs-1"}')
+    url, _ = live_api
+    r = _smoke(url, EXPECT_SHA="d" * 40, EXPECT_MODELS='{"content_scorer": "cs-1"}')
     assert r.returncode == 1
     assert "running version" in r.stdout and "not loaded: ['content_scorer']" in r.stdout
 

@@ -1,0 +1,97 @@
+# Monitoring for dk-intelligence (ADR 0016): separate compose project, tailnet-only, memory-limited, images pinned by
+# digest. Started / refreshed by up.sh (deploy.sh calls it after every successful app deploy).
+#
+#   prometheus  scrapes intel-api, node-exporter, blackbox probes; evaluates SLO + ops rules     127.0.0.1:9090
+#   alertmanager routes alerts to Telegram                                                       (no port)
+#   grafana     dashboards; published to the tailnet by `tailscale serve --https=8443`            127.0.0.1:3000
+#   node-exporter  host disk / memory / load + textfile metrics (backups, deploys, collector)     (no port)
+#   blackbox    probes intel-api /health/deep every 30 s: the SLO's ground truth                   (no port)
+name: dk-monitoring
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+
+services:
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=35d          # the 30-day SLO window + margin
+      - --storage.tsdb.retention.size=2GB
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    mem_limit: 384m
+    networks: [mon, intel]
+
+  alertmanager:
+    <<: *hardening
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    user: "${MON_UID:?run up.sh}:${MON_GID:?run up.sh}"   # reads the 600 token file written by up.sh
+    command:
+      - --config.file=/runtime/alertmanager.yml
+      - --storage.path=/runtime/alertmanager-data
+    volumes:
+      - ${RUNTIME:?run up.sh}:/runtime
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
+    mem_limit: 64m
+    networks: [mon]
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in deploy/monitoring/.env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    tmpfs: ["/tmp"]
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
+    mem_limit: 256m
+    networks: [mon]
+
+  node-exporter:
+    <<: *hardening
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    pid: host
+    volumes:
+      - /:/host:ro          # read-only view of the host filesystem (disk usage); no mount propagation needed
+      - ${METRICS_DIR:?run up.sh}:/textfile:ro
+    mem_limit: 64m
+    networks: [mon]
+
+  blackbox:
+    <<: *hardening
+    image: prom/blackbox-exporter:v0.29.0@sha256:9613f2884689b6fad9f1939f6a3b0388c93a022cfaededb19545b329b5c83dea
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes: ["./blackbox:/etc/blackbox:ro"]
+    mem_limit: 32m
+    networks: [mon, intel]
+
+networks:
+  mon: {}
+  intel:
+    external: true
+    name: dk-intelligence_intel   # intel-api's network (compose project dk-intelligence)
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -20,5 +20,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0013](0013-right-sized-tooling.md) | Right-sized tooling: what we deliberately do not run yet | Accepted |
 | [0014](0014-build-once-deploy-by-digest.md) | Build once in CI, deploy by digest, roll back automatically | Accepted |
 | [0015](0015-additive-migrations.md) | intel-db migrations are additive (expand / contract) | Accepted |
+| [0016](0016-observability-and-slos.md) | Observability: metrics, probes, SLOs and alerts as code | Accepted |
 
 Template: [0000-template.md](0000-template.md).

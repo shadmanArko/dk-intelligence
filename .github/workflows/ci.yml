@@ -49,6 +49,8 @@ jobs:
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       # The same hooks as on the laptop: lint, format, mypy (strict core), shellcheck, file hygiene, sealed-code lock.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
+      # Monitoring as code: Prometheus config, alert-rule unit tests, Alertmanager config, compose, dashboard PromQL.
+      - run: deploy/monitoring/check.sh
       # Known vulnerabilities in every locked Python package (runtime + dev), checked against the lock's hashes.
       - run: |
           uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/req.txt"

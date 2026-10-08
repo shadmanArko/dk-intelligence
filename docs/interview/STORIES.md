@@ -87,3 +87,44 @@ unfixable base-image findings, but loses the shell I need for incident debugging
   making anything safer. Fixable ones block; the rest are reported in every build.
 - *How do you know the rollback works?* A unit test of the real script, and a rehearsal with a deliberately broken
   release in a throwaway environment.
+
+---
+
+## H3 · From "I'd notice eventually" to SLOs with burn-rate alerts
+
+**Situation.** A production ML service on one VPS, with four background workers (inbox watcher, Telegram bot, hourly
+measurement, weekly reports) and nightly jobs (backup, data collector). The only signals were Telegram run reports
+and checking by hand. A stalled worker, a full disk, a failing backup or a slowly failing collector step would be
+found by luck. The VPS has no swap, so running out of memory kills a process without warning.
+
+**Task.** Make failures visible and actionable, define what "working" means in numbers, and alert on it without
+waking anyone for noise, at €0 and inside the memory budget of a shared VPS.
+
+**Action.**
+- Instrumented the service: route-template latency and status (bounded label cardinality), predictions by model,
+  worker heartbeats, and database-backed state read at scrape time. Added structured JSON logs with request ids.
+- Measured from outside: a 30-second probe of a deep health endpoint (database + real prediction, no side effects).
+  Chose probe-based SLIs because at a few requests per hour, request ratios swing on one bad call.
+- Wrote SLOs (99.5% availability, 95% under 300 ms) with an error-budget policy, and multi-window, multi-burn-rate
+  alerts (SRE Workbook): page at 14.4× over 1 h and 5 min, ticket at 6× over 6 h and 30 min. Inhibition means one
+  incident sends one message.
+- Treated monitoring as code: alert rules have **unit tests** (promtool), every dashboard query is parsed in CI,
+  secrets are rendered at deploy time, and dashboards are read-only in the UI.
+- Rehearsed with real containers, including an outage drill.
+
+**Result.** Hard outage detected in 3.5 min and resolved 41 s after recovery, with exactly one alert; collector
+failures now visible (they used to scroll past); a blind spot (missing disk series) is now itself alerted; 8 new
+tests plus 9 alert-rule test cases.
+
+**Trade-off I would defend.** Self-hosted rather than Grafana Cloud: metrics never leave the box and there's no
+vendor limit, at ~300–500 MB of RAM we have. The known gap is that nothing on the VPS can report the VPS itself
+dying. The fix is an external dead-man's switch, which sends data off the box, so I made it an explicit next decision
+rather than slipping it in.
+
+**Likely follow-up questions.**
+- *Why does the 1 h window come second in the alert expression?* Because the alert's value is the left operand's.
+  A unit test caught the page saying "last 5 min" while showing the 1-hour number.
+- *How do you avoid alert fatigue?* Burn rates instead of thresholds on single failures (a single failed probe is
+  tested not to page), page vs ticket severities with different repeat intervals, and inhibition.
+- *What's your SLI if traffic grows?* Add request-based SLIs from the latency histogram alongside the probe; the
+  route-template labels are already there.

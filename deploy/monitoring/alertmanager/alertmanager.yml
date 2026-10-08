@@ -1,0 +1,30 @@
+# Rendered by up.sh into $RUNTIME/alertmanager.yml (__TELEGRAM_CHAT_ID__ from deploy/.env); the bot token is read from
+# a 600 file next to it, never written into this config. Same bot and chat as the approvals (the VPS bot).
+route:
+  receiver: telegram
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    - matchers: ['severity="page"']
+      receiver: telegram
+      repeat_interval: 1h
+
+inhibit_rules:
+  # When intel-api itself is down, its worker / database / SLO alerts are consequences, not news.
+  - source_matchers: ['alertname="IntelApiDown"']
+    target_matchers: ['alertname=~"IntelWorkerStalled|IntelDbDown|IntelApiAvailabilityBurn.*|IntelApiLatencyBurn.*"']
+  - source_matchers: ['alertname="HostDiskCritical"']
+    target_matchers: ['alertname="HostDiskLow"']
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /runtime/telegram_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        parse_mode: HTML
+        send_resolved: true
+        message: '{{ template "dk.telegram" . }}'
+
+templates: [/etc/alertmanager/templates/*.tmpl]

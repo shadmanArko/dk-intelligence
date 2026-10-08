@@ -100,6 +100,9 @@ mkdir -p /opt/dhaka-kacchi/logs && ./backup.sh && ls -l /opt/dhaka-kacchi/backup
 crontab -l | tail -3
 ```
 
+### 8. Monitoring, SLOs and alerts (H3)
+See [monitoring/README.md](monitoring/README.md): one `.env` line, `./up.sh`, and `tailscale serve` for Grafana.
+
 ## Everyday
 | Task | Command (in `/opt/dhaka-kacchi/dk-intelligence/deploy`) |
 |---|---|
@@ -108,6 +111,7 @@ crontab -l | tail -3
 | Restart | `docker compose up -d` |
 | Manual deploy | `/opt/dhaka-kacchi/bin/run-intel-deploy.sh` (pulls main, runs the CI image of that commit) |
 | Deploy history | `tail /opt/dhaka-kacchi/logs/intel-deploys.log` |
+| Dashboards and alerts | Grafana `https://<vps>.<tailnet>.ts.net:8443` · [monitoring/README.md](monitoring/README.md) |
 | Back to the previous app version | `INTEL_IMAGE=dk-intelligence:previous docker compose up -d` |
 | Emergency build on the VPS | `./deploy.sh --local-build` (only if GitHub is down: not scanned) |
 | Database shell | `docker compose exec intel-db psql -U intel intel` |

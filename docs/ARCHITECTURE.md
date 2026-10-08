@@ -47,6 +47,7 @@ flowchart LR
 | `intel-api` | VPS, Docker | load approved packages, `/v1/predict`, `/v1/score`, ledger, web pages, Telegram | 512 MB |
 | `intel-db` | VPS, Docker (pgvector pg16) | registry, approvals, activations, ledger, event log | 384 MB, no published port |
 | Market data platform | Mac (+ VPS collector) | public market data → versioned marts | separate repo (`mip`) |
+| Monitoring (`dk-monitoring`) | VPS, Docker | Prometheus, Alertmanager → Telegram, Grafana (tailnet :8443), node-exporter, blackbox probe of `/health/deep` (ADR 0016) | ~800 MB limits total |
 
 ## 3. The life of a model
 
@@ -130,4 +131,5 @@ flowchart TB
 | dependency audit | CI | pip-audit over every locked package (with hashes): no known vulnerability |
 | image scan | CI | trivy on the pushed digest: no fixable HIGH/CRITICAL; report + SBOM kept (ADR 0014) |
 | migrations | CI | additive only, unless marked `-- contract:` (ADR 0015) |
+| monitoring as code | CI | promtool config + **alert-rule unit tests**, amtool, compose, dashboard PromQL (ADR 0016) |
 | deploy | CI → door 3 | that exact digest; smoke test in the container; automatic rollback on failure (ADR 0014) |

@@ -5,7 +5,8 @@ Checks, in order:
 2. it reports the git commit that was deployed (the right image is running);
 3. every approved model that was active before the deploy is loaded again (none silently lost; a version may move
    on if the inbox worker activated an approved package during the deploy window);
-4. if a content_scorer is active: a real prediction for a fixed draft returns a probability in [0, 1].
+4. if a content_scorer is active: a real prediction (via /health/deep: nothing is written to the ledger) returns a
+   probability in [0, 1].
 
 Environment: EXPECT_SHA (full commit), EXPECT_MODELS (JSON object name -> version from the old /ready; empty when
 the old container was not answering), WAIT_S.
@@ -35,12 +36,12 @@ def get(path: str) -> dict:
         return json.loads(r.read())
 
 
-def post(path: str, body: dict) -> tuple[int, dict]:
-    req = urllib.request.Request(  # noqa: S310 (fixed local URL)
-        BASE + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}
-    )
+def request(path: str, body: dict | None = None) -> tuple[int, dict]:
+    """GET (no body) or POST JSON; returns (status, JSON body), also for HTTP errors."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(BASE + path, data=data, headers={"Content-Type": "application/json"})  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310 (fixed local URL)
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, {"detail": e.read().decode(errors="replace")[:200]}
@@ -68,13 +69,19 @@ def main() -> int:
     if lost := sorted(set(expect_models) - set(models)):
         problems.append(f"models active before the deploy are not loaded: {lost} (now {models})")
     moved = {n: (expect_models[n], v) for n, v in models.items() if n in expect_models and expect_models[n] != v}
-    if "content_scorer" in (ready.get("models") or {}):
-        code, body = post("/v1/predict", DRAFT)
-        p = body.get("probability")
+    if "content_scorer" in models:
+        # /health/deep predicts without writing to the ledger; images from before 2026-10-08 (a rollback target) lack
+        # it, so they are checked through /v1/predict as before.
+        code, deep = request("/health/deep")
+        if code == 404:
+            code, body = request("/v1/predict", DRAFT)
+            p = body.get("probability")
+        else:
+            p = (deep.get("prediction") or {}).get("probability")
         if code != 200 or not isinstance(p, int | float) or not 0 <= p <= 1:
-            problems.append(f"/v1/predict returned {code} {body}")
-    for p in problems:
-        print(f"FAIL {p}")
+            problems.append(f"prediction check returned {code}, probability {p!r}")
+    for problem in problems:
+        print(f"FAIL {problem}")
     if not problems:
         note = f" (activated during the deploy: {moved})" if moved else ""
         print(f"OK version {expect_sha[:10]}, models {models}{note}")

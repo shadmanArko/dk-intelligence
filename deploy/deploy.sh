@@ -15,10 +15,20 @@ cd "$(dirname "$0")"
 REGISTRY_IMAGE="ghcr.io/shadmanarko/dk-intelligence"
 HISTORY="${INTEL_DEPLOY_HISTORY:-/opt/dhaka-kacchi/logs/intel-deploys.log}"
 [[ -f .env ]] || { echo "deploy/.env missing: run the first-time setup in deploy/README.md"; exit 2; }
+# shellcheck source=SCRIPTDIR/metrics.sh
+source ./metrics.sh
 
 record() {  # outcome, image, note
   mkdir -p "$(dirname "$HISTORY")"
   printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "${SHA:0:12}" "$1" "$2" "$3" >> "$HISTORY"
+  write_metrics intel_deploy <<METRICS || true
+# HELP intel_deploy_last_info Outcome of the last deploy attempt (deployed, rolled_back, superseded, refused, ...).
+# TYPE intel_deploy_last_info gauge
+intel_deploy_last_info{outcome="$1",commit="${SHA:0:12}"} 1
+# HELP intel_deploy_last_timestamp_seconds When the last deploy attempt ended.
+# TYPE intel_deploy_last_timestamp_seconds gauge
+intel_deploy_last_timestamp_seconds $(date +%s)
+METRICS
 }
 
 # ---------- 1. what to deploy ----------
@@ -83,6 +93,9 @@ if smoke "$SHA"; then
   record deployed "$IMAGE" "${EXPECT_MODELS:-}"
   docker image prune -f >/dev/null
   echo "== deployed ${SHA:0:12}"
+  if [[ -f monitoring/.env ]]; then   # keep the monitoring stack in step with this commit's config (never fatal)
+    monitoring/up.sh || echo "!! monitoring refresh failed (the app deploy itself succeeded)"
+  fi
   exit 0
 fi
 

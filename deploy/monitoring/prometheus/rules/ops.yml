@@ -1,0 +1,111 @@
+# Operational alerts that are not SLOs: things that break silently (ADR 0016). Severity: page = act now, ticket = today.
+groups:
+  - name: intel-api
+    rules:
+      - alert: IntelApiDown
+        expr: up{job="intel-api"} == 0
+        for: 3m
+        labels: {severity: page}
+        annotations:
+          summary: "Prometheus cannot scrape intel-api for 3 minutes"
+          action: "`docker compose ps` in /opt/dhaka-kacchi/dk-intelligence/deploy; logs; last deploy in intel-deploys.log."
+      - alert: IntelDbDown
+        expr: intel_db_up == 0
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "intel-api cannot reach intel-db"
+          action: "`docker compose ps intel-db`, `docker compose logs --tail 50 intel-db`, disk space."
+      - alert: IntelWorkerStalled
+        # a worker that once succeeded and then stopped: inbox (30 s loop), telegram (25 s polls), reports (5 min),
+        # measure (hourly)
+        expr: |
+          (time() - intel_worker_last_success_timestamp_seconds{worker=~"inbox|telegram"}) > 300
+          or (time() - intel_worker_last_success_timestamp_seconds{worker="reports"}) > 1200
+          or (time() - intel_worker_last_success_timestamp_seconds{worker="measure"}) > 3 * 3600
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Background worker {{ $labels.worker }} has not completed a loop for {{ $value | humanizeDuration }}"
+          action: "`docker compose logs --tail 200 intel-api | grep {{ $labels.worker }}`; a restart (`docker compose up -d`) is safe."
+      - alert: IntelWorkerErrors
+        expr: increase(intel_worker_errors_total[30m]) > 3
+        labels: {severity: ticket}
+        annotations:
+          summary: "Worker {{ $labels.worker }} failed {{ $value | humanize }} times in 30 minutes"
+          action: "Logs show the exception (JSON lines with logger intel.api)."
+      - alert: IntelTrainingOverdue
+        expr: (time() - intel_training_last_report_timestamp_seconds) > 8 * 86400
+        labels: {severity: ticket}
+        annotations:
+          summary: "No weekly training report for {{ $value | humanizeDuration }}"
+          action: "On the Mac: `uv run intel weekly-status`; is the Mac on and the launchd job loaded?"
+
+  - name: host
+    rules:
+      - alert: HostDiskLow
+        expr: node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} < 0.15
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "VPS disk: only {{ $value | humanizePercentage }} free"
+          action: "`docker system df`; `docker image prune`; old backups in /opt/dhaka-kacchi/backups."
+      - alert: HostDiskCritical
+        expr: node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} < 0.05
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "VPS disk almost full: {{ $value | humanizePercentage }} free (Postgres will stop writing)"
+          action: "Free space now: `docker image prune -a` (keeps running images), old logs and backups."
+      - alert: HostDiskMetricMissing
+        # the disk alerts above match mountpoint="/": if that series ever disappears they would stay silent forever
+        expr: absent(node_filesystem_size_bytes{mountpoint="/"}) and on() up{job="node"} == 1
+        for: 30m
+        labels: {severity: ticket}
+        annotations:
+          summary: "node-exporter reports no root filesystem: the disk alerts are blind"
+          action: "Check the node-exporter mounts in deploy/monitoring/docker-compose.yml (/:/host:ro, --path.rootfs=/host)."
+      - alert: HostMemoryLow
+        # the VPS has no swap: when memory runs out the kernel kills a process without warning
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "VPS memory: only {{ $value | humanizePercentage }} available, and there is no swap"
+          action: "`docker stats --no-stream`; find the container growing."
+
+  - name: jobs
+    rules:
+      - alert: BackupStale
+        expr: (time() - intel_backup_last_success_timestamp_seconds) > 26 * 3600
+        labels: {severity: ticket}
+        annotations:
+          summary: "No successful intel-db backup for {{ $value | humanizeDuration }}"
+          action: "`tail /opt/dhaka-kacchi/logs/intel-backup.log`; run deploy/backup.sh by hand."
+      - alert: CollectorStale
+        expr: (time() - mip_collector_last_success_timestamp_seconds{job="daily"}) > 26 * 3600
+        labels: {severity: ticket}
+        annotations:
+          summary: "The VPS data collector has not had a clean daily run for {{ $value | humanizeDuration }}"
+          action: "`tail -50 /opt/dhaka-kacchi/logs/mip-collector.log` (lines starting with !! failed)."
+      - alert: CollectorStepsFailing
+        expr: mip_collector_last_run_failed_steps > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "The last {{ $labels.job }} collector run had {{ $value }} failed step(s)"
+          action: "`grep '!! failed' /opt/dhaka-kacchi/logs/mip-collector.log | tail`"
+
+  - name: meta
+    rules:
+      - alert: PrometheusRuleFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[15m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "Prometheus failed to evaluate rules ({{ $labels.rule_group }})"
+          action: "`docker compose -p dk-monitoring logs prometheus | tail`"
+      - alert: AlertmanagerNotificationsFailing
+        expr: increase(alertmanager_notifications_failed_total[15m]) > 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "Alertmanager could not deliver {{ $labels.integration }} notifications"
+          action: "Telegram token / chat id in deploy/.env; rerun deploy/monitoring/up.sh."
