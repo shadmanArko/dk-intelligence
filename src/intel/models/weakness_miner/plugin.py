@@ -6,7 +6,7 @@ import json
 from html import escape
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome
 
 
 class WeaknessMiner(ModelPlugin):
@@ -21,6 +21,21 @@ class WeaknessMiner(ModelPlugin):
     inputs = ("market",)
     box = Box(col=2, row=0, label="Review miner", sub="competitor weaknesses")
     kind = "insights"
+    cards = {
+        "weakness_miner": ModelCard(
+            intended_use="Find what Berlin biryani buyers praise and complain about in competitors' public reviews, "
+            "to pick content angles and promises we can keep.",
+            out_of_scope=(
+                "Judging an individual reviewer, or naming competitors publicly.",
+                "Reviews outside Berlin or in languages other than German and English.",
+            ),
+            limitations=(
+                "Dictionary-based: precise and explainable, but misses phrasings it has no phrase for (measured by the "
+                "owner's sentence check).",
+                "Lieferando reviews only; their customers are not all of Berlin.",
+            ),
+        ),
+    }
     models = {
         "weakness_miner": (
             "models/weakness_miner/spec.yaml",

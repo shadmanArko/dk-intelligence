@@ -6,7 +6,7 @@ import json
 from html import escape
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome
 
 
 class CommunityMap(ModelPlugin):
@@ -21,6 +21,20 @@ class CommunityMap(ModelPlugin):
     inputs = ("market", "pull")
     box = Box(col=3, row=0, label="Community map", sub="542 Berlin areas")
     kind = "insights"
+    cards = {
+        "community_map": ModelCard(
+            intended_use="Rank Berlin planning areas for delivery, advertising and pop-ups by the size of likely "
+            "audiences, biryani demand and distance from the kitchen.",
+            out_of_scope=(
+                "Targeting or excluding individuals, or any audience defined by ethnicity or religion: it chooses "
+                "AREAS, from public statistics.",
+            ),
+            limitations=(
+                "Residence statistics are yearly and describe residents, not workers or visitors.",
+                "Our own orders are still too few to validate the ranking.",
+            ),
+        ),
+    }
     models = {"community_map": ("models/community_map/spec.yaml", "models/community_map/run.py")}
 
     def run(self, ctx: RunContext) -> StepOutcome:

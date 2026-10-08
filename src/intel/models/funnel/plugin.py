@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome, insights_approval
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome, insights_approval
 
 
 class Funnel(ModelPlugin):
@@ -20,6 +20,17 @@ class Funnel(ModelPlugin):
     inputs = ("pull",)
     box = Box(col=2, row=2, label="Funnel", sub="visits → orders")
     kind = "insights"
+    cards = {
+        "funnel": ModelCard(
+            intended_use="Show where website visits come from and where visitors drop off before ordering, to fix "
+            "the checkout and choose channels.",
+            out_of_scope=("Tracking or identifying individual visitors: only counts leave this step.",),
+            limitations=(
+                "Most visits arrive without a source until every post carries a tracked link.",
+                "Very few orders so far: conversion rates are not yet stable.",
+            ),
+        ),
+    }
     models = {"funnel": ("models/funnel/spec.yaml", "models/funnel/run.py")}
 
     def run(self, ctx: RunContext) -> StepOutcome:

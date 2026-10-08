@@ -206,3 +206,68 @@ def replace_column(
     t = tables[table]
     i = t.schema.get_field_index(column)
     tables[table] = t.set_column(i, column, pa.array(values, type=type_ or t.schema.field(column).type))
+
+
+def training_snapshots(root: Path, n_posts: int = 240) -> tuple[Path, Path]:
+    """A warehouse pull and a market snapshot a scorer can actually TRAIN on: matured posts (metrics 8 days after
+    posting) with engagement that depends on format and timing (+ noise), and a market snapshot with the cue
+    dictionary, TikTok priors and an occasion calendar."""
+    import random
+
+    rnd = random.Random(42)  # noqa: S311  (reproducible test data, not security)
+    t = warehouse_tables(n_posts=n_posts, snaps_per_post=1)
+    posted = [SNAP - dt.timedelta(days=200) + dt.timedelta(hours=17 * i) for i in range(n_posts)]
+    platforms = ["facebook", "instagram"] * (n_posts // 2)
+    types = [rnd.choice(["reel", "image", "video", "carousel"]) for _ in range(n_posts)]
+    captions = [
+        rnd.choice(["Halal kacchi #berlin", "biryani night", "Our kitchen, behind the scenes #food #rice", "Kacchi"])
+        for _ in range(n_posts)
+    ]
+    likes = [
+        int(10 + 15 * (ty == "reel") + 5 * (p.hour >= 17) + rnd.randint(0, 12))
+        for ty, p in zip(types, posted, strict=True)
+    ]
+    t["social_post"] = _t(
+        {
+            "id": (pa.string(), [f"p{i:03d}" for i in range(n_posts)]),
+            "platform": (pa.string(), platforms),
+            "posted_at": (TS, posted),
+            "content_type": (pa.string(), types),
+            "caption": (pa.string(), captions),
+        }
+    )
+    t["social_metrics_snapshot"] = _t(
+        {
+            "social_post_id": (pa.string(), [f"p{i:03d}" for i in range(n_posts)]),
+            "captured_at": (TS, [p + dt.timedelta(days=8) for p in posted]),
+            "impressions": (pa.int64(), [x * 20 for x in likes]),
+            "reach": (pa.int64(), [x * 15 for x in likes]),
+            "likes": (pa.int64(), likes),
+            "comments": (pa.int64(), [x // 5 for x in likes]),
+            "shares": (pa.int64(), [x // 10 for x in likes]),
+        }
+    )
+    pull = write_snapshot(root / "pulls", "20261008T060000Z", t)
+    m = market_tables()
+    m["content_feature_performance"] = _t(
+        {
+            "platform": (pa.string(), ["tiktok"] * 4),
+            "tag_type": (pa.string(), ["post_type", "post_type", "cue", "cue"]),
+            "tag_id": (pa.string(), ["video", "image", "behind_scenes", "halal"]),
+            "posts": (pa.int64(), [50] * 4),
+            "median_lift": (pa.float64(), [1.0, 0.9, 1.3, 1.1]),
+            "mean_lift": (pa.float64(), [1.0, 0.9, 1.3, 1.1]),
+        }
+    )
+    days = [SNAP.date() - dt.timedelta(days=300) + dt.timedelta(days=30 * i) for i in range(20)]
+    m["occasion_day"] = _t(
+        {
+            "day": (pa.date32(), days),
+            "community_id": (pa.string(), ["bangladeshi"] * 20),
+            "occasion_type": (pa.string(), [f"o{i}" for i in range(20)]),
+            "food_role": (pa.string(), ["feast"] * 20),
+        }
+    )
+    market = write_snapshot(root / "market", "20261008T060100Z", m)
+    (market / "cues.yaml").write_text("cues:\n  behind_scenes: [behind the scenes, kitchen]\n  halal: [halal]\n")
+    return pull, market

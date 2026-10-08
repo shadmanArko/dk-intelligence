@@ -23,6 +23,7 @@ import joblib
 
 from intel.package import code_hashes, sha256_bytes, verify_package
 from intel.serve.db import connect, log_event, one
+from intel.serve.lifecycle import audit
 
 APPROVABLE = {("candidate", "pass"), ("baseline", "baseline")}
 REASON_CODES = {
@@ -143,6 +144,19 @@ class Registry:
                 log_event(self.dsn, "duplicate_version", name=name, version=version, sha256=outer)
                 return Intake(row["id"], "invalid", name, version, ["version already registered"], None)
             approval_id = None
+            subject = f"{name} {version}"
+            audit(
+                c,
+                "system",
+                "inbox",
+                "package_received",
+                subject,
+                status=status,
+                purpose=purpose,
+                verdict=verdict,
+                sha256=outer,
+                problems=problems,
+            )
             if status == "pending_approval":
                 approval_id = one(
                     c.execute(
@@ -150,6 +164,15 @@ class Registry:
                         (row["id"], dt.timedelta(days=self.approval_days)),
                     )
                 )["id"]
+                audit(
+                    c,
+                    "system",
+                    "inbox",
+                    "approval_requested",
+                    subject,
+                    approval_id=approval_id,
+                    expires_in_days=self.approval_days,
+                )
         log_event(self.dsn, "package_received", name=name, version=version, status=status, problems=problems)
         if approval_id and meta.get("kind") == "insights" and self.human_approved_before(name, row["id"]):
             # Insights refresh weekly (new dates, new reviews). After the owner approved this insight once, a new
@@ -197,6 +220,9 @@ class Registry:
                 "insert into model_activation (name, package_id, activated_by, reason) values (%s,%s,%s,'approval')",
                 (a["name"], a["package_id"], f"{channel}:{by}"),
             )
+            subject = f"{a['name']} {a['version']}"
+            audit(c, by, channel, "approved", subject, approval_id=approval_id)
+            audit(c, by, channel, "activated", subject, reason="approval")
         log_event(
             self.dsn, "approved", approval_id=approval_id, name=a["name"], version=a["version"], by=by, channel=channel
         )
@@ -213,6 +239,9 @@ class Registry:
                 (by, channel, reason_code, approval_id),
             )
             c.execute("update model_package set status='rejected' where id=%s", (a["package_id"],))
+            audit(
+                c, by, channel, "rejected", f"{a['name']} {a['version']}", approval_id=approval_id, reason=reason_code
+            )
         log_event(
             self.dsn,
             "rejected",
@@ -227,11 +256,13 @@ class Registry:
     def expire_due(self) -> list[dict]:
         with connect(self.dsn) as c, c.transaction():
             rows = c.execute(
-                """update approval set decision='expired', decided_at=now(), decided_by='system', channel='system'
-                   where decision is null and expires_at < now() returning id, package_id, telegram_message_id"""
+                """update approval a set decision='expired', decided_at=now(), decided_by='system', channel='system'
+                   from model_package p where p.id = a.package_id and a.decision is null and a.expires_at < now()
+                   returning a.id, a.package_id, a.telegram_message_id, p.name, p.version"""
             ).fetchall()
             for r in rows:
                 c.execute("update model_package set status='expired' where id=%s", (r["package_id"],))
+                audit(c, "system", "system", "expired", f"{r['name']} {r['version']}", approval_id=r["id"])
         return rows
 
     def rollback(self, name: str, by: str, channel: str) -> dict:
@@ -251,6 +282,7 @@ class Registry:
                 (name, previous, f"{channel}:{by}"),
             )
             v = one(c.execute("select version from model_package where id=%s", (previous,)))["version"]
+            audit(c, by, channel, "rolled_back", f"{name} {v}", from_package=current, to_package=previous)
         log_event(self.dsn, "rollback", name=name, to_version=v, by=by, channel=channel)
         return {"name": name, "version": v}
 

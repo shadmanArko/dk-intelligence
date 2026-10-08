@@ -205,3 +205,44 @@ cool-down stops a persistent shift from retraining hourly.
   separately. Drift alone needs ≥ 2 inputs or the score distribution to move before it asks for retraining.
 - *What about label delay?* Outcomes mature after 7 days, so input and score drift are the early warning, and
   live accuracy is the confirmation.
+
+---
+
+## H5 · Governance you can trust, and proof the model can be rebuilt
+
+**Situation.** Model approvals ran through Telegram and a web page, but the rules lived only in application code,
+and the history was an ordinary table: one bug or one manual query away from "approved" meaning nothing. Model
+cards were short. "Reproducible" was a claim no one had tested.
+
+**Task.** Make the approval record trustworthy, make illegal model states impossible, document each model honestly,
+and prove a production model can be rebuilt from its lineage.
+
+**Action.**
+- **Moved the lifecycle into the database:** a trigger allows only candidate → approved / rejected / expired.
+  Decisions are final and activation history is append-only. A test tries all 42 status pairs and requires the
+  database and the Python table to agree.
+- **Built a tamper-evident audit trail.** Each governance action is written in the same transaction as the change
+  (a failed action leaves nothing). The log is append-only and SHA-256 hash-chained, so editing or deleting any
+  entry is detected at that exact entry, even by a superuser who disables the triggers. I backfilled the existing
+  history and added an Audit page and a paging alert.
+- **Model cards v2:** intended use and out-of-scope uses as code on each model's plug-in, plus lineage, data checks,
+  training coverage, a confidence interval, confusion matrix, per-platform results and a calibration table.
+- **Reproducibility as a test:** `intel reproduce` retrains from the recorded snapshots and diffs everything. CI
+  trains twice and requires identical results.
+
+**Result.** The production model reproduces **bit-exactly** (75/75 test predictions, same leaderboard and
+metrics). The audit chain verifies, and tampering is caught. Coverage rose from 77% to 82.6%, because real training
+now runs in CI. The new card surfaced something the old one hid: the model leans optimistic (20 of 39 below-usual
+posts flagged as above).
+
+**Trade-off I would defend.** A hash chain doesn't *prevent* a superuser from editing history; it guarantees the
+edit is *detected* and alerted. Prevention would need write access controlled outside this database. For one
+operator, evidence plus an alert is the right weight; anchoring the latest hash off-box is the noted next step.
+
+**Likely follow-up questions.**
+- *Why both Python and SQL rules?* Python gives readable errors and drives the UI; SQL makes bypass impossible. The
+  equality test stops them drifting apart.
+- *What makes training deterministic?* Seeded models and bootstrap, time-ordered CV (no shuffling), and immutable
+  snapshots.
+- *What breaks reproducibility in practice?* Pruned snapshots (refused, with a clear message) and changed sealed
+  code (reported next to the result).

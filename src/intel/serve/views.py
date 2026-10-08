@@ -563,3 +563,45 @@ watch their videos; paid or gifted posts must be labelled "Werbung". Not a creat
 <table>{head}{top}</table>
 <h3>South Asian food specialists</h3><table>{head}{sa}</table>
 <h3>Restaurants and brands on TikTok (for competitor watching)</h3><p>{biz}</p>"""
+
+
+STAGE_STYLE = {
+    "production": ("🟢", "in production"),
+    "retired": ("⚪", "retired"),
+    "candidate": ("🟡", "waiting for you"),
+    "rejected": ("🔴", "rejected"),
+    "expired": ("⌛", "expired"),
+    "invalid": ("⛔", "invalid"),
+    "incompatible": ("⛔", "incompatible"),
+    "test_only": ("🧪", "pipeline test"),
+}
+
+
+def audit_html(chain: dict, packages: list[dict], entries: list[dict]) -> str:
+    """ADR 0019: who decided what, when; every model's lifecycle stage; and whether the record is intact."""
+    badge = (
+        f"<p class=ok>✅ Audit trail intact: {chain['entries']} entries, every hash and link verified.</p>"
+        if chain["ok"]
+        else f"<p class=bad>⛔ Audit trail BROKEN at entry {chain['first_bad']}: something edited the record.</p>"
+    )
+    rows = "".join(
+        f"<tr><td>{STAGE_STYLE.get(p['stage'], ('', p['stage']))[0]} {H(STAGE_STYLE.get(p['stage'], ('', p['stage']))[1])}"
+        f"</td><td>{H(p['name'])}</td><td><code>{H(p['version'])}</code></td><td>{H(p['purpose'])}</td>"
+        f"<td>{H(p['verdict'])}</td><td>{p['received_at']:%d %b %Y %H:%M}</td></tr>"
+        for p in packages
+    )
+    log = "".join(
+        f"<tr><td>{e['at']:%d %b %H:%M}</td><td>{H(e['action'])}</td><td>{H(e['subject'])}</td>"
+        f"<td>{H(e['actor'])} <small>({H(e['channel'])})</small></td>"
+        f"<td><small>{H(', '.join(f'{k}={v}' for k, v in (e['detail'] or {}).items() if k != 'problems'))}</small></td>"
+        f"<td><code title='{H(e['hash'])}'>{H(e['hash'][:10])}</code></td></tr>"
+        for e in entries
+    )
+    return f"""<h1>Audit</h1>{badge}
+<p>Every governance action is written in the same transaction as the change itself. The record is append-only and
+hash-chained: each entry's hash covers the one before it, so editing or deleting anything breaks the chain from there.
+Status changes follow the lifecycle below; the database refuses anything else.</p>
+<h2>Models</h2><table><tr><th>Stage</th><th>Model</th><th>Version</th><th>Purpose</th><th>Verdict</th><th>Received</th></tr>
+{rows or "<tr><td colspan=6>No packages yet.</td></tr>"}</table>
+<h2>History</h2><table><tr><th>When (UTC)</th><th>Action</th><th>Model</th><th>Who</th><th>Detail</th><th>Hash</th></tr>
+{log or "<tr><td colspan=6>Nothing recorded yet.</td></tr>"}</table>"""

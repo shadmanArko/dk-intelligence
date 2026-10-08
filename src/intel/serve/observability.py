@@ -45,7 +45,9 @@ select (select max(created_at) from prediction) as last_prediction,
        (select count(*) from ledger_post) as posts,
        (select count(*) from approval where decision is null and expires_at > now()) as pending,
        (select max(received_at) from training_run) as last_training,
-       (select status from training_run order by received_at desc limit 1) as training_status
+       (select status from training_run order by received_at desc limit 1) as training_status,
+       audit_verify() as audit_first_bad,
+       (select count(*) from audit_log) as audit_entries
 """
 LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
@@ -129,6 +131,14 @@ class StateCollector(Collector):
                 yield GaugeMetricFamily(name, doc, value=row[key].timestamp())
         yield GaugeMetricFamily("intel_ledger_posts", "Posts in the ledger", value=row["posts"])
         yield GaugeMetricFamily("intel_approvals_pending", "Approvals waiting for a decision", value=row["pending"])
+        yield GaugeMetricFamily(
+            "intel_audit_entries", "Entries in the hash-chained audit log", value=row["audit_entries"]
+        )
+        yield GaugeMetricFamily(
+            "intel_audit_chain_ok",
+            "1 if every audit entry's hash and link verify",
+            value=row["audit_first_bad"] is None,
+        )
         yield from self._monitoring()
         if row["training_status"]:
             st = GaugeMetricFamily(

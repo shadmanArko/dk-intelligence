@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from intel.plugins import Box, ModelPlugin, RunContext, StepOutcome, insights_approval
+from intel.plugins import Box, ModelCard, ModelPlugin, RunContext, StepOutcome, insights_approval
 
 
 class CreatorMatcher(ModelPlugin):
@@ -20,6 +20,20 @@ class CreatorMatcher(ModelPlugin):
     inputs = ("market",)
     box = Box(col=3, row=2, label="Creator matcher", sub="Berlin food creators")
     kind = "insights"
+    cards = {
+        "creator_matcher": ModelCard(
+            intended_use="Shortlist Berlin food creators whose topics and audiences fit Dhaka Kacchi, for "
+            "collaborations the owner initiates.",
+            out_of_scope=(
+                "Contacting creators automatically, or judging people beyond their public posts.",
+                "Any collaboration without a 'Werbung' (advertising) label.",
+            ),
+            limitations=(
+                "TikTok does not expose follower counts; size is estimated from typical views.",
+                "Only creators with public Berlin posts in the market data are seen.",
+            ),
+        ),
+    }
     models = {"creator_matcher": ("models/creator_matcher/spec.yaml", "models/creator_matcher/run.py")}
 
     def run(self, ctx: RunContext) -> StepOutcome:

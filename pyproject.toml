@@ -104,6 +104,8 @@ module = [
     "intel.monitoring.drift",
     "intel.monitoring.reference",
     "intel.serve.monitor",
+    "intel.serve.lifecycle",
+    "intel.reproduce",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true
@@ -136,7 +138,7 @@ omit = ["src/intel/cli.py"]           # thin typer wrapper; its commands are tes
 
 [tool.coverage.report]
 precision = 2                         # compare unrounded: with 0 decimals, 75.99% passed a 76% floor
-fail_under = 77                       # the floor only moves up (H2: 78.8% on the Mac, ~0.6 lower in CI; docs/QUALITY.md)
+fail_under = 80                       # the floor only moves up (H5: 82.6% on the Mac; docs/QUALITY.md)
 show_missing = true
 skip_covered = true
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "@abstractmethod"]
