@@ -36,6 +36,11 @@ push to main
   version on `/ready`) → `FAIL running version 'broken-on-purpose'` → rollback → previous version re-verified →
   exit 1; history shows `deployed`, `rolled_back`. About 40 s including the build.
 - `tests/test_migration_policy.py`: the four existing migrations are additive; destructive SQL is caught (ADR 0015).
+- **First pipeline run went red, correctly:** in CI, actionlint used the runner image's own (older) shellcheck and
+  flagged an `A && B || C` in the alert step; the Mac had shellcheck 0.11, which does not flag it, so the local hook
+  had passed. Root cause: a tool version nobody chose, taken from the runner image. Fix: the actionlint hook now
+  installs a pinned shellcheck (0.11.0.1) for both places, and the step uses a plain `if`. The new alert job ran on
+  that failure as designed (secrets not set yet, so it only left a notice).
 - Findings fixed on the way: `weekly.sh` continued after a failed `cd` (runs without `set -e`); the deploy action
   could have wrapped the command and did not verify the host; the data platform's public README carried the VPS's
   tailnet address.

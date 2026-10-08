@@ -179,7 +179,7 @@ jobs:
           RESULTS: "test ${{ needs.test.result }} · image ${{ needs.image.result }} · deploy ${{ needs.deploy.result }}"
           URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || { echo "::notice::CI_TELEGRAM_* not set: no alert sent"; exit 0; }
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then echo "::notice::CI_TELEGRAM_* not set: no alert sent"; exit 0; fi
           text="🔴 dk-intelligence CI failed on ${GITHUB_REF_NAME} (${GITHUB_SHA:0:7})
           ${MSG%%$'\n'*}
           ${RESULTS}
