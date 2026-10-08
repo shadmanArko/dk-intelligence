@@ -16,7 +16,7 @@
     # ---------------------------------------------------------------- base
     - name: Packages the doors and scripts rely on
       ansible.builtin.apt:
-        name: [rsync, git, cron, python3]
+        name: [rsync, git, cron, python3, logrotate]
         state: present
         update_cache: false
       when: not in_container
@@ -124,6 +124,26 @@
       loop: "{{ cron_jobs }}"
       loop_control:
         label: "{{ item.name }}"
+
+    # ---------------------------------------------------------------- log retention (ADR 0024)
+    - name: "Logs: our job logs rotate weekly and are kept 8 weeks (the harness's logs are left to the harness)"
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/dk-intelligence
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by infra/site.yml (ADR 0024: retention of the dk-intelligence and collector job logs).
+          {{ log_files | join(' ') }} {
+              weekly
+              rotate {{ log_keep_weeks }}
+              compress
+              delaycompress
+              missingok
+              notifempty
+              copytruncate
+              su {{ deploy_user }} {{ deploy_user }}
+          }
 
     # ---------------------------------------------------------------- swap (ADR 0021)
     - name: "Swap: file present"

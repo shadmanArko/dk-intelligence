@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     harness_predictor_url: str | None = None  # e.g. http://predictor:8000 (the production predictor)
     intel_ledger_start: dt.datetime = dt.datetime(2026, 10, 7, tzinfo=dt.UTC)  # posts before this are not scored
     intel_measure_interval_s: int = Field(default=3600, ge=60)
+    intel_retention_interval_s: int = Field(default=86400, ge=60)  # the retention job (ADR 0024)
     # H6 guardrail (ADR 0020): roll a degraded production scorer back by itself ('on'), only report what it would do
     # ('dry_run'), or never ('off').
     intel_auto_rollback: Literal["on", "dry_run", "off"] = "on"

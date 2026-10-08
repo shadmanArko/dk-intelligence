@@ -96,6 +96,12 @@ class Metrics:
             buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
             registry=r,
         )
+        self.retention_deleted = Counter(
+            "intel_retention_deleted",
+            "Rows deleted by the retention job (ADR 0024), per table",
+            ["table"],
+            registry=r,
+        )
         self.warmup = Gauge(
             "intel_model_warmup_seconds",
             "First (cold) prediction of a newly loaded model, done at load time",

@@ -4,8 +4,9 @@
 # test asserts on. The second run must change nothing.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null && apt-get install -y -qq ansible cron sudo python3 >/dev/null
+apt-get update -qq >/dev/null && apt-get install -y -qq ansible cron sudo python3 logrotate >/dev/null
 useradd -m -s /bin/bash deploy
+mkdir -p /opt/dhaka-kacchi/logs && chown deploy:deploy /opt/dhaka-kacchi/logs   # cron (deploy) writes the logs
 printf '%s\n' "0 3 * * * /opt/dhaka-kacchi/dhaka_kacchi_ai_harness/deploy/backup.sh >> /opt/dhaka-kacchi/logs/backup.log 2>&1" \
   "50 2 * * * /opt/dhaka-kacchi/dk-intelligence/deploy/backup.sh >> /opt/dhaka-kacchi/logs/intel-backup.log 2>&1" \
   "15 10 * * * /opt/dhaka-kacchi/mip-collector/deploy/collector/run.sh daily >> /opt/dhaka-kacchi/logs/mip-collector.log 2>&1" \
@@ -20,4 +21,6 @@ echo "== tunnel"; cat /home/intel/.ssh/authorized_keys; getent passwd intel | cu
 echo "== inbox"; cat /home/intelinbox/.ssh/authorized_keys; stat -c '%U:%G %a' /opt/dhaka-kacchi/intel-data/inbox
 passwd -S intelinbox | cut -d' ' -f2
 echo "== door3"; stat -c '%U %a' /opt/dhaka-kacchi/bin/run-intel-deploy.sh; tail -2 /opt/dhaka-kacchi/bin/run-intel-deploy.sh
+echo "== logrotate"; echo hello > /opt/dhaka-kacchi/logs/intel-backup.log; chown deploy: /opt/dhaka-kacchi/logs/intel-backup.log
+logrotate -f /etc/logrotate.d/dk-intelligence && find /opt/dhaka-kacchi/logs -maxdepth 1 -type f -printf '%f\n' | sort
 echo "== dirs"; stat -c '%n %U %a' /opt/dhaka-kacchi/metrics /opt/dhaka-kacchi/monitoring-runtime

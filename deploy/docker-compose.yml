@@ -2,10 +2,16 @@
 # the ordering database or the shared Postgres image. Total memory limit: 896 MB.
 name: dk-intelligence
 
+# Container logs rotate (ADR 0024): Docker's json-file driver keeps everything forever unless told otherwise.
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "3"}
+
 services:
   intel-db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_DB: intel
       POSTGRES_USER: intel
@@ -26,6 +32,7 @@ services:
     # runs the last image that passed its smoke test.
     image: ${INTEL_IMAGE:-dk-intelligence:current}
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       INTEL_DB_DSN: postgresql://intel:${INTEL_DB_PASSWORD}@intel-db:5432/intel

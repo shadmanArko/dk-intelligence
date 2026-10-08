@@ -22,6 +22,8 @@ train_app = typer.Typer(no_args_is_help=True, help="Train models and judge them 
 app.add_typer(train_app, name="train")
 package_app = typer.Typer(no_args_is_help=True, help="Seal runs into model packages and upload them (door 2)")
 app.add_typer(package_app, name="package")
+privacy_app = typer.Typer(no_args_is_help=True, help="Data protection: scan, minimise, retention, record of processing")
+app.add_typer(privacy_app, name="privacy")
 champion_app = typer.Typer(no_args_is_help=True, help="The current champion model")
 app.add_typer(champion_app, name="champion")
 
@@ -65,7 +67,7 @@ def doctor() -> None:
 
 @app.command()
 def pull(
-    tables: str = typer.Option("", help="Comma-separated tables (default: every readable table)"),
+    tables: str = typer.Option("", help="Comma-separated tables (default: every table the privacy policy declares)"),
     keep: int = typer.Option(None, help="Pulls to keep (default INTEL_KEEP_PULLS)"),
 ) -> None:
     """Snapshot the VPS warehouse into data/pulls/<id>/ (Parquet + manifest + checksums)."""
@@ -73,11 +75,20 @@ def pull(
     if not s.dk_warehouse_dsn:
         typer.secho("DK_WAREHOUSE_DSN is not set (see .env.example)", fg="red")
         raise typer.Exit(1)
-    wanted = [t.strip() for t in tables.split(",") if t.strip()] or None
+    from intel.privacy import PrivacyViolation, pull_tables
+    from intel.privacy.guard import pull_guard
+
+    wanted = [t.strip() for t in tables.split(",") if t.strip()] or pull_tables()
     try:
         with warehouse_tunnel(s.dk_warehouse_ssh, s.dk_warehouse_ssh_key, s.warehouse_local_port):
-            out = run_pull(s.dk_warehouse_dsn, _pulls_dir(), wanted, keep or s.intel_keep_pulls)
-    except (TunnelError, psycopg.OperationalError) as e:
+            out = run_pull(
+                s.dk_warehouse_dsn,
+                _pulls_dir(),
+                wanted,
+                keep or s.intel_keep_pulls,
+                guard=pull_guard("warehouse_pull"),
+            )
+    except (TunnelError, psycopg.OperationalError, PrivacyViolation) as e:
         typer.secho(f"pull failed: {e}", fg="red")
         raise typer.Exit(1) from e
     problems = verify_pull(out)
@@ -429,6 +440,85 @@ def control(
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     typer.echo(f"Control Room on {url} (Ctrl+C to stop)")
     uvicorn.run(app_, host="127.0.0.1", port=port, log_level="warning")
+
+
+@privacy_app.command("scan")
+def privacy_scan(
+    pull_id: str = typer.Argument(None, help="Default: latest"),
+    market: bool = typer.Option(False, "--market", help="Scan a market snapshot instead of a warehouse pull"),
+) -> None:
+    """Scan a snapshot for personal data against the policy (counts only, never values)."""
+    from intel.privacy import tables
+    from intel.privacy.pii import scan_dir
+
+    section = "market_pull" if market else "warehouse_pull"
+    root = get_settings().intel_data_dir / ("market" if market else "pulls")
+    d = resolve_pull(root, pull_id)
+    declared = tables(section)
+    bad = 0
+    for f in scan_dir(d):
+        level = declared.get(f.table, {}).get("personal", "undeclared table")
+        ok = level == "declared"
+        bad += not ok
+        typer.secho(f"  {f.table}.{f.column}: {f.count} x {f.kind}  [{level}]", fg="green" if ok else "red")
+    undeclared = sorted(set(json.loads((d / "manifest.json").read_text())["tables"]) - set(declared))
+    if undeclared:
+        typer.secho(f"  undeclared tables (not pulled any more): {', '.join(undeclared)}", fg="yellow")
+    typer.secho(
+        f"{d.name}: {'OK' if not bad else f'{bad} findings the policy does not allow'}", fg="red" if bad else "green"
+    )
+    raise typer.Exit(1 if bad else 0)
+
+
+@privacy_app.command("minimise")
+def privacy_minimise() -> None:
+    """Bring pulls made before the policy in line with it (undeclared tables deleted, review texts redacted)."""
+    from intel.privacy.guard import minimise_existing
+
+    s = get_settings()
+    for section, root in (("warehouse_pull", s.intel_data_dir / "pulls"), ("market_pull", s.intel_data_dir / "market")):
+        for d in list_pulls(root):
+            r = minimise_existing(d, section)
+            problems = verify_pull(d)
+            if problems:
+                typer.secho(f"{d.name}: verification FAILED: {'; '.join(problems)}", fg="red")
+                raise typer.Exit(1)
+            if "skipped" in r:
+                typer.echo(f"{root.name}/{d.name}: {r['skipped']}")
+            else:
+                typer.secho(
+                    f"{root.name}/{d.name}: removed {len(r['removed_tables'])} tables, redacted {r['redacted'] or '-'}",
+                    fg="green",
+                )
+
+
+@privacy_app.command("ropa")
+def privacy_ropa(
+    write: bool = typer.Option(False, "--write", help="Write docs/privacy/RECORD_OF_PROCESSING.md"),
+) -> None:
+    """The record of processing, rendered from the policy."""
+    from intel.privacy.ropa import ROPA_FILE, render
+
+    if write:
+        ROPA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ROPA_FILE.write_text(render())
+        typer.secho(f"wrote {ROPA_FILE}", fg="green")
+    else:
+        typer.echo(render())
+
+
+@privacy_app.command("retention")
+def privacy_retention(dry_run: bool = typer.Option(True, "--dry-run/--apply", help="Only count (default)")) -> None:
+    """Run the intel-db retention rules now (the API runs them daily). Inside the container on the VPS:
+    `docker compose exec intel-api intel privacy retention`."""
+    from intel.privacy.retention import run_retention
+
+    dsn = get_settings().intel_db_dsn
+    if not dsn:
+        typer.secho("INTEL_DB_DSN is not set", fg="red")
+        raise typer.Exit(1)
+    for p in run_retention(dsn, dry_run=dry_run):
+        typer.echo(f"  {p.rule}: {p.deleted} rows {'would be ' if dry_run else ''}deleted (before {p.cutoff})")
 
 
 if __name__ == "__main__":

@@ -18,11 +18,12 @@ groups:
           action: "`docker compose ps intel-db`, `docker compose logs --tail 50 intel-db`, disk space."
       - alert: IntelWorkerStalled
         # a worker that once succeeded and then stopped: inbox (30 s loop), telegram (25 s polls), reports (5 min),
-        # measure (hourly)
+        # measure (hourly), retention (daily; ADR 0024: data kept past its retention period is a compliance failure)
         expr: |
           (time() - intel_worker_last_success_timestamp_seconds{worker=~"inbox|telegram"}) > 300
           or (time() - intel_worker_last_success_timestamp_seconds{worker="reports"}) > 1200
           or (time() - intel_worker_last_success_timestamp_seconds{worker="measure"}) > 3 * 3600
+          or (time() - intel_worker_last_success_timestamp_seconds{worker="retention"}) > 2 * 86400
         for: 5m
         labels: {severity: ticket}
         annotations:
