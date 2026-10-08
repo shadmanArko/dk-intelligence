@@ -22,7 +22,11 @@ mkdir -p "$METRICS_DIR" && chmod 755 "$METRICS_DIR"      # node-exporter (anothe
   mkdir -p "$RUNTIME/alertmanager-data"
   printf '%s' "$TOKEN" > "$RUNTIME/telegram_token"
   PING="$(grep -E '^HEALTHCHECKS_PING_URL=' .env | cut -d= -f2- || true)"
-  if [[ "$PING" =~ ^https://hc-ping\.com/[A-Za-z0-9-]+$ ]]; then RECEIVER=deadman; else RECEIVER=null; PING="http://127.0.0.1:9/unused"; fi
+  # healthchecks.io ping URLs: https://hc-ping.com/<uuid>  or  https://hc-ping.com/<ping-key>/<slug>
+  if [[ "$PING" =~ ^https://hc-ping\.com/[A-Za-z0-9_-]+(/[a-z0-9_-]+)?$ ]]; then RECEIVER=deadman
+  elif [[ -n "$PING" ]]; then echo "!! HEALTHCHECKS_PING_URL is not a hc-ping.com URL: dead-man's switch NOT active"; RECEIVER=null
+  else RECEIVER=null; fi
+  [[ $RECEIVER == deadman ]] || PING="http://127.0.0.1:9/unused"
   printf '%s' "$PING" > "$RUNTIME/deadman_url"
   sed -e "s/__TELEGRAM_CHAT_ID__/$CHAT/" -e "s/__DEADMAN_RECEIVER__/$RECEIVER/" alertmanager/alertmanager.yml \
     > "$RUNTIME/alertmanager.yml"
