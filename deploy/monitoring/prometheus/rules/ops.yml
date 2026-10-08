@@ -32,7 +32,7 @@ groups:
         expr: increase(intel_worker_errors_total[30m]) > 3
         labels: {severity: ticket}
         annotations:
-          summary: "Worker {{ $labels.worker }} failed {{ $value | humanize }} times in 30 minutes"
+          summary: "Worker {{ $labels.worker }} failed {{ printf \"%.0f\" $value }} times in 30 minutes"
           action: "Logs show the exception (JSON lines with logger intel.api)."
       - alert: IntelTrainingOverdue
         expr: (time() - intel_training_last_report_timestamp_seconds) > 8 * 86400

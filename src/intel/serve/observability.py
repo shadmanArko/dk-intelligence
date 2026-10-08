@@ -129,12 +129,57 @@ class StateCollector(Collector):
                 yield GaugeMetricFamily(name, doc, value=row[key].timestamp())
         yield GaugeMetricFamily("intel_ledger_posts", "Posts in the ledger", value=row["posts"])
         yield GaugeMetricFamily("intel_approvals_pending", "Approvals waiting for a decision", value=row["pending"])
+        yield from self._monitoring()
         if row["training_status"]:
             st = GaugeMetricFamily(
                 "intel_training_last_status", "Status of the newest training report", labels=["status"]
             )
             st.add_metric([row["training_status"]], 1)
             yield st
+
+    def _monitoring(self) -> Iterator[Any]:
+        """Model health from the last monitoring run (ADR 0018)."""
+        mon = self.state.monitoring
+        if not mon:
+            return
+        psi = GaugeMetricFamily(
+            "intel_model_feature_psi", "Feature drift (PSI) vs the training reference", labels=["model", "feature"]
+        )
+        pred = GaugeMetricFamily(
+            "intel_model_prediction_psi", "Predicted-score drift (PSI) vs the test set", labels=["model"]
+        )
+        live = GaugeMetricFamily(
+            "intel_model_live_balanced_accuracy", "Balanced accuracy on matured 7-day outcomes", labels=["model"]
+        )
+        ref = GaugeMetricFamily(
+            "intel_model_reference_balanced_accuracy", "Balanced accuracy on the test set", labels=["model"]
+        )
+        cal = GaugeMetricFamily(
+            "intel_model_calibration_gap", "Mean predicted probability minus observed share", labels=["model"]
+        )
+        retrain = GaugeMetricFamily(
+            "intel_model_retrain_requested", "1 if monitoring asks for early retraining", labels=["model"]
+        )
+        samples = GaugeMetricFamily(
+            "intel_model_monitor_samples", "Predictions / outcomes behind the judgement", labels=["model", "kind"]
+        )
+        for name, h in mon.get("models", {}).items():
+            for feature, v in (h.get("feature_psi") or {}).items():
+                psi.add_metric([name, feature], v)
+            if h.get("prediction_psi") is not None:
+                pred.add_metric([name], h["prediction_psi"])
+            perf = h.get("live") or {}
+            if perf.get("balanced_accuracy") is not None:
+                live.add_metric([name], perf["balanced_accuracy"])
+            if perf.get("calibration_gap") is not None:
+                cal.add_metric([name], perf["calibration_gap"])
+            test_ba = (h.get("reference") or {}).get("test_balanced_accuracy")
+            if test_ba is not None:
+                ref.add_metric([name], test_ba)
+            retrain.add_metric([name], 1 if h.get("retrain_requested") else 0)
+            samples.add_metric([name, "predictions"], h.get("predictions", 0))
+            samples.add_metric([name, "outcomes"], h.get("outcomes", 0))
+        yield from (psi, pred, live, ref, cal, retrain, samples)
 
     def _db_row(self) -> dict[str, Any]:
         from intel.serve.db import connect, one

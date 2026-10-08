@@ -57,6 +57,15 @@ class RunResult:
     errors: int = 0
 
 
+def served_features(bundle: dict, row: pd.DataFrame) -> dict:
+    """The model's input features for one post, exactly as the bundle computes them (ADR 0018). Same sealed feature
+    code and frozen market context as `predict`; stored with the prediction for drift and skew checks."""
+    from intel.models.content_scorer.features import MarketContext, build_features
+
+    X = build_features(row, MarketContext.from_dict(bundle["context"]))[bundle["columns"]]
+    return {str(c): (None if pd.isna(v) else v.item() if hasattr(v, "item") else v) for c, v in X.iloc[0].items()}
+
+
 class Measurer:
     def __init__(
         self,
@@ -130,6 +139,7 @@ class Measurer:
                     "threshold": r["threshold"],
                     "predicted_label": r["label"],
                     "top_reasons": r["top_reasons"],
+                    "features": served_features(m["bundle"], row),
                 }
             )
         return out
@@ -159,8 +169,8 @@ class Measurer:
                 for x in preds:
                     cur = c.execute(
                         """insert into prediction (source, model_name, model_version, post_id, platform, planned_at,
-                           input_sha256, probability, threshold, predicted_label, top_reasons)
-                           values ('shadow',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
+                           input_sha256, probability, threshold, predicted_label, top_reasons, features)
+                           values ('shadow',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
                         (
                             x["model_name"],
                             x["model_version"],
@@ -172,6 +182,7 @@ class Measurer:
                             x["threshold"],
                             x["predicted_label"],
                             json.dumps(x["top_reasons"]),
+                            json.dumps(x["features"]) if x.get("features") is not None else None,
                         ),
                     )
                     res.predictions += cur.rowcount
@@ -207,8 +218,8 @@ class Measurer:
                 with connect(self.intel) as c:
                     cur = c.execute(
                         """insert into prediction (source, model_name, model_version, post_id, platform, planned_at,
-                           input_sha256, probability, threshold, predicted_label, top_reasons)
-                           values ('shadow',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
+                           input_sha256, probability, threshold, predicted_label, top_reasons, features)
+                           values ('shadow',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict do nothing""",
                         (
                             x["model_name"],
                             x["model_version"],
@@ -220,6 +231,7 @@ class Measurer:
                             x["threshold"],
                             x["predicted_label"],
                             json.dumps(x["top_reasons"]),
+                            json.dumps(x["features"]) if x.get("features") is not None else None,
                         ),
                     )
                     res.predictions += cur.rowcount

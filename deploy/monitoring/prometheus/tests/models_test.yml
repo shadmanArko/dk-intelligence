@@ -1,0 +1,39 @@
+# Samples every minute, like real scrapes (30 s): with sparser samples the series looks absent between them
+# (5-minute lookback) and every `for:` timer resets.
+rule_files: [../rules/models.yml]
+evaluation_interval: 1m
+
+tests:
+  - name: a retrain request must persist 2 hours before it alerts
+    interval: 1m
+    input_series:
+      - {series: 'intel_model_retrain_requested{model="content_scorer",job="intel-api"}', values: '0 1x200'}
+    alert_rule_test:
+      - {eval_time: 1h, alertname: ModelRetrainRequested, exp_alerts: []}
+      - eval_time: 3h
+        alertname: ModelRetrainRequested
+        exp_alerts:
+          - exp_labels: {severity: ticket, model: content_scorer}
+            exp_annotations:
+              summary: "Monitoring asks to retrain content_scorer (inputs drifted or live results fell short)"
+              action: "Details: /v1/monitoring or the Model health row in Grafana. The Mac trains early by itself when it is on (cool-down 3 days)."
+
+  - name: live accuracy below the test result alerts only with enough outcomes
+    interval: 1m
+    input_series:
+      - {series: 'intel_model_live_balanced_accuracy{model="content_scorer"}',    values: '0.5x720'}
+      - {series: 'intel_model_reference_balanced_accuracy{model="content_scorer"}', values: '0.69x720'}
+      - {series: 'intel_model_monitor_samples{model="content_scorer",kind="outcomes"}', values: '20x300 40x420'}
+      - {series: 'intel_model_live_balanced_accuracy{model="reach_scorer"}',      values: '0.65x720'}
+      - {series: 'intel_model_reference_balanced_accuracy{model="reach_scorer"}', values: '0.70x720'}
+      - {series: 'intel_model_monitor_samples{model="reach_scorer",kind="outcomes"}', values: '40x720'}
+    alert_rule_test:
+      - {eval_time: 5h, alertname: ModelLiveAccuracyLow, exp_alerts: []}   # 20 outcomes: not judged
+      - {eval_time: 10h, alertname: ModelLiveAccuracyLow, exp_alerts: []}  # 40 outcomes since 5 h: needs 6 h
+      - eval_time: 11h30m
+        alertname: ModelLiveAccuracyLow
+        exp_alerts:   # reach_scorer is only 0.05 below: no alert
+          - exp_labels: {severity: ticket, model: content_scorer}
+            exp_annotations:
+              summary: "content_scorer: live balanced accuracy is 0.50, more than 0.10 below its test result"
+              action: "Compare by platform (/v1/monitoring); if one platform dropped, check for a change in how we post there."

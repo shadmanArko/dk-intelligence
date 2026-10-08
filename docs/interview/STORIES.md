@@ -165,3 +165,43 @@ The real fix (flag subtotals upstream) went to the team that owns that data, as 
   reviews pointing at a delisted restaurant. They travel in the run report and on Telegram.
 - *How is this different from drift monitoring?* Contracts catch broken data (wrong, missing, stale). Drift (H4)
   catches valid data whose distribution moved enough to hurt the model.
+
+---
+
+## H4 · Model monitoring that doesn't cry wolf
+
+**Situation.** Approved models served 24/7, but nothing watched them between weekly trainings. Did today's posts
+still look like the training data? Were the scores shifting? Was the model still right? Retraining followed the
+calendar, not evidence. The features a model actually saw in production weren't even recorded.
+
+**Task.** Close the loop from serving back to training, with signals the owner can trust at a small business's data
+volume (a few posts a week).
+
+**Action.**
+- **Logged the served features** with every prediction, computed by the same sealed feature code and frozen
+  context the model uses. That is the live side of both drift and skew detection.
+- **A reference profile per model version**, rebuilt from the saved training run by a single code path, so new and
+  already-active models are treated identically. It's delivered through the existing upload-only inbox.
+- **Hourly monitor:** prediction and feature drift (PSI), live accuracy vs the test result and by platform,
+  calibration. Shown on a dashboard and alerted on, with rule tests.
+- **Statistics before alarms.** While testing I found that PSI on 40 posts over 11 bins reaches the "significant"
+  0.25 by chance alone. A naive monitor would alarm every week. Drift now has to be large **and** statistically
+  real (chi-square p < 0.01 at the actual sample sizes), and nothing is judged under 30 samples.
+- **Evidence-triggered retraining with a cool-down,** and a training/serving **skew check** that rebuilds features
+  for already-scored posts and diffs them against what was served.
+
+**Result.** A closed loop: serve → log → compare → alert → retrain → judge → approve, automated except the human
+approval. A real shift is detected at p < 1e-6, while same-distribution noise stays quiet. Testing also caught two
+alert-text bugs that would have reached the phone ("500m" accuracy) and a delivery gap for the active model.
+
+**Trade-off I would defend.** Monitoring can *trigger* retraining but never *promote* a model. A drift signal says
+"the world changed"; only the judge on fresh held-out data plus a human can say "this new model is better". The
+cool-down stops a persistent shift from retraining hourly.
+
+**Likely follow-up questions.**
+- *Why PSI and not KS?* Most inputs are categorical or binned. One method for all, with a matching significance
+  test, keeps it consistent and explainable.
+- *How do you know drift hurts?* You often don't, which is why performance and calibration are monitored
+  separately. Drift alone needs ≥ 2 inputs or the score distribution to move before it asks for retraining.
+- *What about label delay?* Outcomes mature after 7 days, so input and score drift are the early warning, and
+  live accuracy is the confirmation.

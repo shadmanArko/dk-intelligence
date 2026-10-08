@@ -1,0 +1,30 @@
+# Model health (ADR 0018): from the VPS's hourly monitoring of every active scorer against its training reference.
+# The monitor itself only concludes with enough data and a statistically real shift; these alerts add persistence.
+groups:
+  - name: models
+    rules:
+      - alert: ModelRetrainRequested
+        expr: max by (model) (intel_model_retrain_requested) == 1
+        for: 2h
+        labels: {severity: ticket}
+        annotations:
+          summary: "Monitoring asks to retrain {{ $labels.model }} (inputs drifted or live results fell short)"
+          action: "Details: /v1/monitoring or the Model health row in Grafana. The Mac trains early by itself when it is on (cool-down 3 days)."
+      - alert: ModelLiveAccuracyLow
+        expr: |
+          max by (model) (intel_model_live_balanced_accuracy)
+            < max by (model) (intel_model_reference_balanced_accuracy) - 0.10
+          and max by (model) (intel_model_monitor_samples{kind="outcomes"}) >= 30
+        for: 6h
+        labels: {severity: ticket}
+        annotations:
+          summary: "{{ $labels.model }}: live balanced accuracy is {{ printf \"%.2f\" $value }}, more than 0.10 below its test result"
+          action: "Compare by platform (/v1/monitoring); if one platform dropped, check for a change in how we post there."
+      - alert: ModelMonitoringStale
+        # monitoring runs after every hourly measurement; no samples metric for 3 h means it stopped
+        expr: absent(intel_model_monitor_samples) and on() (max(intel_model_active) == 1)
+        for: 3h
+        labels: {severity: ticket}
+        annotations:
+          summary: "Model monitoring has produced no result for 3 hours while models are active"
+          action: "Is the measure worker running (IntelWorkerStalled)? Logs: docker compose logs intel-api | grep monitor"

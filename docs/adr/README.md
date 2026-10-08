@@ -22,5 +22,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0015](0015-additive-migrations.md) | intel-db migrations are additive (expand / contract) | Accepted |
 | [0016](0016-observability-and-slos.md) | Observability: metrics, probes, SLOs and alerts as code | Accepted |
 | [0017](0017-data-contracts-for-ml-inputs.md) | Data contracts for every table a model consumes | Accepted |
+| [0018](0018-model-monitoring-and-drift.md) | Model monitoring: served features, reference profiles, statistically honest drift | Accepted |
 
 Template: [0000-template.md](0000-template.md).

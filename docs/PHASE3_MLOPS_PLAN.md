@@ -1,6 +1,6 @@
 # dk-intelligence — Phase 3 plan: a production-grade MLOps platform
 
-Status: APPROVED 2026-10-08 · MCP + RAG move to Phase 4 · H0 done ([results](results/P3_H0_foundation.md)) · H1 done ([results](results/P3_H1_cicd_supply_chain.md)) · H3 done ([results](results/P3_H3_observability.md)) · H2 done ([results](results/P3_H2_data_quality.md))
+Status: APPROVED 2026-10-08 · MCP + RAG move to Phase 4 · H0 done ([results](results/P3_H0_foundation.md)) · H1 done ([results](results/P3_H1_cicd_supply_chain.md)) · H3 done ([results](results/P3_H3_observability.md)) · H2 done ([results](results/P3_H2_data_quality.md)) · H4 done ([results](results/P3_H4_model_monitoring.md))
 
 ## 1. Goal
 
@@ -246,7 +246,7 @@ next safer.
 | H1 ✅ | CI/CD + supply chain | 2 | H0 |
 | H3 ✅ | Observability + SLOs | 2 | H1 (deploy by digest) |
 | H2 ✅ | Data quality for ML | 1 | H0 |
-| H4 | Model monitoring + drift retraining | 2 | H2, H3 |
+| H4 ✅ | Model monitoring + drift retraining | 2 | H2, H3 |
 | H5 | Governance | 1–2 | H0 |
 | H6 | Auto-rollback | 1 | H4, H5 |
 | H7 | Reliability + DR | 1 | H3 |

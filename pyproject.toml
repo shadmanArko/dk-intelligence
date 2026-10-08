@@ -101,6 +101,9 @@ module = [
     "intel.serve.observability",
     "intel.quality.contracts",
     "intel.quality.validate",
+    "intel.monitoring.drift",
+    "intel.monitoring.reference",
+    "intel.serve.monitor",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

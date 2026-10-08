@@ -55,6 +55,15 @@ class DataQuality(BaseModel):
     warnings: list[str] = Field(default_factory=list, max_length=10)
 
 
+class Skew(BaseModel):
+    """Training/serving skew check of the run (ADR 0018)."""
+
+    model_config = ConfigDict(extra="ignore")
+    checked: int = 0
+    mismatches: int = 0
+    examples: list[str] = Field(default_factory=list, max_length=3)
+
+
 class RunReport(BaseModel):
     model_config = ConfigDict(extra="ignore")
     kind: Literal["weekly_run"]
@@ -77,6 +86,8 @@ class RunReport(BaseModel):
     live: str | None = Field(default=None, max_length=300)
     models: list[ModelResult] = Field(default_factory=list, max_length=10)
     data_quality: dict[Literal["warehouse", "market"], DataQuality] = Field(default_factory=dict)
+    skew: Skew | None = None
+    references: list[str] = Field(default_factory=list, max_length=10)
 
 
 def scan_run_reports(dsn: str, inbox: Path) -> list[RunReport]:
@@ -132,6 +143,11 @@ def run_message(r: RunReport) -> str:
         if r.market_fallback
         else ""
     )
+    if r.skew and r.skew.mismatches:
+        extra += (
+            f"\n⚠️ Training/serving skew: {r.skew.mismatches} of {r.skew.checked} served posts got different "
+            f"features than training computes now, e.g. {H((r.skew.examples or ['?'])[0][:150])}"
+        )
     warns = [w for q in r.data_quality.values() for w in q.warnings]
     if warns:
         extra += f"\n🧪 Data checks: {len(warns)} warning(s), e.g. {H(warns[0][:150])}"

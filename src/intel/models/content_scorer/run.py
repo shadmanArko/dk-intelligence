@@ -181,6 +181,12 @@ def run(
     ).to_csv(out / "test_predictions.csv", index=False)
     if mlflow_uri:
         _mlflow(mlflow_uri, report, out)
+    try:  # the monitoring reference for this version (ADR 0018); never fail a training run over it
+        from intel.monitoring.reference import write_reference
+
+        write_reference(out, pull_dir, market_dir)
+    except Exception as e:
+        log(f"reference profile not written: {type(e).__name__}: {e}")
     return out
 
 

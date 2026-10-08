@@ -204,6 +204,150 @@ class Lock:
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
+SCORERS = ("content_scorer", "reach_scorer")
+DRIFT_COOLDOWN = dt.timedelta(days=3)  # early retraining at most this often, however loud the drift
+
+
+def find_run(runs_dir: Path, version: str) -> Path | None:
+    """The training run folder that produced a model version (scorer runs record their version in report.json)."""
+    for rd in sorted(runs_dir.glob("*_scorer*"), reverse=True):
+        try:
+            if json.loads((rd / "report.json").read_text()).get("version") == version:
+                return rd
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def skew_check(ledger: list[dict[str, Any]], pull: Path, runs_dir: Path) -> dict[str, Any]:
+    """Training/serving skew (ADR 0018): rebuild the features of already-scored posts from this pull, with the SAME
+    model version's bundle (frozen market context), and compare them with the features logged when serving.
+    Any difference means the two code paths (or their inputs) diverged."""
+    import joblib
+
+    from intel.data import load_table
+    from intel.models.content_scorer.features import MarketContext, build_features
+
+    rows = [r for r in ledger if r.get("features") and r.get("model_name") in SCORERS]
+    if not rows:
+        return {"checked": 0, "mismatches": 0, "examples": []}
+    posts = load_table(pull, "social_post", ["id", "platform", "content_type", "caption", "posted_at"]).set_index("id")
+    checked, mismatches, skipped = 0, 0, 0
+    examples: list[str] = []
+    bundles: dict[str, dict[str, Any] | None] = {}
+    for r in rows:
+        v = r["model_version"]
+        if v not in bundles:
+            rd = find_run(runs_dir, v)
+            bundles[v] = joblib.load(rd / "model.joblib") if rd else None
+        b, pid = bundles[v], str(r["post_id"])
+        if b is None or pid not in posts.index:
+            skipped += 1
+            continue
+        row = posts.loc[[pid], ["platform", "content_type", "caption", "posted_at"]].reset_index(drop=True)
+        X = build_features(row, MarketContext.from_dict(b["context"]))[b["columns"]].iloc[0]
+        checked += 1
+        diff = [
+            f"{c}: served {r['features'].get(c)!r}, rebuilt {X[c]!r}"
+            for c in b["columns"]
+            if not _same(r["features"].get(c), X[c])
+        ]
+        if diff:
+            mismatches += 1
+            if len(examples) < 3:
+                examples.append(f"{pid[:8]} {v}: " + "; ".join(diff)[:200])
+    return {"checked": checked, "mismatches": mismatches, "skipped": skipped, "examples": examples}
+
+
+def _same(served: Any, rebuilt: Any) -> bool:
+    import pandas as pd
+
+    if served is None or (isinstance(served, float) and served != served):
+        return bool(pd.isna(rebuilt))
+    if isinstance(served, bool) or isinstance(rebuilt, bool):
+        return bool(served) == bool(rebuilt)
+    if isinstance(served, int | float) and not isinstance(served, bool):
+        try:
+            return abs(float(served) - float(rebuilt)) < 1e-9
+        except (TypeError, ValueError):
+            return False
+    return str(served) == str(rebuilt)
+
+
+def active_versions(api_url: str | None, client: httpx.Client | None = None) -> set[str]:
+    """Scorer versions the VPS has loaded right now (its /ready); empty when unreachable."""
+    if not api_url:
+        return set()
+    try:
+        models = (client or httpx.Client(timeout=20)).get(f"{api_url.rstrip('/')}/ready").json().get("models", {})
+    except (httpx.HTTPError, ValueError):
+        return set()
+    return {str(v) for n, v in models.items() if n in SCORERS}
+
+
+def references_to_send(
+    ledger: list[dict[str, Any]] | None,
+    new_runs: list[Path],
+    d: Path,
+    log: Callable[[str], None],
+    active: set[str] | None = None,
+) -> list[Path]:
+    """Reference profiles the VPS should have: this run's scorer versions, the versions it has loaded now (`active`,
+    from /ready) and the versions in its ledger, each once. Missing profiles are rebuilt from the saved runs."""
+    from intel.monitoring.reference import write_reference
+
+    sent_file = d / "monitoring" / "sent.json"
+    sent: set[str] = set(json.loads(sent_file.read_text())) if sent_file.exists() else set()
+    serving = (active or set()) | {r["model_version"] for r in (ledger or []) if r.get("model_name") in SCORERS}
+    runs = [*new_runs, *(rd for v in sorted(serving) if (rd := find_run(d / "runs", v)) is not None)]
+    out, seen = [], set()
+    for rd in runs:
+        rep = json.loads((rd / "report.json").read_text())
+        name, version = rep["kind"].removesuffix("_run"), rep["version"]
+        if version in sent or version in seen:
+            continue
+        seen.add(version)
+        ref = rd / "reference.json"
+        if not ref.exists():
+            pull, market = d / "pulls" / rep["pull_id"], d / "market" / rep["market_id"]
+            if not (pull.exists() and market.exists()):
+                log(f"no reference for {version}: its snapshots are gone")
+                continue
+            write_reference(rd, pull, market)
+        dest = d / "monitoring" / f"reference-{name}-{version}.json"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(ref.read_bytes())
+        out.append(dest)
+    return out
+
+
+def mark_sent(d: Path, files: list[Path]) -> None:
+    sent_file = d / "monitoring" / "sent.json"
+    sent: set[str] = set(json.loads(sent_file.read_text())) if sent_file.exists() else set()
+    sent |= {json.loads(f.read_text())["model_version"] for f in files}
+    sent_file.write_text(json.dumps(sorted(sent)))
+
+
+def drift_due(
+    api_url: str | None, weekly_dir: Path, now: dt.datetime | None = None, client: httpx.Client | None = None
+) -> tuple[bool, str]:
+    """Train early when the VPS's monitoring asks for it (ADR 0018), at most once per DRIFT_COOLDOWN."""
+    if not api_url:
+        return False, "no API URL: drift trigger off"
+    now = now or dt.datetime.now(dt.UTC)
+    try:
+        mon = (client or httpx.Client(timeout=20)).get(f"{api_url.rstrip('/')}/v1/monitoring").json()
+    except (httpx.HTTPError, ValueError) as e:
+        return False, f"monitoring not reachable ({type(e).__name__})"
+    if not mon.get("retrain_requested"):
+        return False, "monitoring: no retraining requested"
+    hist = [r for r in run_history(weekly_dir) if not r.get("dry_run") and r.get("finished_at")]
+    last = max((dt.datetime.fromisoformat(r["finished_at"]) for r in hist), default=None)
+    if last and now - last < DRIFT_COOLDOWN:
+        return False, f"monitoring asks for retraining, but the last run was {last:%a %d %b} (cool-down 3 days)"
+    return True, "monitoring asks for retraining: " + "; ".join(mon.get("reasons", []))[:200]
+
+
 def quality_gate(snapshot: Path, source: Source, root: Path, quality_dir: Path) -> QualityReport:
     """Validate a snapshot against its contracts (ADR 0017), comparing volumes with the snapshot before it."""
     from intel.pull import list_pulls
@@ -275,6 +419,8 @@ def _run_weekly(
     uploader = (lambda f: _upload_report(f, s)) if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key else None
     prog = Progress(rep["run_id"], d / "weekly", uploader, pipeline_steps(plugins))
     step = "wait"
+    results: list[tuple[Path, dict[str, Any]]] = []  # (run folder, report) of every model this run produced
+    ledger: list[dict[str, Any]] | None = None
     try:
         prog.start("wait")
         waited = wait_for_mip(wait_max_s, log)
@@ -365,11 +511,12 @@ def _run_weekly(
 
         step = "ledger"
         prog.start("ledger")
-        ledger = None
         if s.intel_api_url:
             ledger, _ = fetch_ledger(s.intel_api_url, d / "ledger")
             log(f"ledger: {len(ledger)} predictions")
         rows = ledger or []
+        skew = skew_check(rows, pull, d / "runs")
+        rep["skew"] = skew
         with7 = sum(1 for x in rows if ((x.get("outcomes") or {}).get("7d") or {}).get("label") is not None)
         prog.done(
             "ledger",
@@ -379,6 +526,8 @@ def _run_weekly(
                 "predictions": len(rows),
                 "with 7-day results": with7,
                 "posts": len({x["post_id"] for x in rows}),
+                "training/serving skew": f"{skew['mismatches']} of {skew['checked']} served posts differ"
+                + (f" (e.g. {skew['examples'][0]})" if skew["examples"] else ""),
             },
         )
 
@@ -391,7 +540,6 @@ def _run_weekly(
             mlflow_uri=f"sqlite:///{(d / 'mlflow.db').resolve()}",
             log=log,
         )
-        results: list[tuple[Path, dict[str, Any]]] = []
         rep["models"] = []
         for plugin in plugins:
             step = plugin.step
@@ -467,6 +615,16 @@ def _run_weekly(
         rep.update(status="error", failed_step=step, error=f"{type(e).__name__}: {e}"[:500])
         prog.fail(step, rep["error"])
         log(traceback.format_exc())
+    if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key and rep.get("pull_id"):
+        try:  # reference profiles for the VPS's model monitoring (ADR 0018); never fails the run
+            new_runs = [rd for rd, rr in results if rr["kind"].removesuffix("_run") in SCORERS]
+            refs = references_to_send(ledger, new_runs, d, log, active_versions(s.intel_api_url))
+            for f in refs:
+                _upload_report(f, s)
+            mark_sent(d, refs)
+            rep["references"] = [f.stem.removeprefix("reference-") for f in refs]
+        except Exception as e:
+            log(f"reference profiles not sent: {type(e).__name__}: {e}")
     rep["finished_at"] = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
 
     out = d / "weekly" / f"weekly-{rep['run_id']}.run.json"

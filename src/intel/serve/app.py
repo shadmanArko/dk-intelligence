@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
+from intel.serve.monitor import run_monitor, scan_references
 from intel.serve.observability import JsonFormatter, Metrics, StateCollector, instrument
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run_reports, scan_status, training_overview
@@ -102,7 +103,13 @@ class AppState:
     started_at: dt.datetime | None = None
     last_inbox_scan: dt.datetime | None = None
     last_measure: dict[str, Any] | None = None
+    monitoring: dict[str, Any] | None = None
     metrics: Metrics = field(default_factory=Metrics)
+
+
+def active_scorers(models: Models) -> dict[str, str]:
+    """name -> version of the active models that score posts (insights models are not monitored this way)."""
+    return {n: str(m["version"]) for n in models.names() if (m := models.get(n)) is not None}
 
 
 # ---------- background workers ----------
@@ -145,6 +152,7 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
             for rep in reports:
                 if state.telegram:
                     state.telegram.send(run_message(rep))
+            scan_references(state.dsn, s.intel_inbox_dir)  # reference profiles for monitoring (ADR 0018)
             intakes = state.registry.scan_inbox()
             notify_intake(state.telegram, state.registry, s.intel_public_url, intakes)
             for row in state.registry.expire_due():
@@ -192,6 +200,7 @@ def measure_loop(state: AppState, stop: threading.Event) -> None:
             r = m.run_once()
             state.last_measure = {"at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **r.__dict__}
             state.metrics.predictions.labels("all", "shadow").inc(r.predictions)
+            state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
             state.metrics.worker_ok("measure")
             if r.new_posts or r.outcomes or r.errors:
                 log_event(state.dsn, "measure_run", **r.__dict__)
@@ -309,6 +318,14 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             "ms": round((time.perf_counter() - t0) * 1000, 1),
         }
 
+    @app.get("/v1/monitoring")
+    def monitoring():
+        """Drift, live performance and calibration of every active scorer (ADR 0018). The Mac's hourly job reads
+        `retrain_requested` to train early."""
+        if state.monitoring is None:  # not yet computed in this process: compute now (cheap)
+            state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
+        return state.monitoring
+
     @app.get("/metrics")
     def metrics():
         from fastapi.responses import Response
@@ -386,7 +403,7 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         with connect(state.dsn) as c:
             rows = c.execute(
                 """select p.post_id, p.platform, p.planned_at, p.model_name, p.model_version, p.probability,
-                          p.threshold, p.predicted_label, p.created_at,
+                          p.threshold, p.predicted_label, p.created_at, p.features,
                           coalesce(jsonb_object_agg(o.horizon, jsonb_build_object('label', o.label, 'engagement',
                             o.engagement, 'reach', o.reach, 'age_hours', o.age_hours, 'platform_median',
                             o.platform_median, 'label_reach', o.label_reach, 'reach_median', o.reach_median)) filter (where o.horizon is not null), '{}') as outcomes

@@ -38,6 +38,7 @@ uv run intel weekly               # the full Sunday run now (also: double-click 
 uv run intel weekly --if-due      # what launchd runs hourly: only if this week's run has not happened
 uv run intel weekly-status        # current run step by step, recent runs, due or not
 uv run intel quality              # data contracts + data card of the latest pull and market snapshot (ADR 0017)
+uv run intel send-references      # reference profiles for the VPS's model monitoring, now instead of Sunday (ADR 0018)
 uv run mlflow ui --backend-store-uri sqlite:///data/mlflow.db   # browse runs at http://127.0.0.1:5000
 uv run pytest --cov               # set INTEL_TEST_PG_DSN to also run the Postgres tests; coverage floor in pyproject
 uv run mypy                       # whole package; the strict core list is in pyproject.toml

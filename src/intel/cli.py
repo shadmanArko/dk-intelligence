@@ -254,14 +254,19 @@ def package_upload(tgz: Path) -> None:
 def weekly(
     upload: bool = typer.Option(True, help="Upload the package (if it passed), progress and the run report to the VPS"),
     wait_hours: int = typer.Option(8, help="Max hours to wait for the data platform's weekly refresh"),
-    if_due: bool = typer.Option(False, "--if-due", help="Only run if this week's training has not happened yet"),
+    if_due: bool = typer.Option(
+        False, "--if-due", help="Only run if this week's training has not happened yet, or monitoring asks for it"
+    ),
 ) -> None:
     """M7: the Sunday run. Pull, market snapshot, ledger, train + judge, package/upload if better, report."""
-    from intel.weekly import is_due, run_weekly
+    from intel.weekly import drift_due, is_due, run_weekly
 
     s = get_settings()
     if if_due:
         due, why = is_due(s.intel_data_dir / "weekly")
+        if not due:  # the weekly anchor is not due: the VPS's model monitoring may still ask for an early run
+            due, drift_why = drift_due(s.intel_api_url, s.intel_data_dir / "weekly")
+            why = drift_why if due else f"{why}; {drift_why}"
         if not due:
             typer.echo(f"not due: {why}")
             return
@@ -318,6 +323,31 @@ def quality(
         typer.echo(f"   card: {path}")
         failed |= not q.ok
     raise typer.Exit(1 if failed else 0)
+
+
+@app.command("send-references")
+def send_references(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Build and list the profiles, upload nothing"),
+) -> None:
+    """Send the reference profiles the VPS's model monitoring needs (ADR 0018) now, instead of on Sunday: the versions
+    it is serving (read from the ledger) and any new scorer run, each once."""
+    from intel.settings import get_settings, required
+    from intel.weekly import _upload_report, active_versions, fetch_ledger, mark_sent, references_to_send
+
+    s = get_settings()
+    d = s.intel_data_dir
+    api = required(s.intel_api_url, "INTEL_API_URL")
+    ledger, _ = fetch_ledger(api, d / "ledger")
+    active = active_versions(api)
+    typer.echo(f"active on the VPS: {', '.join(sorted(active)) or 'none'}")
+    refs = references_to_send(ledger, [], d, typer.echo, active)
+    for f in refs:
+        typer.echo(f"{'would send' if dry_run else 'sending'} {f.name}")
+        if not dry_run:
+            _upload_report(f, s)
+    if refs and not dry_run:
+        mark_sent(d, refs)
+    typer.echo(f"{len(refs)} reference profile(s) {'to send' if dry_run else 'sent'}")
 
 
 @app.command("weekly-status")

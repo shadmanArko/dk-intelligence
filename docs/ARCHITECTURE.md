@@ -76,6 +76,8 @@ flowchart LR
 5. **Intake**: the VPS re-verifies every hash and compares the sealed code with its own (ADR 0011 keeps them in step).
 6. **Approval**: a human decision for every scorer; insights auto-refresh after their first approval (ADR 0008).
 7. **Serve + measure** (ADR 0006): predictions are registered before outcomes exist; they feed the next judge.
+8. **Monitor** (ADR 0018): served features and scores vs the version's reference profile, live accuracy and
+   calibration, hourly; a model that drifted or degraded asks the Mac to retrain early (it still goes through 3–6).
 
 ## 4. Code map
 
@@ -89,6 +91,7 @@ src/intel/
   package.py          seal / verify / upload packages                          (ADR 0007)
   sealed.py           sealed-code lock                                         (ADR 0011)
   quality/            data contracts, validator, data cards                     (ADR 0017)
+  monitoring/         drift math (PSI + significance), reference profiles        (ADR 0018)
   models/<name>/      plugin.py + spec.yaml + the model's code (one folder per model)
   serve/              intel-api: app, registry, measure (ledger), runs, telegram, views
   control.py          the Mac Control Room
