@@ -453,6 +453,36 @@ def _run_weekly(s: Settings, *, upload: bool = True, wait_max_s: int = 8 * 3600,
             },
         )
 
+        step = "funnel"
+        prog.start("funnel")
+        from intel.models.funnel.run import run as funnel_run
+
+        fdir = funnel_run(pull, d / "runs", log=log)
+        fr = json.loads((fdir / "report.json").read_text())
+        fi = json.loads((fdir / "insights.json").read_text())
+        results.append((fdir, fr))
+        rep["models"].append(
+            {
+                "name": "funnel",
+                "version": fr["version"],
+                "verdict": fr["judge"]["verdict"],
+                "new": None,
+                "current": None,
+                "failed_gates": fr["judge"].get("failed", []),
+            }
+        )
+        t = fi["totals"]
+        prog.done(
+            "funnel",
+            f"{t['visit']} visits → {t['ordered']} orders",
+            {
+                **{f"{k}": v for k, v in t.items()},
+                "unknown source": f"{fi['unknown_share']:.0%}",
+                "tracked links": fi["tracked_links"],
+                "stuck at checkout": fi["checkout_friction"]["stuck_sessions"],
+            },
+        )
+
         step = "judge"
         prog.start("judge")
         icon = {"pass": "✓", "fail": "✗", "pending": "⏳"}

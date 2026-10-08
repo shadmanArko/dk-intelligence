@@ -57,6 +57,12 @@ STEPS: dict[str, tuple[str, str]] = {
         "to start posting, greetings and rice-dish bridges, Berlin events for pop-ups, and the weekdays / times when "
         "our own posts reached most people. Content rules applied and checked automatically (no blocked words).",
     ),
+    "funnel": (
+        "Funnel and attribution",
+        "From the website analytics: where visits come from (Facebook, Instagram, WhatsApp, Google, unknown), how far "
+        "they get (menu, cart, checkout, order) and what stops them at checkout; orders matched to visits; visits "
+        "after each post (an estimate until every post carries a tracked link). Only counts leave this step.",
+    ),
     "judge": (
         "Judge against the current model",
         "For each question, seven automatic checks on the newest posts, never seen in training, against what we use "
@@ -144,6 +150,7 @@ NODES: list[dict] = [
         "row": 0,
         "step": "occasions",
     },
+    {"id": "funnel", "label": "Funnel", "sub": "visits → orders", "lane": "mac", "col": 2, "row": 2, "step": "funnel"},
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
@@ -185,6 +192,8 @@ EDGES: list[tuple[str, str]] = [
     ("community", "judge"),
     ("market", "occasions"),
     ("occasions", "judge"),
+    ("pull", "funnel"),
+    ("funnel", "judge"),
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),

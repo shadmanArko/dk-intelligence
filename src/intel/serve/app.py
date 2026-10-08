@@ -32,6 +32,7 @@ from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.serve.views import (
     BERLIN,
     community_html,
+    funnel_html,
     insights_html,
     ledger_rows,
     planner_html,
@@ -403,12 +404,17 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     def insights_page(request: Request):
         cm, wm = state["models"].get("community_map"), state["models"].get("weakness_miner")
         op = state["models"].get("occasion_planner")
+        fn = state["models"].get("funnel")
         body = (
-            planner_html(op["bundle"] if op else None)
+            funnel_html(fn["bundle"] if fn else None)
             + "<hr>"
-            + community_html(cm["bundle"] if cm else None)
-            + "<hr>"
-            + insights_html(wm["bundle"] if wm else None)
+            + (
+                planner_html(op["bundle"] if op else None)
+                + "<hr>"
+                + community_html(cm["bundle"] if cm else None)
+                + "<hr>"
+                + insights_html(wm["bundle"] if wm else None)
+            )
         )
         return _page(request, "Insights", body)
 

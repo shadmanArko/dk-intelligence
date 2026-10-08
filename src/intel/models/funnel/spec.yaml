@@ -1,0 +1,12 @@
+name: funnel
+version_prefix: fn
+kind: insights
+question: "Where do website visitors come from, how far do they get (menu -> cart -> checkout -> order), and which posts and platforms bring orders?"
+data: warehouse pull raw_posthog_events (sessions, entry source, checkout steps), raw_orders_direct (orders), social_post, tracked_link, campaign_variant
+match_window_s: 180            # order_submitted event <-> order: same total within 3 minutes
+post_window_h: 48              # soft attribution: platform sessions within 48 h after a post (before the next one)
+test_hosts: [localhost, 127.0.0.1]
+gates:
+  min_sessions: 100
+  max_package_mb: 5
+  # privacy: automatic scan, no session / visitor ids, emails or postcodes may appear in the output

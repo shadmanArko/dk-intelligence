@@ -473,3 +473,55 @@ occasions are shown with their neutral names and greetings (content rules), bloc
 ~15 points as noise.</p>
 <div class=actions><table><tr><th>Platform</th><th>Weekday</th><th>Above recent</th><th>Posts</th></tr>{tim("weekday")}</table>
 <table><tr><th>Platform</th><th>Time (Berlin)</th><th>Above recent</th><th>Posts</th></tr>{tim("band")}</table></div>"""
+
+
+def funnel_html(bundle: dict | None) -> str:
+    if not bundle:
+        return (
+            "<h2>Funnel</h2><p class=muted>Not approved yet: it is built every Sunday and offered for approval in "
+            "Telegram (after your first approval it refreshes automatically).</p>"
+        )
+    ins = bundle["insights"]
+    t = ins["totals"]
+    steps = [
+        ("visit", "Visits"),
+        ("menu", "Menu / order page"),
+        ("cart", "Cart started"),
+        ("checkout", "Checkout"),
+        ("submitted", "Order submitted"),
+        ("ordered", "Real order (not cancelled)"),
+    ]
+    top = max(t["visit"], 1)
+    bars = "".join(
+        f"<tr><td>{label}</td><td><div style='background:var(--acc);height:14px;border-radius:4px;"
+        f"width:{max(2, round(300 * t[k] / top))}px'></div></td><td><b>{t[k]}</b></td>"
+        f"<td class=muted>{(t[k] / top):.0%}</td></tr>"
+        for k, label in steps
+    )
+    ch = "".join(
+        f"<tr><td>{H(c['channel'])}</td>" + "".join(f"<td>{c[k]}</td>" for k, _ in steps) + "</tr>"
+        for c in ins["channels"]
+    )
+    fr = ins["checkout_friction"]
+    fric = "".join(f"<li>{H(k)}: {v}</li>" for k, v in fr["with"].items() if v) or "<li>no errors recorded</li>"
+    posts = (
+        "".join(
+            f"<tr><td>{H(p['platform'])}</td><td>{H(p['posted_at'][:16].replace('T', ' '))}</td><td>{H(p['format'] or '')}</td>"
+            f"<td>{H(p['caption'])}</td><td>{p['sessions']}</td><td>{p['carts']}</td><td>{p['orders']}</td></tr>"
+            for p in ins["posts"]
+        )
+        or "<tr><td colspan=7 class=muted>no platform visits after posts yet</td></tr>"
+    )
+    advice = "".join(f"<li>{H(a)}</li>" for a in ins["advice"])
+    return f"""<h2>Funnel: from visit to order ({H(ins["period"][0])} to {H(ins["period"][1])})</h2>
+<p class=muted>Version <code>{H(bundle["version"])}</code>. From the website analytics (test hosts excluded); orders are
+matched to the visit that submitted them (same total within 3 minutes). Only counts are shown.
+Unknown source: <b>{ins["unknown_share"]:.0%}</b> of visits · tracked links so far: <b>{ins["tracked_links"]}</b>.</p>
+<table>{bars}</table>
+<h3>What to do</h3><ol>{advice}</ol>
+<h3>Stuck at checkout: {fr["stuck_sessions"]} of {fr["reached_checkout"]} visits (sessions with…)</h3><ul>{fric}</ul>
+<h3>By source</h3><table><tr><th>Source</th>{"".join(f"<th>{label}</th>" for _, label in steps)}</tr>{ch}</table>
+<h3>Visits from a platform within 48 h after each post (estimate)</h3>
+<p class=muted>Without tracked links this is only timing: a visit from Facebook after a Facebook post may have come from
+an older post or the page itself.</p>
+<table><tr><th>Platform</th><th>Posted (UTC)</th><th>Format</th><th>Caption</th><th>Visits</th><th>Carts</th><th>Orders</th></tr>{posts}</table>"""
