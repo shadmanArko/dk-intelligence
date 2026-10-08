@@ -53,6 +53,9 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # No runtime changes to the pinned image: Grafana 13 otherwise auto-updates its bundled plugins from the internet.
+      # On the read-only file system that update failed halfway and unloaded the Prometheus plugin (2026-10-08).
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     tmpfs: ["/tmp"]

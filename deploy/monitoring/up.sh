@@ -23,8 +23,30 @@ mkdir -p "$METRICS_DIR" && chmod 755 "$METRICS_DIR"      # node-exporter (anothe
   printf '%s' "$TOKEN" > "$RUNTIME/telegram_token"
   sed "s/__TELEGRAM_CHAT_ID__/$CHAT/" alertmanager/alertmanager.yml > "$RUNTIME/alertmanager.yml" )
 
-export MON_UID MON_GID RUNTIME METRICS_DIR
-MON_UID="$(id -u)"; MON_GID="$(id -g)"
+# Save what compose needs into .env (managed block), so EVERY `docker compose ...` in this folder works, not only
+# the ones started by this script (a hand-run `docker compose exec` failed on missing variables before 2026-10-08).
+managed() {
+  local key="$1" value="$2"
+  if grep -qE "^$key=" .env; then sed -i.bak "s|^$key=.*|$key=$value|" .env && rm -f .env.bak
+  else printf '%s=%s\n' "$key" "$value" >> .env; fi
+}
+grep -q "^# managed by up.sh" .env || printf '\n# managed by up.sh (do not edit below)\n' >> .env
+managed MON_UID "$(id -u)"
+managed MON_GID "$(id -g)"
+managed RUNTIME "$RUNTIME"
+managed METRICS_DIR "$METRICS_DIR"
 docker compose up -d --remove-orphans
 docker compose kill -s SIGHUP prometheus alertmanager >/dev/null 2>&1 || true   # pick up changed rules / config
 echo "== monitoring up: $(docker compose ps --format '{{.Service}}={{.State}}' | tr '\n' ' ')"
+
+# End-to-end check: can Grafana actually query Prometheus? (Containers "running" is not enough: on 2026-10-08 every
+# panel was empty because Grafana had unloaded its Prometheus plugin.)
+GF_PORT="$(grep -E '^GRAFANA_PORT=' .env | cut -d= -f2- || true)"; GF_PORT="${GF_PORT:-3330}"
+GF_PW="$(grep -E '^GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2-)"
+for _ in $(seq 1 30); do
+  if health="$(curl -sf -m 5 -u "admin:$GF_PW" "http://127.0.0.1:$GF_PORT/api/datasources/uid/prometheus/health")"; then
+    [[ "$health" == *'"status":"OK"'* ]] && { echo "== grafana -> prometheus: OK"; exit 0; }
+  fi
+  sleep 2
+done
+echo "!! Grafana cannot query Prometheus: ${health:-no answer}"; exit 1

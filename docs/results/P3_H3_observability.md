@@ -31,6 +31,17 @@
   permissions, Linux enforces them. The check tools now run as the calling user, exactly like Alertmanager runs as the
   deploy user on the VPS (re-checked: every VPS container can read what it mounts).
 
+## First day on the VPS
+- **Port clash:** 127.0.0.1:3000 belongs to `dk-publishing-webserver-1`; Grafana's port is now a setting (3330).
+- **Every panel empty:** Grafana 13 auto-updates its bundled plugins from the internet at start-up. On the read-only
+  container file system the update of the Prometheus plugin failed halfway and Grafana unloaded the plugin ("Could
+  not find plugin definition"). The read-only file system did its job (it refused an unreviewed runtime change); the
+  fix is `GF_PLUGINS_PREINSTALL_AUTO_UPDATE=false`, so plugin versions change only with a reviewed image update.
+  The Mac rehearsal had only listed the dashboards, never queried one: `up.sh` now ends with an **end-to-end check**
+  (Grafana's datasource health = a real query to Prometheus) and says so loudly if it fails.
+- **Hand-run `docker compose` commands failed** in the monitoring folder (variables only existed inside `up.sh`), so
+  the Telegram test command never ran. `up.sh` now saves them into a managed block of `.env`.
+
 ## Rehearsal with real containers (Mac, throwaway clone)
 `deploy.sh --local-build` → app smoke OK → `monitoring/up.sh` started the five services (the first attempt failed on
 the mount above, and the app deploy stayed up as designed). Then:
