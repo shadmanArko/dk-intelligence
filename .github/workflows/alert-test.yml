@@ -1,0 +1,24 @@
+name: alert test
+# Actions → "alert test" → Run workflow: sends one message through the CI alert bot, to prove the path works
+# (an alert that has never fired is an untested alert).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          TOKEN: ${{ secrets.CI_TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.CI_TELEGRAM_CHAT_ID }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$CHAT" ]; then echo "::error::CI_TELEGRAM_* secrets are not set"; exit 1; fi
+          curl -fsS -o /dev/null "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=🧪 Test alert from ${GITHUB_REPOSITORY}: CI alerts reach you. ${URL}" \
+            --data-urlencode "disable_web_page_preview=true"
+          echo "sent"
