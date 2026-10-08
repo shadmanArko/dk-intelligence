@@ -9,7 +9,7 @@ else leaves the box. What is promised and alerted: [docs/SLO.md](../../docs/SLO.
 cd /opt/dhaka-kacchi/dk-intelligence/deploy/monitoring
 ( umask 077; { echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 18)"; echo "GRAFANA_ROOT_URL=https://$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):8443/"; } > .env )
 ./up.sh
-sudo tailscale serve --bg --https=8443 http://127.0.0.1:3000
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:3330
 ```
 - `up.sh` creates `/opt/dhaka-kacchi/metrics` (textfile metrics) and `/opt/dhaka-kacchi/monitoring-runtime` (rendered
   Alertmanager config + the bot token, mode 600), starts the stack and reloads configs. From now on every successful

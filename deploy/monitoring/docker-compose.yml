@@ -3,7 +3,7 @@
 #
 #   prometheus  scrapes intel-api, node-exporter, blackbox probes; evaluates SLO + ops rules     127.0.0.1:9090
 #   alertmanager routes alerts to Telegram                                                       (no port)
-#   grafana     dashboards; published to the tailnet by `tailscale serve --https=8443`            127.0.0.1:3000
+#   grafana     dashboards; published to the tailnet by `tailscale serve --https=8443`            127.0.0.1:3330
 #   node-exporter  host disk / memory / load + textfile metrics (backups, deploys, collector)     (no port)
 #   blackbox    probes intel-api /health/deep every 30 s: the SLO's ground truth                   (no port)
 name: dk-monitoring
@@ -60,7 +60,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
-    ports: ["127.0.0.1:3000:3000"]
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3330}:3000"]   # 3000 is taken on the VPS; override in .env
     mem_limit: 256m
     networks: [mon]
 
