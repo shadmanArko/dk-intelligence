@@ -20,6 +20,15 @@ by the first `--check --diff` on the VPS.
   harness's lines untouched;
 - users, keys, directories, swap, `.env` modes and checkouts: `ok` (already as the code describes).
 
+Applied the same day, after a second preview with the read-only checks active (door-3 forced-command key, `tailscale
+serve`, Docker: all `ok`; `ok=23 changed=2`):
+
+| Run | Result |
+|---|---|
+| apply | `ok=24 changed=2 failed=0`: the script comment and the four cron markers |
+| apply again | `ok=24 changed=0 failed=0`: converged, the VPS now matches the code |
+| `crontab -l \| grep -n backup.sh` | line 25: the harness backup (03:00); line 39: the intel-db backup (02:50) under its `#Ansible:` marker. Each runs once |
+
 Lesson: `--check` skips every `command`/`shell` task, so the first preview silently did not run the read-only checks
 (door-3 key present, `tailscale serve` status, Docker). They now carry `check_mode: false`. The preview also showed that
 the cron module adopts identical lines itself, so the playbook's own adoption script was deleted.
