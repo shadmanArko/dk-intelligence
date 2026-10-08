@@ -97,6 +97,7 @@ src/intel/
   monitoring/         drift math (PSI + significance), reference profiles        (ADR 0018)
   reproduce.py        rebuild a run from its lineage and compare                 (ADR 0019)
 infra/                the VPS host as code: doors, cron, swap, tailscale serve    (ADR 0022)
+src/intel/loadtest.py load test + latency micro-benchmark; capacity in docs/SCALING.md (ADR 0023)
   models/<name>/      plugin.py + spec.yaml + the model's code (one folder per model)
   serve/              intel-api: app, registry, measure (ledger), runs, telegram, views
   control.py          the Mac Control Room

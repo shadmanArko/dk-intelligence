@@ -40,6 +40,7 @@ uv run intel weekly-status        # current run step by step, recent runs, due o
 uv run intel quality              # data contracts + data card of the latest pull and market snapshot (ADR 0017)
 uv run intel send-references      # reference profiles for the VPS's model monitoring, now instead of Sunday (ADR 0018)
 uv run intel reproduce RUN        # retrain a scorer run from its recorded lineage and compare everything (ADR 0019)
+uv run intel loadtest URL         # throughput and p50/p95/p99 per concurrency level; safe against production (ADR 0023)
 uv run mlflow ui --backend-store-uri sqlite:///data/mlflow.db   # browse runs at http://127.0.0.1:5000
 uv run pytest --cov               # set INTEL_TEST_PG_DSN to also run the Postgres tests; coverage floor in pyproject
 uv run mypy                       # whole package; the strict core list is in pyproject.toml

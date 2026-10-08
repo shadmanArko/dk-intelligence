@@ -64,14 +64,46 @@ class PredictRequest(BaseModel):
     planned_posted_at: dt.datetime
 
 
+class BatchRequest(BaseModel):
+    drafts: list[PredictRequest] = Field(min_length=1, max_length=100)
+
+
+def drafts_frame(drafts: list[PredictRequest]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "platform": d.platform,
+                "content_type": d.content_type,
+                "caption": d.caption,
+                "posted_at": d.planned_posted_at,
+            }
+            for d in drafts
+        ]
+    )
+
+
 # ---------- model holder ----------
+
+
+def warm_up(bundle: dict[str, Any]) -> float | None:
+    """One prediction for a fixed draft right after loading (imports, first model call): returns its seconds."""
+    if bundle.get("kind", "scorer") != "scorer" or "pipeline" not in bundle:
+        return None
+    t0 = time.perf_counter()
+    try:
+        row = pd.DataFrame([{**PROBE_DRAFT, "posted_at": dt.datetime.now(dt.UTC)}])
+        cs_predict(bundle, row)
+    except Exception:
+        log.exception("warm-up prediction failed")
+        return None
+    return round(time.perf_counter() - t0, 4)
 
 
 class Models:
     """Active bundles in memory; reloaded when the active package of a name changes."""
 
-    def __init__(self, registry: Registry):
-        self.reg, self._lock = registry, threading.Lock()
+    def __init__(self, registry: Registry, metrics: Metrics | None = None):
+        self.reg, self._lock, self.metrics = registry, threading.Lock(), metrics
         self.loaded: dict[str, dict[str, Any]] = {}
 
     def refresh(self) -> None:
@@ -79,8 +111,12 @@ class Models:
         with self._lock:
             for name, pkg in active.items():
                 if self.loaded.get(name, {}).get("package_id") != pkg["id"]:
-                    self.loaded[name] = {"package_id": pkg["id"], "version": pkg["version"], "bundle": load_bundle(pkg)}
-                    log.info("loaded %s %s", name, pkg["version"])
+                    bundle = load_bundle(pkg)
+                    self.loaded[name] = {"package_id": pkg["id"], "version": pkg["version"], "bundle": bundle}
+                    seconds = warm_up(bundle)  # pay the cold start here, not on the first user request
+                    if seconds is not None and self.metrics is not None:
+                        self.metrics.warmup.labels(name).set(seconds)
+                    log.info("loaded %s %s (warm-up %s s)", name, pkg["version"], seconds)
             for gone in set(self.loaded) - set(active):
                 del self.loaded[gone]
 
@@ -264,7 +300,10 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
     if not s.intel_db_dsn:
         raise RuntimeError("INTEL_DB_DSN is not set")
     registry = Registry(s.intel_db_dsn, s.intel_inbox_dir, s.intel_store_dir, s.intel_approval_days)
-    state = AppState(settings=s, dsn=s.intel_db_dsn, registry=registry, models=Models(registry))
+    app_metrics = Metrics()
+    state = AppState(
+        settings=s, dsn=s.intel_db_dsn, registry=registry, models=Models(registry, app_metrics), metrics=app_metrics
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -364,24 +403,18 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
             raise HTTPException(503, "no approved content_scorer model is active yet")
         if body.planned_posted_at.tzinfo is None:
             raise HTTPException(400, "planned_posted_at needs a timezone")
-        row = pd.DataFrame(
-            [
-                {
-                    "platform": body.platform,
-                    "content_type": body.content_type,
-                    "caption": body.caption,
-                    "posted_at": body.planned_posted_at,
-                }
-            ]
-        )
-        return cs_predict(m["bundle"], row)[0]
+        with state.metrics.stage("prepare"):
+            row = drafts_frame([body])
+        with state.metrics.stage("predict"):
+            return cs_predict(m["bundle"], row)[0]
 
     @app.post("/v1/predict")
     def predict(body: PredictRequest):
         r = _score(body)
         state.metrics.predictions.labels("content_scorer", "api").inc()
         try:
-            log_api_prediction(state.dsn, body, r)
+            with state.metrics.stage("ledger"):
+                log_api_prediction(state.dsn, body, r)
         except Exception:
             log.exception("could not log api prediction")
         return {
@@ -405,6 +438,24 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         )
         active = {n: state.models.get(n) for n in state.models.names()}
         return {n: cs_predict(m["bundle"], row)[0] for n, m in active.items() if m is not None}
+
+    @app.post("/v1/score/batch")
+    def score_batch(body: BatchRequest):
+        """Up to 100 drafts in one call, every active scorer, vectorised (ADR 0023): for planners and tools comparing
+        many variants. Exploratory: not written to the ledger (only /v1/predict calls are)."""
+        if any(d.planned_posted_at.tzinfo is None for d in body.drafts):
+            raise HTTPException(400, "planned_posted_at needs a timezone")
+        with state.metrics.stage("prepare"):
+            frame = drafts_frame(body.drafts)
+        out: dict[str, list[dict[str, Any]]] = {}
+        for name in state.models.names():
+            m = state.models.get(name)
+            if m is None:
+                continue
+            with state.metrics.stage("predict"):
+                out[name] = cs_predict(m["bundle"], frame)
+            state.metrics.predictions.labels(name, "batch").inc(len(body.drafts))
+        return {"drafts": len(body.drafts), "models": out}
 
     @app.post("/v1/score")
     def score(body: PredictRequest):

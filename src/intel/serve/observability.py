@@ -15,6 +15,7 @@ Metric names follow Prometheus conventions: `intel_` prefix, base units (seconds
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import datetime as dt
 import json
@@ -88,8 +89,29 @@ class Metrics:
             ["model", "action"],
             registry=r,
         )
+        self.stage_latency = Histogram(
+            "intel_predict_stage_seconds",
+            "Where a prediction's time goes (ADR 0023): prepare, predict (features + model), ledger (DB write)",
+            ["stage"],
+            buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+            registry=r,
+        )
+        self.warmup = Gauge(
+            "intel_model_warmup_seconds",
+            "First (cold) prediction of a newly loaded model, done at load time",
+            ["model"],
+            registry=r,
+        )
         for w in WORKERS:  # exported from the start, so "never succeeded" is visible as 0 rather than missing
             self.worker_errors.labels(w)
+
+    @contextlib.contextmanager
+    def stage(self, name: str) -> Iterator[None]:
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.stage_latency.labels(name).observe(time.perf_counter() - t0)
 
     def worker_ok(self, worker: str) -> None:
         self.worker_last_success.labels(worker).set(time.time())

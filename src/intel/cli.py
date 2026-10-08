@@ -371,6 +371,23 @@ def reproduce_cmd(run: str = typer.Argument(..., help="Run folder name in data/r
     raise typer.Exit(1)
 
 
+@app.command("loadtest")
+def loadtest_cmd(
+    url: str = typer.Argument(..., help="Base URL of intel-api, e.g. http://127.0.0.1:8710 or the tailnet URL"),
+    endpoint: str = typer.Option("deep", help="deep | batch (no writes) | predict (writes; local only)"),
+    levels: str = typer.Option("1,10,50", help="Concurrency levels"),
+    requests: int = typer.Option(200, help="Requests per level"),
+) -> None:
+    """Throughput and p50/p95/p99 latency per concurrency level (ADR 0023)."""
+    from intel.loadtest import run
+
+    for r in run(url, tuple(int(x) for x in levels.split(",")), requests, endpoint):  # type: ignore[arg-type]
+        typer.echo(
+            f"{r.endpoint:8} c={r.concurrency:<3} {r.rps:>7} req/s  p50 {r.p50_ms:>8} ms  p95 {r.p95_ms:>8} ms"
+            f"  p99 {r.p99_ms:>8} ms  errors {r.errors}"
+        )
+
+
 @app.command("weekly-status")
 def weekly_status() -> None:
     """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""

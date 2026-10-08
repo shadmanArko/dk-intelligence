@@ -346,3 +346,28 @@ diff in git.
 
 **Trade-off I would defend.** Pull mode means the playbook can't be pushed to the VPS from CI. It runs when the
 owner runs it. That's the right price for keeping production reachable only through three single-purpose doors.
+
+---
+
+## H9 · Measured capacity and a scaling plan with triggers
+
+**Situation.** "How would this scale?" had no measured answer: no load test, no idea where a prediction's time went,
+and the first request after a model load paid the cold start.
+
+**Task.** Know the capacity, know what breaks first, and write a scaling plan where every step has a trigger metric.
+
+**Action.**
+- **Instrumented the request path** by stage (prepare / predict / ledger write), and measured features vs model
+  with a micro-benchmark, because that code is sealed.
+- **Built a load-test tool** that's safe against production by default. The endpoint that writes to the ledger is
+  refused unless the target is local, because load-testing with it would poison the training data.
+- **Measured the production model** against a real server and database. Added warm-up at load time and a batch
+  endpoint.
+
+**Result.** About 70 req/s per process. p95 is 21 ms with 1 client, about 230 ms with 10 (inside the 300 ms SLO)
+and about 2 s with 50. Features take 73% of the compute, and batching makes a draft 23–89× cheaper. Today's
+traffic is about 50,000× below capacity.
+
+**Trade-off I would defend.** The tempting fix, "add more uvicorn workers", is wrong here. Every process also runs
+the background loops, and two Telegram pollers or two measurers would conflict and double-count. Step one of the
+scaling plan is splitting the stateless API from a singleton worker, triggered by the SLO burn alert, not by a guess.
