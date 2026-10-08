@@ -26,6 +26,11 @@ push to main
 | Shell scripts, workflows | unchecked | shellcheck + actionlint in pre-commit and CI |
 | Deploy history | none | `/opt/dhaka-kacchi/logs/intel-deploys.log` |
 
+## Live
+First CI-built deploy, 2026-10-08 15:02 UTC: commit `4d09dce`, image `ghcr.io/shadmanarko/dk-intelligence@sha256:e5d86c…`
+(0 fixable HIGH/CRITICAL). The VPS pulled the digest, recorded the 4 active models, started the new container, and the
+smoke test confirmed the same 4 models and the right version 10 s after start.
+
 ## Verification
 - `tests/test_deploy_script.py` runs the real `deploy.sh` against a real git repo with a recording fake `docker`:
   4 malicious/malformed requests refused (never echoed, docker untouched), superseded commit skipped, wrong-commit
