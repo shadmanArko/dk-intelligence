@@ -100,6 +100,14 @@ mkdir -p /opt/dhaka-kacchi/logs && ./backup.sh && ls -l /opt/dhaka-kacchi/backup
 crontab -l | tail -3
 ```
 
+### 9. Reliability (H7, ADR 0021): restore drill, swap
+```bash
+( crontab -l; echo "30 4 * * 0 /opt/dhaka-kacchi/dk-intelligence/deploy/restore_drill.sh >> /opt/dhaka-kacchi/logs/intel-restore-drill.log 2>&1" ) | crontab -
+/opt/dhaka-kacchi/dk-intelligence/deploy/restore_drill.sh
+```
+The first run ends with `== drill OK (RPO … h, restore … s)`. Swap: see [docs/RELIABILITY.md](../docs/RELIABILITY.md#swap).
+The dead-man's switch: [monitoring/README.md](monitoring/README.md#dead-mans-switch).
+
 ### 8. Monitoring, SLOs and alerts (H3)
 See [monitoring/README.md](monitoring/README.md): one `.env` line, `./up.sh`, and `tailscale serve` for Grafana.
 
@@ -111,6 +119,8 @@ See [monitoring/README.md](monitoring/README.md): one `.env` line, `./up.sh`, an
 | Restart | `docker compose up -d` |
 | Manual deploy | `/opt/dhaka-kacchi/bin/run-intel-deploy.sh` (pulls main, runs the CI image of that commit) |
 | Deploy history | `tail /opt/dhaka-kacchi/logs/intel-deploys.log` |
+| What to do for an alert | [docs/runbooks/alerts.md](../docs/runbooks/alerts.md) (every Telegram alert links its section) |
+| Restore drill | `tail /opt/dhaka-kacchi/logs/intel-restore-drill.log` · by hand `./restore_drill.sh` |
 | Dashboards and alerts | Grafana `https://<vps>.<tailnet>.ts.net:8443` · [monitoring/README.md](monitoring/README.md) |
 | Back to the previous app version | `INTEL_IMAGE=dk-intelligence:previous docker compose up -d` |
 | Emergency build on the VPS | `./deploy.sh --local-build` (only if GitHub is down: not scanned) |

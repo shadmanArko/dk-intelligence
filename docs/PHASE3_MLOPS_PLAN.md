@@ -1,6 +1,6 @@
 # dk-intelligence — Phase 3 plan: a production-grade MLOps platform
 
-Status: APPROVED 2026-10-08 · MCP + RAG move to Phase 4 · H0 done ([results](results/P3_H0_foundation.md)) · H1 done ([results](results/P3_H1_cicd_supply_chain.md)) · H3 done ([results](results/P3_H3_observability.md)) · H2 done ([results](results/P3_H2_data_quality.md)) · H4 done ([results](results/P3_H4_model_monitoring.md)) · H5 done ([results](results/P3_H5_governance.md)) · H6 done ([results](results/P3_H6_guardrail.md))
+Status: APPROVED 2026-10-08 · MCP + RAG move to Phase 4 · H0 done ([results](results/P3_H0_foundation.md)) · H1 done ([results](results/P3_H1_cicd_supply_chain.md)) · H3 done ([results](results/P3_H3_observability.md)) · H2 done ([results](results/P3_H2_data_quality.md)) · H4 done ([results](results/P3_H4_model_monitoring.md)) · H5 done ([results](results/P3_H5_governance.md)) · H6 done ([results](results/P3_H6_guardrail.md)) · H7 done ([results](results/P3_H7_reliability.md))
 
 ## 1. Goal
 
@@ -249,7 +249,7 @@ next safer.
 | H4 ✅ | Model monitoring + drift retraining | 2 | H2, H3 |
 | H5 ✅ | Governance | 1–2 | H0 |
 | H6 ✅ | Auto-rollback | 1 | H4, H5 |
-| H7 | Reliability + DR | 1 | H3 |
+| H7 ✅ | Reliability + DR | 1 | H3 |
 | H8 | Infrastructure as code | 2 | H1, H7 |
 | H9 | Performance + scaling | 1 | H3 |
 | H10 | Responsible AI + GDPR | 1 | H2 |

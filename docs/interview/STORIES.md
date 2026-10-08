@@ -284,3 +284,38 @@ switch to dry-run is one line, and every decision is visible.
   baseline back-fills when it returns.
 - *Isn't 40 outcomes slow?* Yes, deliberately. Fast symptoms (errors, latency, outages) are caught by the deploy
   smoke test and the SLO alerts. The guardrail is the slow, sure net for "it works but it's wrong".
+
+---
+
+## H7 · From "we have backups" to "the backup restores, every week"
+
+**Situation.** Backups ran nightly and synced off-box, but none had ever been restored. All alerting ran on the
+VPS it watched, so its own death would be silent. The box had no swap. Incidents were fixed and forgotten.
+
+**Task.** Prove recoverability continuously, cover the monitoring's blind spot, and make every alert actionable.
+
+**Action.**
+- **A weekly restore drill:** the newest dump goes into a throwaway container, the tables, registry and **the
+  audit hash chain of the restored copy** are verified, and RPO and restore time are published as metrics with
+  alerts. It's tested with real Docker in CI, including a tampered backup that must fail.
+- **A dead-man's switch:** an always-firing Watchdog alert feeds an external heartbeat service, which alerts when
+  the heartbeat stops.
+- **A runbook section for every alert,** linked from the Telegram message, with a test that fails if an alert has
+  no runbook (or a runbook has no alert).
+- **Blameless postmortems** for the four real incidents (a leaked token in logs, 4 days of unnoticed red CI, empty
+  dashboards, a parallel-session rebase), each with prevent / detect / mitigate actions.
+- **Recovery targets** written down (RPO 24 h, RTO 30 min), and swap.
+
+**Result.** Recoverability is measured weekly instead of assumed, and the monitoring's blind spot is covered. The
+drill's own first version had a real race (it waited for a temporary init-time server), caught by testing before it
+could cry wolf on the server.
+
+**Trade-off I would defend.** The drill restores the local copy, not the off-site B2 copy. Restoring from B2 would
+need storage credentials on this box, widening its blast radius (ADR 0003). The B2 sync is the harness's
+responsibility and is monitored there.
+
+**Likely follow-up questions.**
+- *Why verify the audit chain in the restore?* A backup can be technically valid and still carry a tampered history.
+  The drill proves both "it restores" and "it's the record we trust".
+- *What's your RTO really?* The drill measures the restore itself. The rest (rollback to `:previous`, redeploy) is
+  automated and rehearsed (H1), so 30 minutes has margin.

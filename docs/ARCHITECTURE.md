@@ -127,7 +127,11 @@ flowchart TB
 - Telegram accepts commands only from the owner's chat id; only the VPS polls Telegram.
 - Secrets live in `.env` files on each machine, never in git (pre-commit + CI scan the full history).
 
-## 6. Quality gates (every commit)
+## 6. Reliability
+Targets, layers of protection, the weekly restore drill and the dead-man's switch: [RELIABILITY.md](RELIABILITY.md).
+What to do for each alert: [runbooks](runbooks/alerts.md). Incidents: [postmortems](postmortems/README.md).
+
+## 7. Quality gates (every commit)
 
 | Check | Where | Rule |
 |---|---|---|

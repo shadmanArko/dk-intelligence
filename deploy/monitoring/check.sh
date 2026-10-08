@@ -20,10 +20,14 @@ echo "== amtool check-config"
 # way up.sh runs Alertmanager on the VPS (as the deploy user). Docker Desktop on a Mac ignores these permissions;
 # Linux (CI, the VPS) does not.
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-sed 's/__TELEGRAM_CHAT_ID__/123456789/' alertmanager/alertmanager.yml > "$tmp/alertmanager.yml"
+for receiver in deadman null; do  # both renderings up.sh can produce must be valid
+  sed -e 's/__TELEGRAM_CHAT_ID__/123456789/' -e "s/__DEADMAN_RECEIVER__/$receiver/" alertmanager/alertmanager.yml \
+    > "$tmp/alertmanager-$receiver.yml"
+done
 printf 'placeholder' > "$tmp/telegram_token"
+printf 'https://hc-ping.com/00000000-0000-0000-0000-000000000000' > "$tmp/deadman_url"
 docker run --rm --user "$(id -u):$(id -g)" -v "$tmp:/runtime:ro" -v "$PWD/alertmanager/templates:/etc/alertmanager/templates:ro" \
-  --entrypoint amtool "$AM" check-config /runtime/alertmanager.yml
+  --entrypoint amtool "$AM" check-config /runtime/alertmanager-deadman.yml /runtime/alertmanager-null.yml
 
 echo "== compose config"
 MON_UID=1000 MON_GID=1000 RUNTIME=/tmp/runtime METRICS_DIR=/tmp/metrics GRAFANA_ADMIN_PASSWORD=x \

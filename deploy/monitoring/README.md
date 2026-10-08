@@ -25,6 +25,15 @@ docker compose exec alertmanager amtool alert add alertname=AlertPathTest severi
 ```
 A 🟠 message arrives within ~30 s; a ✅ "Resolved" follows when it expires (about 5 minutes later).
 
+## Dead-man's switch
+1. Create a free account at healthchecks.io → **Add Check**: name "dk-intelligence watchdog", period **5 minutes**,
+   grace **10 minutes**; under Integrations add Telegram (or e-mail) for alerts.
+2. Copy the check's ping URL (`https://hc-ping.com/…`) and on the VPS:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy/monitoring && read -rp "Ping URL: " U && echo "HEALTHCHECKS_PING_URL=$U" >> .env && ./up.sh
+   ```
+   `up.sh` prints `== dead-man's switch: pinging healthchecks.io`; the check turns green within 2 minutes.
+
 ## Everyday
 | Task | Command (in this folder) |
 |---|---|

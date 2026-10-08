@@ -4,6 +4,7 @@
 {{ .Annotations.summary }}
 {{- if ne .Status "resolved" }}
 <i>{{ .Annotations.action }}</i>
+<a href="https://github.com/shadmanArko/dk-intelligence/blob/main/docs/runbooks/alerts.md#{{ .Labels.alertname | toLower }}">Runbook</a>
 {{- end }}
 
 {{ end -}}

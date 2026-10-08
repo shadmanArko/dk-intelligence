@@ -23,6 +23,7 @@ repos:
     rev: a6564f5d57444e123433a5c9af733e3975c77229  # frozen: v0.11.0.1-1
     hooks:
       - id: shellcheck
+        args: [-x]   # follow `source`d helpers (deploy/metrics.sh) even when only the caller is staged
   - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
     rev: 357f7eec6dec49bf7693dc0dbec30212226d5492  # frozen: v1.7.12.25
     hooks:

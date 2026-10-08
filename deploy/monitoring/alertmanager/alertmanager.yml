@@ -1,4 +1,5 @@
-# Rendered by up.sh into $RUNTIME/alertmanager.yml (__TELEGRAM_CHAT_ID__ from deploy/.env); the bot token is read from
+# Rendered by up.sh into $RUNTIME/alertmanager.yml (__TELEGRAM_CHAT_ID__ from deploy/.env, __DEADMAN_RECEIVER__ = deadman
+# when HEALTHCHECKS_PING_URL is set in deploy/monitoring/.env, else "null"); the bot token is read from
 # a 600 file next to it, never written into this config. Same bot and chat as the approvals (the VPS bot).
 route:
   receiver: telegram
@@ -7,6 +8,11 @@ route:
   group_interval: 5m
   repeat_interval: 12h
   routes:
+    - matchers: ['alertname="Watchdog"']   # dead-man's switch (ADR 0021): to healthchecks.io, never to Telegram
+      receiver: __DEADMAN_RECEIVER__
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 2m
     - matchers: ['severity="page"']
       receiver: telegram
       repeat_interval: 1h
@@ -19,6 +25,11 @@ inhibit_rules:
     target_matchers: ['alertname="HostDiskLow"']
 
 receivers:
+  - name: "null"            # used for the Watchdog until a healthchecks.io ping URL is configured
+  - name: deadman
+    webhook_configs:
+      - url_file: /runtime/deadman_url   # written by up.sh from HEALTHCHECKS_PING_URL; never in git
+        send_resolved: false
   - name: telegram
     telegram_configs:
       - bot_token_file: /runtime/telegram_token

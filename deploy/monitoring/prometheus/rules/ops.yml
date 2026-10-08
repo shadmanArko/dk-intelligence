@@ -91,6 +91,18 @@ groups:
         annotations:
           summary: "No successful intel-db backup for {{ $value | humanizeDuration }}"
           action: "`tail /opt/dhaka-kacchi/logs/intel-backup.log`; run deploy/backup.sh by hand."
+      - alert: RestoreDrillFailing
+        expr: intel_restore_drill_ok == 0
+        labels: {severity: ticket}
+        annotations:
+          summary: "The weekly restore drill could not restore and verify the newest backup"
+          action: "tail -40 /opt/dhaka-kacchi/logs/intel-restore-drill.log; the line starting with '!!' says why."
+      - alert: RestoreDrillStale
+        expr: (time() - intel_restore_drill_last_success_timestamp_seconds) > 8 * 86400
+        labels: {severity: ticket}
+        annotations:
+          summary: "No successful restore drill for {{ $value | humanizeDuration }}"
+          action: "Is the Sunday 04:30 cron entry there (crontab -l)? Run deploy/restore_drill.sh by hand."
       - alert: CollectorStale
         expr: (time() - mip_collector_last_success_timestamp_seconds{job="daily"}) > 26 * 3600
         labels: {severity: ticket}
@@ -106,6 +118,14 @@ groups:
 
   - name: meta
     rules:
+      - alert: Watchdog
+        # always firing on purpose: Alertmanager forwards it to an external dead-man's switch (healthchecks.io) every
+        # 2 minutes. If the pings stop (VPS, Prometheus, Alertmanager or network down), THAT service alerts the owner.
+        expr: vector(1)
+        labels: {severity: none}
+        annotations:
+          summary: "Watchdog: the monitoring pipeline is alive"
+          action: "Nothing: this alert is meant to fire forever (ADR 0021)."
       - alert: PrometheusRuleFailures
         expr: increase(prometheus_rule_evaluation_failures_total[15m]) > 0
         labels: {severity: ticket}

@@ -25,5 +25,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0018](0018-model-monitoring-and-drift.md) | Model monitoring: served features, reference profiles, statistically honest drift | Accepted |
 | [0019](0019-governance-lifecycle-audit-reproducibility.md) | Governance: enforced lifecycle, hash-chained audit, model cards v2, reproducibility | Accepted |
 | [0020](0020-automatic-rollback-guardrail.md) | Automatic rollback of a degraded production model (the guardrail) | Accepted |
+| [0021](0021-reliability-and-disaster-recovery.md) | Reliability and DR: tested restores, dead-man's switch, runbooks, postmortems | Accepted |
 
 Template: [0000-template.md](0000-template.md).

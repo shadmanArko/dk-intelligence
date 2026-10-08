@@ -100,3 +100,31 @@ tests:
             exp_annotations:
               summary: "The audit trail no longer verifies: a governance record was altered"
               action: "Open /audit (shows the first broken entry). Do not approve models until explained; check DB access."
+
+  - name: the watchdog always fires (that is its job)
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: {severity: none}
+            exp_annotations:
+              summary: "Watchdog: the monitoring pipeline is alive"
+              action: "Nothing: this alert is meant to fire forever (ADR 0021)."
+
+  - name: restore drill failing and stale
+    interval: 1h
+    input_series:
+      - {series: 'intel_restore_drill_ok', values: '1x5 0x5'}
+      - {series: 'intel_restore_drill_last_success_timestamp_seconds', values: '0x300'}
+    alert_rule_test:
+      - {eval_time: 3h, alertname: RestoreDrillFailing, exp_alerts: []}
+      - eval_time: 7h
+        alertname: RestoreDrillFailing
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "The weekly restore drill could not restore and verify the newest backup"
+              action: "tail -40 /opt/dhaka-kacchi/logs/intel-restore-drill.log; the line starting with '!!' says why."
+      - {eval_time: 7d, alertname: RestoreDrillStale, exp_alerts: []}

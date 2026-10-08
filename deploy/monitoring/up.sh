@@ -21,7 +21,12 @@ mkdir -p "$METRICS_DIR" && chmod 755 "$METRICS_DIR"      # node-exporter (anothe
 ( umask 077
   mkdir -p "$RUNTIME/alertmanager-data"
   printf '%s' "$TOKEN" > "$RUNTIME/telegram_token"
-  sed "s/__TELEGRAM_CHAT_ID__/$CHAT/" alertmanager/alertmanager.yml > "$RUNTIME/alertmanager.yml" )
+  PING="$(grep -E '^HEALTHCHECKS_PING_URL=' .env | cut -d= -f2- || true)"
+  if [[ "$PING" =~ ^https://hc-ping\.com/[A-Za-z0-9-]+$ ]]; then RECEIVER=deadman; else RECEIVER=null; PING="http://127.0.0.1:9/unused"; fi
+  printf '%s' "$PING" > "$RUNTIME/deadman_url"
+  sed -e "s/__TELEGRAM_CHAT_ID__/$CHAT/" -e "s/__DEADMAN_RECEIVER__/$RECEIVER/" alertmanager/alertmanager.yml \
+    > "$RUNTIME/alertmanager.yml"
+  echo "== dead-man's switch: $([[ $RECEIVER == deadman ]] && echo "pinging healthchecks.io" || echo "not configured (HEALTHCHECKS_PING_URL)")" )
 
 # Save what compose needs into .env (managed block), so EVERY `docker compose ...` in this folder works, not only
 # the ones started by this script (a hand-run `docker compose exec` failed on missing variables before 2026-10-08).
