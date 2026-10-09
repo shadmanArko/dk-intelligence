@@ -37,6 +37,16 @@ jobs:
         with:
           fetch-depth: 0   # full history for the secret scan
           persist-credentials: false
+      # Docker Hub rate-limits anonymous pulls from shared runners (429 "toomanyrequests"). Pull through Google's
+      # Docker Hub mirror instead; every tool image is pinned by digest, so the mirror can't change the bytes, and the
+      # daemon falls back to Docker Hub on a miss. `reload` (SIGHUP) applies it without restarting service containers.
+      - name: Docker Hub mirror
+        run: |
+          { jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json 2>/dev/null \
+            || echo '{"registry-mirrors": ["https://mirror.gcr.io"]}'; } > /tmp/daemon.json
+          sudo install -m 644 /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl reload docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       # Secret scan of the WHOLE git history (the pre-commit hook only sees staged changes, so it guards commits).
       - run: docker run --rm -v "$PWD:/repo" "$GITLEAKS" git /repo --redact --no-banner
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
@@ -79,7 +89,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      # Docker Hub rate-limits anonymous pulls from shared runners (429 "toomanyrequests"). Pull through Google's
+      # Docker Hub mirror instead; every tool image is pinned by digest, so the mirror can't change the bytes, and the
+      # daemon falls back to Docker Hub on a miss. `reload` (SIGHUP) applies it without restarting service containers.
+      - name: Docker Hub mirror
+        run: |
+          { jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json 2>/dev/null \
+            || echo '{"registry-mirrors": ["https://mirror.gcr.io"]}'; } > /tmp/daemon.json
+          sudo install -m 644 /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl reload docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - if: env.PUSH == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
