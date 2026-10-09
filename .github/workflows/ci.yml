@@ -102,6 +102,7 @@ jobs:
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
         with:
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1   # the builder itself, not from Docker Hub
           buildkitd-config-inline: |
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
