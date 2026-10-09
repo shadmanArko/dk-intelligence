@@ -82,7 +82,12 @@ def _backup(container: str, dest: Path, stamp: str) -> Path:
 
 
 def _drill(backups: Path, metrics: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "INTEL_BACKUP_DIR": str(backups), "INTEL_METRICS_DIR": str(metrics)}
+    env = {
+        **os.environ,
+        "INTEL_BACKUP_DIR": str(backups),
+        "INTEL_METRICS_DIR": str(metrics),
+        "INTEL_DRILL_IMAGE": IMAGE,
+    }
     return _sh("bash", str(ROOT / "deploy" / "restore_drill.sh"), env=env, timeout=300)
 
 
