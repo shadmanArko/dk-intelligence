@@ -28,5 +28,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0021](0021-reliability-and-disaster-recovery.md) | Reliability and DR: tested restores, dead-man's switch, runbooks, postmortems | Accepted |
 | [0022](0022-infrastructure-as-code-pull-mode.md) | Infrastructure as code, in pull mode | Accepted |
 | [0023](0023-performance-budget-and-scaling.md) | Performance: latency budget, batching, warm-up, trigger-based scaling | Accepted |
+| [0025](0025-mcp-gateway-llm-agnostic.md) | One LLM-agnostic MCP gateway of four read-only servers | Accepted |
 
 Template: [0000-template.md](0000-template.md).

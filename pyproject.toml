@@ -37,6 +37,9 @@ train = [
     "mlflow>=3,<4",
     "pandera>=0.34,<0.35",
 ]          # Mac only; the VPS image installs without it
+mcp = [
+    "fastmcp==4.0.11",  # exact pin (ADR 0025); becomes a default group in P4.1
+]
 
 [tool.uv]
 default-groups = ["dev", "train"]
