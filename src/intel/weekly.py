@@ -274,15 +274,50 @@ def _same(served: Any, rebuilt: Any) -> bool:
     return str(served) == str(rebuilt)
 
 
-def active_versions(api_url: str | None, client: httpx.Client | None = None) -> set[str]:
-    """Scorer versions the VPS has loaded right now (its /ready); empty when unreachable."""
+def active_by_model(api_url: str | None, client: httpx.Client | None = None) -> dict[str, str]:
+    """Scorer name -> version the VPS has loaded right now (its /ready); empty when unreachable."""
     if not api_url:
-        return set()
+        return {}
     try:
         models = (client or httpx.Client(timeout=20)).get(f"{api_url.rstrip('/')}/ready").json().get("models", {})
     except (httpx.HTTPError, ValueError):
-        return set()
-    return {str(v) for n, v in models.items() if n in SCORERS}
+        return {}
+    return {str(n): str(v) for n, v in models.items() if n in SCORERS}
+
+
+def active_versions(api_url: str | None, client: httpx.Client | None = None) -> set[str]:
+    """Scorer versions the VPS has loaded right now (its /ready); empty when unreachable."""
+    return set(active_by_model(api_url, client).values())
+
+
+def hold_if_not_better(
+    passed: list[tuple[Path, dict[str, Any]]],
+    active: dict[str, str],
+    runs_dir: Path,
+    pull: Path,
+    log: Callable[[str], None],
+) -> tuple[list[tuple[Path, dict[str, Any]]], dict[str, dict[str, Any]]]:
+    """Drop passing scorers that don't clearly beat the ACTIVE version (intel.incumbent); returns (still passing,
+    comparisons by model). Without a known active version, or its run on this Mac, the owner is asked as before."""
+    import yaml
+
+    from intel.incumbent import compare
+
+    keep, comparisons = [], {}
+    for rd, rr in passed:
+        name = rr["kind"].removesuffix("_run")
+        current = active.get(name)
+        act_run = find_run(runs_dir, current) if current and current != rr["version"] else None
+        if name not in SCORERS or act_run is None:
+            keep.append((rd, rr))
+            continue
+        spec = yaml.safe_load((Path(__file__).parent / "models" / name / "spec.yaml").read_text())
+        c = compare(rd, act_run, pull, float(spec["gates"]["min_gain_balanced_accuracy"]))
+        comparisons[name] = c.as_dict()
+        log(f"{name}: {c.reason}")
+        if c.clearly_better:
+            keep.append((rd, rr))
+    return keep, comparisons
 
 
 def references_to_send(
@@ -577,6 +612,20 @@ def _run_weekly(
                 {f"{name}: {icon.get(g['status'], '?')} {g['gate']}": g["detail"] for g in jj["gates"]}
             )
         passed = [(rd, rr) for rd, rr in results if rr["judge"]["verdict"] == "pass"]
+        # The owner is asked about a new scorer only if it clearly beats the ACTIVE version (intel.incumbent).
+        passed, comparisons = hold_if_not_better(passed, active_by_model(s.intel_api_url), d / "runs", pull, log)
+        if comparisons:
+            rep["incumbent"] = comparisons
+        for m in rep["models"]:
+            c = comparisons.get(m["name"])
+            if c is None:
+                continue
+            judge_details[f"{m['name']}: vs active"] = c["reason"]
+            if not c["clearly_better"]:
+                m["verdict"] = "kept_active"
+                m["failed_gates"] = [f"not clearly better than active {c['active_version']}"]
+                if m.get("version") == rep.get("version"):  # the headline scorer: the report says why nothing came
+                    rep["failed_gates"] = [*rep.get("failed_gates", []), "not clearly better than the active version"]
         prog.done("judge", ", ".join(f"{m['name']} {m['verdict']}" for m in rep["models"]), judge_details)
 
         if passed:

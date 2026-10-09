@@ -57,9 +57,9 @@ and `tests/test_restore_drill.py`. Monitoring as code: `bash deploy/monitoring/c
 9. **Only pre-posting information as features** for the scorers. The content_scorer and reach_scorer test sets have
    each been used twice: **no more tuning against them.**
 10. **Content and fairness:** no religious ritual or deity words (blocked words in the content playbook); ads by area
-    and interest, never by ethnicity or religion. The community map uses area-level official statistics on origin as an
-    **owner-reviewed** exception (2026-10-08). The occasion planner's city-level citizenship counts are **pending the
-    owner's confirmation** (HANDOFF decision A); don't reuse origin or citizenship data anywhere else without asking.
+    and interest, never by ethnicity or religion. The community map (area-level) and the occasion planner (city-level)
+    use official statistics on origin as **owner-reviewed** exceptions (2026-10-08 and 2026-10-09); don't reuse
+    origin or citizenship data anywhere else without asking.
 11. **€0 running cost, no paid AI APIs** (ADR 0012), unless the owner decides otherwise for Phase 4; ask.
 12. **Migrations are additive** (ADR 0015, `tests/test_migration_policy.py`). Accepted ADRs are never edited; a
     changed decision gets a new ADR. Next free ADR number: **0025** (0024 is on the H10 branch).

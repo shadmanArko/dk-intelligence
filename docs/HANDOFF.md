@@ -9,7 +9,7 @@ re-check them before acting.
 > 1. Run the git checks in CLAUDE.md (parallel sessions share this folder).
 > 2. Owner says "Phase 4" / "MCP" / "RAG" → §4: ask the 4 questions, then write `docs/PHASE4_PLAN.md` for approval.
 >    **No code before the plan is approved.**
-> 3. Owner says "merge GDPR" → §3 *How to merge H10*, starting with decision A.
+> 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).
 
@@ -66,72 +66,53 @@ re-check them before acting.
 - 12:00 Berlin: the Sunday training on the Mac (launchd `com.dhakakacchi.intel.weekly`, with catch-up if the Mac
   was off). It will:
   - send creator_matcher for its first approval;
-  - probably ask for a new content_scorer approval (see decision B).
+  - ask for a content_scorer approval only if it clearly beats the active version (decision B).
 - Monday 09:00: the weekly Telegram report.
 
 ---
 
-## 2. Decisions waiting for the owner
-Ask about these when relevant. Each has a recommendation.
+## 2. Decisions the owner made on 2026-10-09
+**A. Occasion-planner fairness exception: CONFIRMED by the owner.**
+- Recorded on `feat/GDPR` in commit `84e0a00`. ADR 0024 now says the community map was decided on 2026-10-08 and the
+  occasion planner confirmed on 2026-10-09, matching `policy.yaml`. Counts in the H10 docs were also made precise.
+- Not merged: see C.
 
-**A. Occasion-planner fairness exception (part of H10).**
-- *Background:* on `feat/GDPR`, `src/intel/privacy/policy.yaml` has a reviewed exception for `occasion_planner` (it
-  reads city-wide resident counts per citizenship, `afs_citizenship` and `occasions_next`). Claude added it without
-  asking, dated 2026-10-09 with the owner as reviewer.
-- *What the owner already decided:* only the community-map exception, on 2026-10-08 ("keep as is, documented").
-- *Ask:* confirm or remove. If removed, the H10 gate refuses occasion-planner packages after the merge.
-- *Recommendation:* confirm. It's the same kind of aggregate data, used to size occasions, never to target people.
-- *Correct the record either way:* ADR 0024 on the branch (decision 7) says the owner decided **both** exceptions on
-  2026-10-08. That's true only for the community map.
-  - **If confirmed:** change ADR 0024 to "occasion planner: owner, <confirmation date>", and set `reviewed_on` in
-    `policy.yaml` to that date.
-  - **If removed:** the gate refuses occasion-planner packages, *and*
-    `tests/test_privacy.py::test_every_model_reading_origin_data_has_a_reviewed_exception` fails, unless the planner
-    stops reading `afs_citizenship` / `occasions_next`. That means its data contracts and its sealed code (ADR 0011),
-    then ADR 0024, `docs/results/P3_H10_privacy.md` and a re-rendered `docs/privacy/RECORD_OF_PROCESSING.md`
-    (`intel privacy ropa --write`).
-  - Never leave `reviewed_by: owner` on an exception the owner hasn't reviewed.
+**B. Ask for a scorer approval only when the new version clearly beats the ACTIVE one: BUILT.**
+- `src/intel/incumbent.py` plus `hold_if_not_better` in `weekly.py` (platform code, not sealed).
+- After the judge passes a scorer, the Sunday run scores the **active** version (from the VPS `/ready`) on the
+  challenger's test posts. It uses only posts newer than the active version's own training cutoff.
+- The new version is uploaded for approval only if its balanced accuracy is higher by at least the judge's
+  `min_gain_balanced_accuracy` (0.02) on at least 30 such posts. Otherwise it is reported as `kept_active` and you
+  aren't asked.
+- If the VPS is unreachable or the active version's run isn't on the Mac, the old behaviour applies (you're asked).
+- Real check: Thursday's dry-run challenger scored 0.688 vs 0.688 against the active version on 75 posts, so it
+  would now be held.
+- Tests: `tests/test_incumbent.py`.
+- Effect: the active content scorer keeps collecting evidence. The guardrail can act once it has 40 matured 7-day
+  outcomes, probably in November.
 
-**B. Weekly content-scorer approvals keep resetting the guardrail's evidence.**
-- *Background:*
-  - the challenger is judged against the harness predictor ("today's champion"), not against the active approved
-    version, so it will likely pass and ask for approval every Sunday;
-  - scorers never auto-refresh, and each newly approved version starts its monitoring and guardrail evidence from
-    zero;
-  - the guardrail needs 40 matured 7-day outcomes, the live gate 30. At ~15 FB/IG posts a week, a version replaced
-    weekly never gets there.
-- *Recommendation:* add a platform rule (in `weekly.py` or the registry, **not** in sealed model code). Ask for
-  approval only if the challenger beats the **active** version by a material margin on the same test set; otherwise
-  report "no change" and keep the active version.
-- *Alternative:* the owner simply doesn't approve new scorer versions for ~4 weeks.
-- Earliest real guardrail evidence, if the active version is kept: around 2026-11-03.
-
-**C. When to merge H10 (PR #4).** The owner said "merge later; no legal pressure now". If it stays unmerged:
+**C. H10 / PR #4: the owner merges it themselves, later. Do NOT merge, rebase or push it unless asked.** The merge
+procedure below is for when the owner asks for help. Without the merge:
 - every pull copies all readable warehouse tables to the Mac (40 in the latest pull). These include `customer` and
-  `review` (empty today), `orders` (9 rows) and raw Facebook payloads with 66 comments by 3 private commenters
-  (13 author fields, 10 of them our own Page). H10 cuts that to the 5 tables the models read;
+  `review` (empty today), `orders` (9 rows) and raw Facebook payloads with 66 comments by 3 private commenters;
 - there is no retention job, and Docker and job logs aren't capped;
 - there is no PII scan or fairness gate on packages;
-- the interview kit says "merge pending", and the branch drifts further from `main`.
-
-GDPR applies regardless of business size, but the risk today is low (tiny volumes, nothing shared).
-*Recommendation:* merge before Phase 4 builds a RAG corpus, because the H10 policy file is where every new corpus
-must be declared.
-
----
+- the interview kit says "merge pending";
+- a Phase 4 corpus can't be declared in the H10 policy file yet, so declare it in the Phase 4 plan instead and move
+  it into `policy.yaml` when H10 lands.
 
 ## 3. Open items
 
 | # | Item | Who | Next action |
 |---|---|---|---|
 | 1 | **H10 / PR #4 merge prep** | Claude, when the owner says "merge" | See *How to merge H10* below |
-| 2 | weakness_miner owner check | owner | Start the Control Room (`DK Control Room.command`) and open http://127.0.0.1:8765/check (the main page has no link to it). Label ≥ 150 of 200 sentences (~30 min); the judge needs aspect precision ≥ 0.80 and tone accuracy ≥ 0.80. Then *Run training now* and approve in Telegram |
-| 3 | creator_matcher first approval | owner | After Sunday's run, approve in Telegram (it doubles as a plausibility check; noise accounts go in `exclude_handles`) |
-| 4 | Decision B (scorer approvals vs evidence) | owner decides, Claude builds | See §2 |
+| 2 | weakness_miner check | **done by Claude** (owner delegated it, 2026-10-09) | 198 of 200 clauses labelled **blind**: topic names only, never the dictionary's phrases or its predictions. Each label is marked `labelled_by: claude` in `data/checks/weakness_miner_labels.jsonl`. Result: aspect precision 0.844, tone accuracy 0.818 (both ≥ 0.80), recall 0.732. The owner still gives the first approval on Telegram, and can relabel at http://127.0.0.1:8765/check (Control Room running) |
+| 3 | creator_matcher and weakness_miner first approvals | owner | A real training run was started on 2026-10-09 to deliver both. Approve them in Telegram; it doubles as a plausibility check (noise accounts go in creator_matcher's `exclude_handles`) |
+| 4 | Decision B | done | See §2 |
 | 5 | 24 h outcomes often missed | Claude (investigate) | Warehouse metric snapshots arrive once a day (~02:00–03:15 UTC), but `measure.py` accepts a 24 h outcome only within 12 h after the mark. Posts outside ~14:00–02:00 UTC never get one. The 72 h and 7 d outcomes are fine (the guardrail, the live gate and drift monitoring use 7 d only). Probably widen the 24 h window, or label it "first snapshot after 24 h" |
-| 6 | Old GitHub token "Hello 2" (classic, repo scope; partly shown in a screenshot) | owner | GitHub → Settings → Developer settings → Tokens: delete it if it still exists; clear `ghp_` lines from the VPS `~/.bash_history` |
+| 6 | Old GitHub token "Hello 2" | done | The owner deleted it (2026-10-09) |
 | 7 | GHCR read-only token on the VPS (1-year expiry) | owner | Renew before ~2027-10-08 |
-| 8 | YouTube OAuth credentials were pasted in chat (2026-10-03) | owner | Rotate them and use a read-only scope ("later", per the owner) |
+| 8 | YouTube OAuth credentials were pasted in chat (2026-10-03) | owner, when convenient | Steps given 2026-10-09: reset the OAuth client secret in Google Cloud Console, revoke the app at myaccount.google.com/permissions, re-authorise with the read-only scope `youtube.readonly`, and put the new values in the data platform's `.env`. Low risk, but the old values are in a chat transcript |
 | 9 | Interview rehearsal | owner, optional | Offer to play the interviewer (`docs/interview/`) |
 | 10 | Doc drift on `main` (small) | Claude, with the next change nearby | `QUALITY.md` counts 14 promtool test *groups*, but the interview kit says "30 alert-rule tests" (29 alert assertions + 1 PromQL test): pick one unit. `docs/results/M5_serving.md` "Open" section is stale (door 3 and backups are done). "No swap" (2 GB swap since 2026-10-08) appears in the `HostMemoryLow` rule (ops.yml comment and summary), the Grafana vps-host panel and `SLO.md` |
 | 11 | Data-platform leftovers (other repo) | owner, optional | Unload launchd `com.dhakakacchi.mip.youtube-daily` (no-ops now). Optional ruleset on the data platform's `main` (block force pushes and deletions) |
@@ -139,7 +120,7 @@ must be declared.
 ### How to merge H10 (when the owner says so)
 PR #4's only CI run was cancelled, and GitHub marks the PR as conflicting until it's rebased.
 
-0. **Get decision A first** (§2), and correct the exception record accordingly.
+0. Decision A is already confirmed and recorded (`84e0a00`); nothing to do.
 1. **Rebase** `feat/GDPR` onto `main`. As of `2c4429d`, exactly one file conflicts, `docs/PHASE3_MLOPS_PLAN.md`
    (the Status line and the H10/H11 rows of the table). Anything added to `docs/adr/README.md` or
    `docs/interview/STORIES.md` on `main` before the merge adds more conflicts. Resolve to "H10 done ([results](results/P3_H10_privacy.md)) · H11 done
@@ -244,8 +225,9 @@ intel-api over the tailnet (`INTEL_API_URL`), and the data platform's read-only 
 
 ### Questions to ask the owner first
 Ask these four in **one** AskUserQuestion call, each with the recommended option first:
-1. **Merge H10 first?** *Recommend yes* (decision C: its policy file is where a RAG corpus gets declared). If yes, do
-   decision A in the same breath.
+1. **Which corpora first, and which stay internal?** *Recommend* competitor reviews + our own posts + market examples
+   first, all internal (tailnet/Mac only). Brand docs stay in the prompt, not in RAG. H10 isn't merged (the owner
+   merges it later), so declare each corpus's purpose and retention in the plan itself.
 2. **Generation in Phase 4?** *Recommend no:* tools + retrieval only, so ADR 0012 (€0, no paid APIs) holds. Text
    generation (captions) waits for the agents phase. Alternatives: a local model via Ollama, or Claude via the
    owner's subscription (needs an ADR superseding 0012).
@@ -256,7 +238,6 @@ Ask these four in **one** AskUserQuestion call, each with the recommended option
    the owner spot-checks (retrieval recall@k and citation faithfulness measured).
 
 **Default the rest in the plan** for approval, instead of asking up front:
-- corpora: competitor reviews + our own posts + market examples first; brand docs stay in-prompt, not RAG;
 - embedding model: multilingual-e5-small or base, run on the Mac;
 - vector store: a pgvector DB that dk-intelligence owns, either local on the Mac, or intel-db via an additive
   migration with vectors delivered as a package over door 2;
