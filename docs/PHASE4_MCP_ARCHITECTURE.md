@@ -633,7 +633,7 @@ process actually served (the gateway, or a server running alone), so nothing run
 
 | # | Middleware | What it does | Built |
 |---|---|---|---|
-| 1 | `errors` | FastMCP `ErrorHandlingMiddleware` (`include_traceback=False`, `transform_errors=True`); `ToolError` passes, everything else is masked | P4.1 |
+| 1 | `errors` | *Changed in P4.1:* no `ErrorHandlingMiddleware` (it turns `ToolError`s into opaque protocol errors a model can't act on). `ToolProblem` → `ToolError` at the edge (`servers/common.run`); everything else is masked by `mask_error_details=True` on every server | P4.1 |
 | 2 | `context` | request id (from `_meta` `traceparent`, else a new one; sent upstream as `X-Request-ID`), principal (JWT `sub` or `stdio:<os user>`), profile, `clientInfo` (untrusted), `Tailscale-User-Login` (tailnet listener only), sensitivity ceiling | P4.1 |
 | 3 | `audit` | hash-chained append (§7.4); sits outside the checks so denials and rate limits are logged too | P4.1 |
 | 4 | `auth` (HTTP only) | after FastMCP's `JWTVerifier` checked signature, `aud`, `exp` and scope: the `jti` denylist and the owner-login check (§2.2) | P4.5 |
