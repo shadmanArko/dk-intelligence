@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+# Docker Hub's ubuntu:24.04 through Google's mirror: Hub rate-limits anonymous pulls from CI runners
+UBUNTU = "mirror.gcr.io/library/ubuntu:24.04"
 
 
 def _docker_usable() -> bool:
@@ -30,7 +32,7 @@ pytestmark = pytest.mark.skipif(not _docker_usable(), reason="docker not availab
 @pytest.fixture(scope="module")
 def applied() -> str:
     r = subprocess.run(
-        ["docker", "run", "--rm", "-v", f"{ROOT}:/repo:ro", "ubuntu:24.04", "bash", "/repo/infra/test-in-container.sh"],
+        ["docker", "run", "--rm", "-v", f"{ROOT}:/repo:ro", UBUNTU, "bash", "/repo/infra/test-in-container.sh"],
         capture_output=True,
         text=True,
         timeout=900,

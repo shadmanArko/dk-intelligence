@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = "pgvector/pgvector:pg16"
+IMAGE = "mirror.gcr.io/pgvector/pgvector:pg16"  # intel-db's image, through the mirror (Docker Hub rate limits)
 
 
 def _docker_usable() -> bool:
