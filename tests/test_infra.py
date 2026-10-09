@@ -4,6 +4,7 @@ cron line alone, and writes the three doors exactly. Needs Docker (CI has it); s
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -12,7 +13,18 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
+
+
+def _docker_usable() -> bool:
+    """Docker installed and its daemon up. On CI a dead daemon must fail the run, so only skip off CI."""
+    if shutil.which("docker") is None:
+        return False
+    if os.environ.get("CI"):
+        return True
+    return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+
+
+pytestmark = pytest.mark.skipif(not _docker_usable(), reason="docker not available (or its daemon is down)")
 
 
 @pytest.fixture(scope="module")

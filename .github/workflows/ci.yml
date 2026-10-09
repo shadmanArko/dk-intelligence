@@ -16,7 +16,8 @@ permissions:
 env:
   IMAGE: ghcr.io/shadmanarko/dk-intelligence
   PLATFORM: linux/amd64                       # the VPS architecture (uname -m: x86_64)
-  TRIVY: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  # Trivy from its GitHub registry: the same digest as aquasec/trivy on Docker Hub, without Hub's rate limit
+  TRIVY: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
   GITLEAKS: ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
 
 jobs:
