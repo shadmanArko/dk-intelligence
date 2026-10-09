@@ -717,7 +717,7 @@ New `.env` keys (names only; `.env.example` gains them, plus the missing `INTEL_
 
 | Group | Contents | Installed on |
 |---|---|---|
-| `mcp` | `fastmcp` **exact pin**, chosen in P4.0: the newest 4.0.x ≥ 4.0.11 that is at least 7 days old, or 4.1.x from Thu 10-15 (4.1.0 came out 10-08). Brings `mcp` 2.x | Mac, CI; **a default group** |
+| `mcp` | `fastmcp==4.0.11` (**pinned in P4.0**: 5 days old, an exception to the 7-day rule for its security fixes to hashed tool lookups; 4.1.x reviewed from Thu 10-15). Brings `mcp` 2.3.0 and `httpx2` 2.13.1 next to `httpx` 0.28.1 | Mac, CI; **a default group** |
 | `rag` | `onnxruntime` + `tokenizers`, or `fastembed` if it ships multilingual-e5 (P4.2 spike). **No torch** | Mac, CI; **a default group** |
 | `clients` | `langchain[mcp]` 1.4.x pinned in P4.5 (≥7 days old), `langchain-ollama`, `openai-agents` 0.23.x | opt-in (`uv sync --group clients`); CI installs it |
 | `dev` (existing) | + `pytest-asyncio` for the in-memory `fastmcp.Client` tests | Mac, CI |
@@ -972,15 +972,17 @@ the config generator `intel mcp config` and tested examples.
     "dk_intel": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--quiet", "intel", "mcp", "serve", "--profile", "owner"]
+      "args": ["run", "--quiet", "--directory", "${CLAUDE_PROJECT_DIR:-.}", "intel", "mcp", "serve", "--profile", "owner"]
     }
   }
 }
 ```
 
-`uv run` must start inside the project, because uv finds `pyproject.toml` from the working directory before any
-Python runs. The P4.0 spike checks that Claude Code starts project servers in the repo root *(verify: P4.0)*. If it
-does not, the entry moves to local scope with an absolute path (not committed, because the path is machine-specific):
+**Checked in P4.0:** Claude Code's docs don't promise a working directory for stdio servers. They set
+`CLAUDE_PROJECT_DIR` in the server's environment, and `.mcp.json` expands `${CLAUDE_PROJECT_DIR:-.}` (the default
+is required in project scope). So `--directory` points uv at the repo root whatever the working directory is, and
+the server resolves `.env` and `data/` from `CLAUDE_PROJECT_DIR`, else from the package location. The local-scope
+entry below stays as the fallback for clients that don't set the variable:
 
 ```bash
 claude mcp add --scope local dk_intel -- \
@@ -1565,16 +1567,16 @@ P4.2 and P4.3 share ADR 0027 (one decision, accepted once at P4.3's end); P4.6 a
 
 | Unverified | Checked in | If it is false | Fallback |
 |---|---|---|---|
-| FastMCP 4 mounts servers without a namespace | P4.0 | names get prefixes | each server exposes `register(mcp, caps)`; the gateway registers all four on one instance |
-| the gate pattern (`on_list_tools` + `on_call_tool`) filters and refuses | P4.0 | hidden tools stay callable | our own middleware checks every call, read and get against `profiles.yaml` |
-| `ArgTransform` forced arguments (checker, producer) | P4.0 | the checker could ask for review text | the capability layer forces the argument by profile (`include_text=False`), whatever the client sends |
+| ✅ *verified P4.0:* FastMCP 4 mounts servers without a namespace. **But duplicate names collapse silently** (one kept, no error), so the uniqueness test is mandatory | P4.0 | names get prefixes | each server exposes `register(mcp, caps)`; the gateway registers all four on one instance |
+| ✅ *verified P4.0:* the gate pattern (`on_list_*` + `on_call_tool` / `on_get_prompt` / `on_read_resource`) filters and refuses | P4.0 | hidden tools stay callable | our own middleware checks every call, read and get against `profiles.yaml` |
+| ✅ *verified P4.0:* forced arguments, via a gateway `ToolTransform` with `ArgTransformConfig(hide=True, default=…)`: hidden from the schema, fixed, an override is rejected | P4.0 | the checker could ask for review text | the capability layer forces the argument by profile (`include_text=False`), whatever the client sends |
 | `JWTVerifier` HS256 argument shape | P4.5 | HTTP auth doesn't start | verify with PyJWT in our own ASGI auth middleware (`aud`, `exp`, `scope`, `jti`) |
 | `cache_ttl` / `cache_scope` semantics | P4.5 | clients cache lists across profiles | no cache hints; lists stay small anyway |
 | `langchain.mcp.MCPAdapter` import path and behaviour | P4.5 | the LangChain example breaks | load tools through `fastmcp.Client` and wrap them as LangChain tools in the example (≈30 lines) |
-| Claude Code starts project servers in the repo root | P4.0 | the committed `.mcp.json` can't find `pyproject.toml` | a local-scope entry with an absolute `uv --directory` (§5.2) |
+| ✅ *resolved P4.0:* not promised by Claude Code; `${CLAUDE_PROJECT_DIR:-.}` with `uv run --directory` instead (§5.2) | P4.0 | the committed `.mcp.json` can't find `pyproject.toml` | a local-scope entry with an absolute `uv --directory` (§5.2) |
 | `CLAUDE_CODE_MCP_SERVER_NAME` is set for `headersHelper` | P4.5 | `token header` refuses inside the helper | keep only the terminal check, and the rule that Claude never runs it |
 | subagent inline `mcpServers` shape | P4.4 | subagents can't pin a profile server-side | subagent `tools:` lists only (client-side), noted as a weaker control |
-| the 64-character limit on client tool names | P4.0 | long names are cut | shorter tool names (the length test enforces the real limit) |
+| ✅ *checked P4.0:* the 64-character limit on client tool names (longest planned: 41) | P4.0 | long names are cut | shorter tool names (the length test enforces the real limit) |
 | fastembed ships multilingual-e5 | P4.2 | — | our own onnxruntime + tokenizers wrapper (the default plan) |
 | pgvector version (iterative scan, `halfvec`) | P4.2 | HNSW filters return too few hits | stay on the exact scan (the plan) |
 | FastMCP + int8 e5 memory | P4.0, P4.2 | intel-mcp doesn't fit on the VPS | keyword-only on the VPS (§6.4) |

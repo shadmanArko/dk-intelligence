@@ -371,3 +371,30 @@ traffic is about 50,000× below capacity.
 **Trade-off I would defend.** The tempting fix, "add more uvicorn workers", is wrong here. Every process also runs
 the background loops, and two Telegram pollers or two measurers would conflict and double-count. Step one of the
 scaling plan is splitting the stateless API from a singleton worker, triggered by the SLO burn alert, not by a guess.
+
+---
+
+## P4.0 · Turning library unknowns into tests before writing the server
+
+**Situation.** Phase 4 puts an MCP layer over the models, in a fast-moving ecosystem: the MCP spec went stateless
+in July, FastMCP 4 rebuilt on a breaking SDK v2 in September, and a one-day-old minor release was on PyPI. The
+design rested on six library behaviours nobody had checked.
+
+**Task.** Pin the libraries, and prove or disprove every assumption before any production code depended on it.
+
+**Action.**
+- **Spiked each assumption** in a throwaway project, then **kept them as tests** (`test_fastmcp_assumptions.py`)
+  that CI runs from day one.
+- **Picked the pin on evidence, not on habit.** The 7-day age rule would have chosen 4.0.10, but 4.0.11 fixes how
+  visibility and auth apply to hashed tool lookups: the exact mechanism our role gate uses. The exception is
+  written into the ADR.
+- **Checked the lock is purely additive** (43 new packages, none moved) and ran pip-audit over every group.
+
+**Result.** Five assumptions held. One didn't: tools with the same name on two mounted servers **silently collapse
+into one**. That would have hidden a tool, or swapped which implementation answers, with no error. It is now a
+mandatory test. The Claude Code config question was resolved from the docs (`CLAUDE_PROJECT_DIR`) instead of
+guessed.
+
+**Trade-off I would defend.** A spike day delays the first feature by a morning. It buys a design where the risky
+parts are facts, and a regression suite that catches a library upgrade changing meaning, which is the usual way
+MCP servers break.
