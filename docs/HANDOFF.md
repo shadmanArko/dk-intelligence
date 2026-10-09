@@ -7,8 +7,9 @@ re-check them before acting.
 
 > **Start here**
 > 1. Run the git checks in CLAUDE.md (parallel sessions share this folder).
-> 2. Owner says "Phase 4" / "MCP" / "RAG" → §4: ask the 4 questions, then write `docs/PHASE4_PLAN.md` for approval.
->    **No code before the plan is approved.**
+> 2. **Phase 4 is APPROVED (2026-10-09)** and in progress: build from [PHASE4_MCP_ARCHITECTURE.md](PHASE4_MCP_ARCHITECTURE.md)
+>    (it wins over [PHASE4_PLAN.md](PHASE4_PLAN.md)), milestone by milestone (P4.0 → P4.7, §8). Visual summary:
+>    https://claude.ai/artifact/6FFancUafy3mvATaPRhMCB. D1–D7 approved with the recommended defaults.
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).
@@ -148,7 +149,7 @@ PR #4's only CI run was cancelled, and GitHub marks the PR as conflicting until 
 ---
 
 ## 4. Next task: Phase 4, MCP + RAG
-The owner wants this next ("tomorrow maybe"). **Nothing is built and there's no plan yet.** Process, as for Phase 3:
+**Superseded on 2026-10-09:** the plan is approved; see [PHASE4_MCP_ARCHITECTURE.md](PHASE4_MCP_ARCHITECTURE.md). The notes below were the brief for it. Process, as for Phase 3:
 **ask the open questions → write `docs/PHASE4_PLAN.md` for approval → build milestone by milestone**, each with
 code, tests, an ADR (from 0025), a results doc and an interview story.
 
