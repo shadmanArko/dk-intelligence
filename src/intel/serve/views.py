@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.rows import dict_row
 
+from intel.explain import reason_text  # noqa: F401 (re-exported for older imports)
 from intel.serve.db import connect
 
 log = logging.getLogger("intel.views")
@@ -25,28 +26,6 @@ MODEL_LABEL = {
     "harness_predictor": "Current predictor",
 }
 OUTCOME_COL = {"reach_scorer": "label_reach"}  # which result answers each model's question
-
-
-def reason_text(feature: str) -> str:
-    """'nominal__day_of_week_Saturday' -> 'Day: Saturday' (the champion's hour bands are in UTC)."""
-    f = feature.split("__", 1)[-1]
-    for prefix, label in (
-        ("day_of_week_", "Day"),
-        ("hour_bucket_", "Time band (UTC)"),
-        ("platform_", "Platform"),
-        ("content_type_filled_", "Format"),
-        ("hashtag_band_", "Hashtags"),
-    ):
-        if f.startswith(prefix):
-            return f"{label}: {f.removeprefix(prefix)}"
-    return {
-        "is_video_True": "Video",
-        "is_video_False": "Not a video",
-        "caption_length": "Caption length",
-        "hashtag_count": "Number of hashtags",
-        "first_line_length": "First line length",
-        "script_bengali": "Bengali script",
-    }.get(f, f.replace("_", " "))
 
 
 def reasons_html(reasons: list[dict] | None) -> str:

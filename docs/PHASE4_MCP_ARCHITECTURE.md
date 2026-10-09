@@ -274,15 +274,17 @@ In Phase 5 the same work is split across roles (planner → writer → checker).
 **The allowlist** (`src/intel/adapters/intel_api.py`). Anything else raises before any network I/O:
 
 ```python
-ALLOWED: Final = frozenset({
-    ("GET", "/ready"),
-    ("GET", "/v1/monitoring/latest"),   # NEW, additive: last persisted kv('monitoring'); never computes or writes
-    ("GET", "/v1/ledger/summary"),
-    ("GET", "/api/training-state"),
-    ("GET", "/v1/audit"),               # package list + decisions; `actor` never passed on
-    ("GET", "/v1/insights/{name}"),     # NEW, additive, read-only, field allowlist per section
-    ("POST", "/v1/score/batch"),        # never /v1/predict (it writes the ledger)
-})
+ALLOWED: Final = frozenset(
+    {
+        ("GET", "/ready"),
+        ("GET", "/v1/monitoring/latest"),  # NEW, additive: last persisted kv('monitoring'); never computes or writes
+        ("GET", "/v1/ledger/summary"),
+        ("GET", "/api/training-state"),
+        ("GET", "/v1/audit"),  # package list + decisions; `actor` never passed on
+        ("GET", "/v1/insights/{name}"),  # NEW, additive, read-only, field allowlist per section
+        ("POST", "/v1/score/batch"),  # never /v1/predict (it writes the ledger)
+    }
+)
 ```
 
 **Two new intel-api routes** (P4.1, `src/intel/serve/read_api.py`, wired into `app.py`; not sealed; additive; CI
@@ -658,20 +660,25 @@ The kit is reused unchanged by the Phase 5 write server.
 ```python
 # src/intel/mcp_server/gateway.py  (illustrative)
 def build_gateway(profile: str, deps: Deps) -> FastMCP:
-    caps = Capabilities.from_deps(deps)                        # plain Python objects, shared by all servers
+    caps = Capabilities.from_deps(deps)  # plain Python objects, shared by all servers
     gw = FastMCP("dk_intel", instructions=INSTRUCTIONS, mask_error_details=True)
-    for child in (build_models_server(caps), build_evidence_server(caps),
-                  build_brand_server(caps), build_studio_server(caps)):
-        gw.mount(child)                                        # no namespace: names are unique (tested)
-    apply_profile(gw, PROFILES[profile])                       # keep only the profile's tools; forced args
-    add_kit(gw, profile, deps)                                 # middleware in the order of §3.3
+    for child in (
+        build_models_server(caps),
+        build_evidence_server(caps),
+        build_brand_server(caps),
+        build_studio_server(caps),
+    ):
+        gw.mount(child)  # no namespace: names are unique (tested)
+    apply_profile(gw, PROFILES[profile])  # keep only the profile's tools; forced args
+    add_kit(gw, profile, deps)  # middleware in the order of §3.3
     return gw
+
 
 # src/intel/mcp_server/servers/models.py  (the edge stays thin: schema, annotations, docstring)
 def build_models_server(caps: Capabilities) -> FastMCP:
     mcp = FastMCP("dk_models")
 
-    @mcp.tool(annotations=READ_ONLY, meta=labels("S1", "trusted"), timeout=10.0)   # > slot wait + 2 attempts
+    @mcp.tool(annotations=READ_ONLY, meta=labels("S1", "trusted"), timeout=10.0)  # > slot wait + 2 attempts
     def score_drafts(drafts: list[Draft], response_format: ResponseFormat = "concise") -> ScoreOut:
         """Use when: you have 1-50 Facebook/Instagram drafts and want the production scorer's verdict.
         Not for: other platforms (they come back under not_scored) or rule checks (use check_drafts)."""
@@ -1022,16 +1029,17 @@ helper mints a 5-minute token from `.env` on each connection, so no long-lived t
 import os
 from fastmcp import Client
 from langchain.agents import create_agent
-from langchain.mcp import MCPAdapter             # beta: raises LangChainBetaWarning (captured in tests)
+from langchain.mcp import MCPAdapter  # beta: raises LangChainBetaWarning (captured in tests)
 from langchain_ollama import ChatOllama
 
+
 async def build_writer():
-    token = os.environ["INTEL_MCP_TOKEN_LANGCHAIN"]          # issued with --write-env, never printed
+    token = os.environ["INTEL_MCP_TOKEN_LANGCHAIN"]  # issued with --write-env, never printed
     client = Client("http://127.0.0.1:8766/mcp/writer", auth=token)
-    async with client:                                        # MCPAdapter doesn't wrap prompts: fetch directly
+    async with client:  # MCPAdapter doesn't wrap prompts: fetch directly
         role = await client.get_prompt("role_writer")
     async with MCPAdapter(client) as mcp:
-        tools = await mcp.list_tools(cache_mode="use")        # honours the server's cache hints
+        tools = await mcp.list_tools(cache_mode="use")  # honours the server's cache hints
     return create_agent(ChatOllama(model="gpt-oss:20b"), tools, system_prompt=role_text(role))
 ```
 
@@ -1044,14 +1052,15 @@ from agents import Agent, OpenAIChatCompletionsModel, set_tracing_disabled
 from agents.mcp import MCPServerStdio, create_static_tool_filter
 from openai import AsyncOpenAI
 
-set_tracing_disabled(True)                                    # no OpenAI key, no tracing upload
+set_tracing_disabled(True)  # no OpenAI key, no tracing upload
 model = OpenAIChatCompletionsModel(
-    model="gpt-oss:20b",
-    openai_client=AsyncOpenAI(base_url="http://localhost:11434/v1", api_key="unused-local"))
+    model="gpt-oss:20b", openai_client=AsyncOpenAI(base_url="http://localhost:11434/v1", api_key="unused-local")
+)
 server = MCPServerStdio(
     params={"command": "uv", "args": ["--directory", REPO, "run", "intel", "mcp", "serve", "--profile", "writer"]},
     cache_tools_list=True,
-    tool_filter=create_static_tool_filter(allowed_tool_names=WRITER_TOOLS))   # second safeguard
+    tool_filter=create_static_tool_filter(allowed_tool_names=WRITER_TOOLS),
+)  # second safeguard
 agent = Agent(name="writer", model=model, mcp_servers=[server], instructions=ROLE_WRITER)
 ```
 

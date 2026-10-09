@@ -31,6 +31,7 @@ from intel.serve.lifecycle import audit_verify, stage
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.monitor import run_monitor, scan_references
 from intel.serve.observability import JsonFormatter, Metrics, StateCollector, instrument
+from intel.serve.read_api import register_read_routes
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
 from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run_reports, scan_status, training_overview
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
@@ -388,6 +389,9 @@ def create_app(settings: Settings | None = None, start_workers: bool = True) -> 
         if state.monitoring is None:  # not yet computed in this process: compute now (cheap)
             state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
         return {**state.monitoring, "guardrail": {"mode": s.intel_auto_rollback, "decisions": state.guardrail or []}}
+
+    # ----- read-only JSON for MCP (ADR 0025): never computes, writes or logs -----
+    register_read_routes(app, state.models, state.dsn, s.intel_auto_rollback, lambda: state.guardrail)
 
     @app.get("/metrics")
     def metrics():

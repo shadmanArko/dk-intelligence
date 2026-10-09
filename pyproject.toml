@@ -112,6 +112,9 @@ module = [
     "intel.serve.guardrail",
     "intel.loadtest",
     "intel.incumbent",
+    "intel.exposure",
+    "intel.explain",
+    "intel.serve.read_api",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true
