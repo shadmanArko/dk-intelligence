@@ -63,10 +63,12 @@ re-check them before acting.
 **Scheduled next** *(Sunday 2026-10-11)*
 - 04:30 VPS: the restore drill. It now also verifies the audit chain in the restored copy.
 - From 01:00: the data platform's weekly refresh on the Mac.
-- 12:00 Berlin: the Sunday training on the Mac (launchd `com.dhakakacchi.intel.weekly`, with catch-up if the Mac
-  was off). It will:
-  - send creator_matcher for its first approval;
-  - ask for a content_scorer approval only if it clearly beats the active version (decision B).
+- No Sunday training this week: this week's real run already happened on 2026-10-09 (`20261009T063936Z`, PASS).
+  - It uploaded weakness_miner and creator_matcher for their first approvals on Telegram, and refreshed community
+    map, occasion planner and funnel.
+  - It **held** the content scorer: 0.688 vs 0.688 against the active version, so decision B worked live.
+  - The next run is due Sunday 2026-10-18 at 12:00 (launchd `com.dhakakacchi.intel.weekly`, catch-up if the Mac was
+    off).
 - Monday 09:00: the weekly Telegram report.
 
 ---
