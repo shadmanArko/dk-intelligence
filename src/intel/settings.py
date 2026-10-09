@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -59,6 +60,52 @@ class Settings(BaseSettings):
         if not self.dk_warehouse_dsn:
             raise ValueError("DK_WAREHOUSE_DSN is not set")
         return urlsplit(self.dk_warehouse_dsn).port or 5432
+
+
+def repo_root() -> Path:
+    """The checkout root: Claude Code's CLAUDE_PROJECT_DIR when it points at this repo, else from the package location.
+    MCP clients start servers from any working directory, so `.env` and `data/` must not be cwd-relative."""
+    env = os.environ.get("CLAUDE_PROJECT_DIR")
+    if env and (Path(env) / "src" / "intel").is_dir():
+        return Path(env).resolve()
+    return Path(__file__).resolve().parents[2]
+
+
+class McpSettings(BaseSettings):
+    """The few settings the MCP servers need (ADR 0025): no warehouse, inbox or Telegram credentials at all."""
+
+    model_config = SettingsConfigDict(env_file=str(repo_root() / ".env"), env_file_encoding="utf-8", extra="ignore")
+
+    intel_api_url: str | None = None
+    intel_data_dir: Path = Path("data")
+    mip_dir: Path = Path("../MarketIntelligence Data Platform")
+    intel_mcp_audit_dir: Path | None = None  # default: <data>/mcp/audit
+    intel_mcp_disabled_tools: str = ""  # kill switch: comma-separated tool names
+    intel_pack_dir: Path | None = None  # default: <data>/knowledge
+
+    def path(self, p: Path) -> Path:
+        p = p.expanduser()
+        return p if p.is_absolute() else repo_root() / p
+
+    @property
+    def data_dir(self) -> Path:
+        return self.path(self.intel_data_dir)
+
+    @property
+    def audit_dir(self) -> Path:
+        return self.path(self.intel_mcp_audit_dir) if self.intel_mcp_audit_dir else self.data_dir / "mcp" / "audit"
+
+    @property
+    def pack_dir(self) -> Path:
+        return self.path(self.intel_pack_dir) if self.intel_pack_dir else self.data_dir / "knowledge"
+
+    @property
+    def limits_dir(self) -> Path:
+        return self.data_dir / "mcp" / "limits"
+
+    @property
+    def disabled_tools(self) -> frozenset[str]:
+        return frozenset(t.strip() for t in self.intel_mcp_disabled_tools.split(",") if t.strip())
 
 
 class MissingSetting(RuntimeError):

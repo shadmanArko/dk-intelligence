@@ -25,6 +25,11 @@ app.add_typer(package_app, name="package")
 champion_app = typer.Typer(no_args_is_help=True, help="The current champion model")
 app.add_typer(champion_app, name="champion")
 
+from intel.mcp_server.cli import mcp_app, pack_app  # noqa: E402 (no fastmcp import at module level)
+
+app.add_typer(mcp_app, name="mcp")
+app.add_typer(pack_app, name="pack")
+
 
 def _pulls_dir():
     return get_settings().intel_data_dir / "pulls"

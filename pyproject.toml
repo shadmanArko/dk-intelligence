@@ -38,11 +38,11 @@ train = [
     "pandera>=0.34,<0.35",
 ]          # Mac only; the VPS image installs without it
 mcp = [
-    "fastmcp==4.0.11",  # exact pin (ADR 0025); becomes a default group in P4.1
+    "fastmcp==4.0.11",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
 ]
 
 [tool.uv]
-default-groups = ["dev", "train"]
+default-groups = ["dev", "train", "mcp"]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -115,6 +115,10 @@ module = [
     "intel.exposure",
     "intel.explain",
     "intel.serve.read_api",
+    "intel.capabilities.*",
+    "intel.adapters.*",
+    "intel.rag.pack",
+    "intel.mcp_server.*",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true
