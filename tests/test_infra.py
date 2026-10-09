@@ -4,6 +4,7 @@ cron line alone, and writes the three doors exactly. Needs Docker (CI has it); s
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -12,13 +13,26 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
+# Docker Hub's ubuntu:24.04 through Google's mirror: Hub rate-limits anonymous pulls from CI runners
+UBUNTU = "mirror.gcr.io/library/ubuntu:24.04"
+
+
+def _docker_usable() -> bool:
+    """Docker installed and its daemon up. On CI a dead daemon must fail the run, so only skip off CI."""
+    if shutil.which("docker") is None:
+        return False
+    if os.environ.get("CI"):
+        return True
+    return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+
+
+pytestmark = pytest.mark.skipif(not _docker_usable(), reason="docker not available (or its daemon is down)")
 
 
 @pytest.fixture(scope="module")
 def applied() -> str:
     r = subprocess.run(
-        ["docker", "run", "--rm", "-v", f"{ROOT}:/repo:ro", "ubuntu:24.04", "bash", "/repo/infra/test-in-container.sh"],
+        ["docker", "run", "--rm", "-v", f"{ROOT}:/repo:ro", UBUNTU, "bash", "/repo/infra/test-in-container.sh"],
         capture_output=True,
         text=True,
         timeout=900,

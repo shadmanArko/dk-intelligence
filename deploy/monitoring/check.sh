@@ -9,6 +9,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 PROM=$(sed -n 's/^ *image: \(prom\/prometheus:.*\)$/\1/p' docker-compose.yml)
 AM=$(sed -n 's/^ *image: \(prom\/alertmanager:.*\)$/\1/p' docker-compose.yml)
+# Same images, same digests, from quay.io: Docker Hub rate-limits anonymous pulls (CI runners hit it in 2026-10)
+PROM="quay.io/prometheus/${PROM#prom/}"
+AM="quay.io/prometheus/${AM#prom/}"
 
 echo "== promtool check config"
 docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro" --entrypoint promtool "$PROM" check config /etc/prometheus/prometheus.yml

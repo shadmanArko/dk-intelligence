@@ -14,8 +14,19 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = "pgvector/pgvector:pg16"
-pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="docker not available")
+IMAGE = "mirror.gcr.io/pgvector/pgvector:pg16"  # intel-db's image, through the mirror (Docker Hub rate limits)
+
+
+def _docker_usable() -> bool:
+    """Docker installed and its daemon up. On CI a dead daemon must fail the run, so only skip off CI."""
+    if shutil.which("docker") is None:
+        return False
+    if os.environ.get("CI"):
+        return True
+    return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+
+
+pytestmark = pytest.mark.skipif(not _docker_usable(), reason="docker not available (or its daemon is down)")
 
 
 def _sh(*cmd: str, **kw) -> subprocess.CompletedProcess[str]:
@@ -71,7 +82,12 @@ def _backup(container: str, dest: Path, stamp: str) -> Path:
 
 
 def _drill(backups: Path, metrics: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "INTEL_BACKUP_DIR": str(backups), "INTEL_METRICS_DIR": str(metrics)}
+    env = {
+        **os.environ,
+        "INTEL_BACKUP_DIR": str(backups),
+        "INTEL_METRICS_DIR": str(metrics),
+        "INTEL_DRILL_IMAGE": IMAGE,
+    }
     return _sh("bash", str(ROOT / "deploy" / "restore_drill.sh"), env=env, timeout=300)
 
 

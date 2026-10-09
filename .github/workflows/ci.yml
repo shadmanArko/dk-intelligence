@@ -16,7 +16,8 @@ permissions:
 env:
   IMAGE: ghcr.io/shadmanarko/dk-intelligence
   PLATFORM: linux/amd64                       # the VPS architecture (uname -m: x86_64)
-  TRIVY: aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  # Trivy from its GitHub registry: the same digest as aquasec/trivy on Docker Hub, without Hub's rate limit
+  TRIVY: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
   GITLEAKS: ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
 
 jobs:
@@ -24,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine          # same major version as the VPS intel-db
+        image: mirror.gcr.io/library/postgres:16-alpine   # Docker Hub's postgres via Google's mirror (Hub rate limits); same major as intel-db
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
@@ -37,6 +38,16 @@ jobs:
         with:
           fetch-depth: 0   # full history for the secret scan
           persist-credentials: false
+      # Docker Hub rate-limits anonymous pulls from shared runners (429 "toomanyrequests"). Pull through Google's
+      # Docker Hub mirror instead; every tool image is pinned by digest, so the mirror can't change the bytes, and the
+      # daemon falls back to Docker Hub on a miss. `reload` (SIGHUP) applies it without restarting service containers.
+      - name: Docker Hub mirror
+        run: |
+          { jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json 2>/dev/null \
+            || echo '{"registry-mirrors": ["https://mirror.gcr.io"]}'; } > /tmp/daemon.json
+          sudo install -m 644 /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl reload docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       # Secret scan of the WHOLE git history (the pre-commit hook only sees staged changes, so it guards commits).
       - run: docker run --rm -v "$PWD:/repo" "$GITLEAKS" git /repo --redact --no-banner
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
@@ -79,7 +90,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      # Docker Hub rate-limits anonymous pulls from shared runners (429 "toomanyrequests"). Pull through Google's
+      # Docker Hub mirror instead; every tool image is pinned by digest, so the mirror can't change the bytes, and the
+      # daemon falls back to Docker Hub on a miss. `reload` (SIGHUP) applies it without restarting service containers.
+      - name: Docker Hub mirror
+        run: |
+          { jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json 2>/dev/null \
+            || echo '{"registry-mirrors": ["https://mirror.gcr.io"]}'; } > /tmp/daemon.json
+          sudo install -m 644 /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl reload docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - if: env.PUSH == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
