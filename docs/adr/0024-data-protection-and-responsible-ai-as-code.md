@@ -6,8 +6,8 @@ Date: 2026-10-09 · Status: Accepted
 Before writing any rule, we measured what the system actually held:
 - **The warehouse pull copied all 41 readable tables to the Mac, but the models read 5.** The other 36 included the
   harness's customers, orders with customer ids, customer reviews, agent actions, and the raw Facebook post payloads.
-  Those payloads embed comments: **13 commenter identities (`from.id`, `from.name`) and 66 comment texts** in every
-  pull, with 12 pulls kept. No model used any of it.
+  Those payloads embed comments: **66 comment texts by 3 private commenters** (13 author fields, `from.id` /
+  `from.name`, 10 of them our own Page) in every pull, with 9 pulls kept. No model used any of it.
 - **Retention was unbounded in four places.** Nothing deleted API draft predictions or operational events. Docker kept
   container logs forever. The cron job logs grew without end. Our own backups were pruned only as a side effect of the
   harness's job.
@@ -64,9 +64,10 @@ IP address). A scan that noisy gets switched off in a week.
      job alerts after 2 days (`IntelWorkerStalled{worker="retention"}`).
    - **Files:** `backup.sh` prunes its own dumps after 30 days. Container logs rotate at 3 × 10 MB. The playbook
      installs logrotate for our job logs (weekly, kept 8 weeks).
-7. **The community map and the occasion planner keep their origin-derived inputs** as reviewed exceptions, by the
-   owner's decision of 2026-10-08 (area or city aggregates of public statistics; used to choose areas and occasions,
-   never to target or exclude people). Both are reviewed again by April 2027.
+7. **The community map and the occasion planner keep their origin-derived inputs** as reviewed exceptions (area or
+   city aggregates of public statistics; used to choose areas and occasions, never to target or exclude people). The
+   owner decided the community map on 2026-10-08 and confirmed the occasion planner on 2026-10-09. Both are reviewed
+   again by April 2027.
 
 ## Consequences
 - The Mac holds 36 fewer tables per pull, including every customer table and every commenter. "Which personal data do

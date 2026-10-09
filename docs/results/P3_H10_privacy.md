@@ -8,7 +8,7 @@ Decision record: [ADR 0024](../adr/0024-data-protection-and-responsible-ai-as-co
 | Finding | Measured | Now |
 |---|---|---|
 | Warehouse tables copied to the Mac per pull | 41 (models read 5) | **5**, declared with a purpose |
-| Facebook commenter identities / comment texts per pull | 13 / 66 (× 12 kept pulls) | **0**: the table is not pulled; old pulls cleaned by `intel privacy minimise` |
+| Facebook comments per pull | 66 texts by 3 private commenters (13 author fields, 10 our own Page; × 9 kept pulls) | **0**: the table is not pulled; old pulls cleaned by `intel privacy minimise` |
 | Customer, order and review tables on the Mac | `customer`, `orders`, `review`, `event`, … | **not pulled** |
 | "IP addresses" in website events | 285 | **0**: they were app version numbers (`1.2.3.4`); random ids and coarse GeoIP only |
 | Phone numbers in our captions | 81, all the same number | the business's own, allow-listed by hash |
@@ -17,12 +17,12 @@ Decision record: [ADR 0024](../adr/0024-data-protection-and-responsible-ai-as-co
 
 ## The scan is precise (otherwise it gets switched off)
 On a full pre-policy pull (41 tables, 12k rows), a naive scan flagged UUIDs, Facebook ids, decimals and version numbers
-in 30 columns. The final detectors flag exactly one thing: the 13 commenter identities.
+in 30 columns. The final detectors flag exactly one thing: the 13 comment-author fields (3 private commenters + our own Page).
 - **Market snapshot (14 tables):** one creator email, in a table declared for public creator profiles.
 - **Speed:** a scan takes 0.7–1.1 s per snapshot.
 
 ## The gate on the models in production
-All 7 production models pass on their latest real outputs (report + served bundle).
+The latest real outputs (report + served bundle) of all 7 models pass, including the 4 active in production.
 
 While building the gate, its first version produced four false positives. Each was fixed at its cause, not by adding
 an exception:
@@ -57,7 +57,7 @@ A stalled job alerts after 2 days (`IntelWorkerStalled{worker="retention"}`, pro
 - **Strict typing:** 30 modules (6 new).
 
 ## Still to do on the machines
-- **Mac:** `uv run intel privacy minimise` cleans the 12 existing pulls. It removes only undeclared tables and
+- **Mac:** `uv run intel privacy minimise` cleans the 9 existing warehouse pulls (it also re-checks the 12 market snapshots; nothing to remove there). It removes only undeclared tables and
   re-checksums, so `intel reproduce` is unaffected (tested on a copy of the real latest pull: 35 tables removed, 5
   model tables byte-for-byte identical, `verify` OK).
 - **VPS:** re-run the playbook (`--check --diff`, then apply) to install the logrotate rule. The retention job and the

@@ -375,8 +375,8 @@ scaling plan is splitting the stateless API from a singleton worker, triggered b
 ## H10 · Privacy and fairness rules that tests enforce
 
 **Situation.** The model cards said "no personal data of customers or commenters is used". Nothing checked it. When I
-measured, the warehouse pull copied all 41 tables to a laptop while the models read 5. Every pull carried 13 Facebook
-commenter identities and 66 comment texts. Retention was unbounded in four places. Two approved models read
+measured, the warehouse pull copied all 41 tables to a laptop while the models read 5. Every pull carried 66 Facebook
+comment texts and their authors (3 private commenters). Retention was unbounded in four places. Two approved models read
 statistics about residents' origin, and the only rule about that was a sentence in a docstring.
 
 **Task.** Make "what personal data do we hold, why, and for how long" answerable on one page, keep that answer true
@@ -392,12 +392,12 @@ automatically, and turn the fairness rules into checks that can fail a build.
 - **Daily retention in the API**, in one transaction with its audit entry, with an alert if it stops.
 
 **Result.** 36 fewer tables per pull, including every customer table and every commenter. 3 deletion rules and 4 file
-retention limits are enforced. All 7 production models pass the gate on their real outputs, and the two that read
+retention limits are enforced. The latest outputs of all 7 models pass the gate (4 are in production), and the two that read
 origin data carry the owner's reviewed exception. 29 new tests.
 
 **Trade-off I would defend.** I made the scan precise before making it strict. The first version flagged UUIDs,
 Facebook ids and app version numbers (`1.2.3.4` "is an IP address") in 30 columns, and a check like that gets
-disabled within a week. The final one flags exactly the 13 commenter identities. And I didn't trust field names for
+disabled within a week. The final one flags exactly the comment authors. And I didn't trust field names for
 fairness: a model can call origin data `audience_score`. The gate checks what a model *reads*, from the data
 contracts, so the exception has to be explicit and dated.
 
