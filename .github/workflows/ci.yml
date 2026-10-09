@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16-alpine          # same major version as the VPS intel-db
+        image: mirror.gcr.io/library/postgres:16-alpine   # Docker Hub's postgres via Google's mirror (Hub rate limits); same major as intel-db
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
