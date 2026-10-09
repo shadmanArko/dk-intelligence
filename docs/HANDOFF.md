@@ -10,8 +10,9 @@ re-check them before acting.
 > 2. **Phase 4 is APPROVED (2026-10-09)** and in progress: build from [PHASE4_MCP_ARCHITECTURE.md](PHASE4_MCP_ARCHITECTURE.md)
 >    (it wins over [PHASE4_PLAN.md](PHASE4_PLAN.md)), milestone by milestone (P4.0 → P4.7, §8). Visual summary:
 >    https://claude.ai/artifact/6FFancUafy3mvATaPRhMCB. D1–D7 approved with the recommended defaults.
->    **P4.0 done 2026-10-09** ([results](results/P4_0_spikes.md), ADR 0025, `fastmcp==4.0.11`). **Next: P4.1** (kit, gateway,
->    `dk_models`, `dk_brand`; makes `mcp` a default group; the two read routes in their own small PR).
+>    **P4.0 done** ([results](results/P4_0_spikes.md), ADR 0025). **P4.1 done 2026-10-09** ([results](results/P4_1_models_and_brand.md),
+>    ADR 0026): `.mcp.json` gives Claude Code 10 read-only tools (`dk_models`, `dk_brand`). **Next: P4.2** (RAG engine +
+>    reviews, `dk_evidence`). The brand pack is rebuilt with `uv run intel pack build`.
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).

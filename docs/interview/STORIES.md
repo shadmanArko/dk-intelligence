@@ -398,3 +398,34 @@ guessed.
 **Trade-off I would defend.** A spike day delays the first feature by a morning. It buys a design where the risky
 parts are facts, and a regression suite that catches a library upgrade changing meaning, which is the usual way
 MCP servers break.
+
+---
+
+## P4.1 · MCP as a thin edge: production writes unreachable by construction
+
+**Situation.** AI clients (Claude Code now, agents later) should use the production models. intel-api also has
+routes that write the ledger (`/v1/predict`), approve or roll back models, and HTML pages that render whole model
+bundles, including origin statistics that may only be used at area level (rule 10). FastMCP can turn a FastAPI app
+into an MCP server in one line.
+
+**Task.** Expose what helps marketing, and make everything else impossible to reach, not merely discouraged.
+
+**Action.**
+- **Didn't auto-convert.** An adapter with a 7-route (method, path) allowlist refuses anything else before any I/O.
+  A test checks the allowlist against the app's real routes in both directions. Another test fails if
+  `from_fastapi` ever appears.
+- **Moved the privacy filter to the source.** A per-section field *allowlist* runs inside intel-api's new
+  read-only route, and the MCP layer checks again. The tests use bundles that deliberately contain every
+  restricted field.
+- **Layered for change.** A plain-Python capability core sits behind ports. FastMCP is a thin edge, so a spec
+  change or a move to the VPS touches only the edge and the adapters.
+- **Made every call accountable.** A hash-chained audit records each call, including denials, and stores the
+  arguments only as a hash. It was proven under two concurrent processes.
+
+**Result.** Ten tools reach Claude Code through one committed `.mcp.json`. Scoring 10 drafts against the
+production model takes 182 ms over the tailnet. Local brand checks take about 5 ms. Role profiles cut the tool list
+from 4.1k tokens (owner) to 650 (writer). 346 tests, 83.83% coverage.
+
+**Trade-off I would defend.** Stdio profiles are least privilege, not a security boundary: any local process can
+start `--profile owner`. I said so in the ADR instead of pretending otherwise. Real enforcement comes with signed
+tokens over HTTP, and the design already routes Phase 5 agents there.
