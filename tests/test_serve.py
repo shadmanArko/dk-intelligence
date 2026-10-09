@@ -296,3 +296,30 @@ def test_approval_text_has_scores():
     }
     t = approval_text(meta, 7, "https://x.ts.net")
     assert "Baseline" in t and "0.620" in t and "/approvals/7" in t and "❌ better" in t
+
+
+def test_read_only_routes_write_nothing(client):
+    """GET /v1/monitoring/latest and /v1/insights/{name} (ADR 0025) never compute, write or log."""
+    st = client.app.state.intel
+
+    def counts():
+        with connect(st.dsn) as c:
+            return {
+                t: c.execute(f"select count(*) as n from {t}").fetchone()["n"]
+                for t in ("kv", "event_log", "prediction", "audit_log")
+            }
+
+    before = counts()
+    assert client.get("/v1/monitoring/latest").json()["status"] == "not_computed_yet"
+    assert client.get("/v1/insights/funnel", params={"section": "summary"}).status_code == 404
+    st.models.loaded["funnel"] = {
+        "package_id": "p1",
+        "version": "fn-x",
+        "bundle": {"kind": "insights", "insights": {"totals": {"ordered": 2}, "sessions": 9}},
+    }
+    body = client.get("/v1/insights/funnel", params={"section": "summary"}).json()
+    assert body["data"] == {"totals": {"ordered": "<5"}, "sessions": 9}
+    assert counts() == before
+    with connect(st.dsn) as c:
+        c.execute("insert into kv (key, value) values ('monitoring', %s)", ('{"at": "2026-10-09T10:00:00+00:00"}',))
+    assert client.get("/v1/monitoring/latest").json()["at"] == "2026-10-09T10:00:00+00:00"

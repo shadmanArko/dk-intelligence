@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "dk_intel": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--quiet",
+        "--directory",
+        "${CLAUDE_PROJECT_DIR:-.}",
+        "intel",
+        "mcp",
+        "serve",
+        "--profile",
+        "owner"
+      ]
+    }
+  }
+}
