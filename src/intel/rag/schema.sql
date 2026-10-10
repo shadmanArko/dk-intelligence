@@ -35,3 +35,10 @@ create table if not exists rag.chunk (
 );
 create index if not exists chunk_tsv on rag.chunk using gin (tsv);
 create index if not exists chunk_filters on rag.chunk (pack_id, collection, district, posted_at);
+
+-- P4.3: posts (own and creators). Added columns, never altered ones.
+alter table rag.chunk add column if not exists content_type text;
+alter table rag.chunk add column if not exists account text;
+alter table rag.chunk add column if not exists url text;
+alter table rag.chunk add column if not exists metrics jsonb;
+create index if not exists chunk_post_filters on rag.chunk (pack_id, collection, platform, content_type);

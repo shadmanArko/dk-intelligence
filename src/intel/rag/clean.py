@@ -88,8 +88,11 @@ def residual_pii(text: str) -> list[str]:
         found.append("email")
     if re.search(r"https?://|www\.", text, re.I):
         found.append("link")
-    if re.search(r"\b[A-Z]{2}\d{2}[A-Z0-9 ]{12,}\b", text):
+    # an IBAN has 2 letters, 2 check digits and mostly digits after (a code like "SF1OG SS26" does not)
+    if any(_digits(m) >= 12 for m in re.findall(r"\b[A-Z]{2}\d{2}[A-Z0-9 ]{12,}\b", text)):
         found.append("iban")
-    if any(_digits(m) >= 9 for m in re.findall(r"[\d][\d\s()./+-]{7,}\d", text)):
+    # dates ("13.02.2024") are removed first, so "13.02.2024 / 23 Uhr" isn't read as a phone number
+    undated = re.sub(r"\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b", " ", text)
+    if any(_digits(m) >= 9 for m in re.findall(r"[\d][\d\s()./+-]{7,}\d", undated)):
         found.append("phone")
     return found

@@ -60,6 +60,23 @@ def _head(body: dict[str, Any], name: str) -> dict[str, Any]:
 # ---------- occasion_planner ----------
 
 
+GENERIC_LABELS = ("national day",)
+
+
+def _occasion_label(p: dict[str, Any]) -> str | None:
+    """A generic label ("national day") gets the holiday's own public name, so several in one window stay apart.
+    The name comes from the public calendar; the country (origin data, rule 10) is still never added."""
+    label, names = p.get("label"), p.get("names") or []
+    if label in GENERIC_LABELS and names:
+        return f"{label}: {names[0]}"
+    return label
+
+
+def _occasion_id(p: dict[str, Any]) -> str | None:
+    pid = p.get("public_id")
+    return f"{pid}_{p['first_day']}" if p.get("label") in GENERIC_LABELS and pid else pid
+
+
 def upcoming_occasions(
     api: IntelApi,
     days: int = 14,
@@ -84,8 +101,8 @@ def upcoming_occasions(
 
     occasions = [
         {
-            "id": p.get("public_id"),
-            "label": p.get("label"),
+            "id": _occasion_id(p),
+            "label": _occasion_label(p),
             "names": p.get("names") or [],
             "greeting": {
                 "text": p.get("greeting"),

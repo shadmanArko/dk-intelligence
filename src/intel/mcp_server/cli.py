@@ -93,8 +93,9 @@ def pack_build(
     embedder: Annotated[str | None, typer.Option(help="embedding model key (default INTEL_RAG_EMBEDDER)")] = None,
     activate: Annotated[bool, typer.Option(help="make it the active pack")] = True,
 ) -> None:
-    """Build a new, immutable knowledge pack from the data platform's brand files and the latest market snapshot;
-    with --index also the search index (chunks + vectors) for the brand, rules and reviews collections."""
+    """Build a new, immutable knowledge pack from the data platform's brand files, the latest market snapshot and
+    the latest pull; with --index also the search index (chunks + vectors) for the brand, rules, reviews, own_posts
+    and creator_posts collections."""
     from intel.rag import pack as kp
     from intel.settings import McpSettings
 
@@ -107,7 +108,9 @@ def pack_build(
         key = embedder or s.intel_rag_embedder
         if not key:
             raise typer.BadParameter("no embedder: pass --embedder or set INTEL_RAG_EMBEDDER")
-        indexer = make_indexer(load(key), s.pack_dir / "cache")
+        pulls = s.data_dir / "pulls"
+        pull = pulls / (pulls / "LATEST").read_text().strip() if (pulls / "LATEST").exists() else None
+        indexer = make_indexer(load(key), s.pack_dir / "cache", pull)
     pack_id = kp.build_brand_pack(s.path(s.mip_dir), s.data_dir / "market", s.pack_dir, indexer=indexer)
     if activate:
         kp.activate(s.pack_dir, pack_id)
@@ -117,9 +120,11 @@ def pack_build(
 @pack_app.command("load")
 def pack_load(
     pack_id: Annotated[str | None, typer.Argument(help="default: the active pack")] = None,
-    activate: Annotated[bool, typer.Option(help="make it the database's active pack")] = True,
+    activate: Annotated[bool, typer.Option(help="make it the database's active pack if the gate passes")] = True,
+    skip_gate: Annotated[bool, typer.Option("--skip-gate", help="activate without the gate (recorded)")] = False,
 ) -> None:
-    """Load a pack's index into the knowledge database (INTEL_RAG_ADMIN_DSN, the builder role)."""
+    """Load a pack's index into the knowledge database (INTEL_RAG_ADMIN_DSN, the builder role) as staged, run the
+    activation gate against the active pack, and activate it only if the gate passes."""
     import numpy as np
     import pandas as pd
     import psycopg
@@ -144,9 +149,53 @@ def pack_load(
     with psycopg.connect(s.intel_rag_admin_dsn, autocommit=True) as conn:
         store.ensure_schema(conn)
         n = store.load_pack(conn, pid, manifest, [{str(k): v for k, v in r.items()} for r in records], vectors)
-        if activate:
-            store.activate(conn, pid)
-    typer.echo(f"{pid}: {n} chunks loaded{' and active' if activate else ''}")
+        typer.echo(f"{pid}: {n} chunks loaded (staged)")
+        if not activate:
+            return
+        result = None if skip_gate else _run_gate(conn, pid, manifest, s)
+        if result is not None:
+            out = s.pack_dir / "gates" / f"{pid}.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(result.as_dict(), indent=2))
+            typer.echo(json.dumps(result.as_dict(), indent=2))
+            if not result.passed:
+                typer.secho(f"gate FAILED: {pid} stays staged; the active pack is unchanged", fg="red")
+                raise typer.Exit(1)
+        store.activate(conn, pid)
+    kp.activate(s.pack_dir, pid)  # the brand and trends side reads the same pack as search
+    typer.secho(f"{pid} is active{' (gate skipped)' if skip_gate else ' (gate passed)'}", fg="green")
+
+
+def _run_gate(conn: Any, pid: str, manifest: dict[str, Any], s: Any) -> Any:
+    """Search the golden dev questions in both packs with the serving stack (each pack with its own embedder)."""
+    from intel.rag import gate, store
+    from intel.rag.embed import load
+    from intel.rag.rerank import load_reranker
+
+    active = store.active_pack(conn)
+    if active == pid:
+        active = None
+    manifests = {pid: manifest}
+    if active is not None:
+        row = conn.execute("select manifest from rag.pack where pack_id = %s", (active,)).fetchone()
+        manifests[active] = row[0]
+    embedders: dict[str, Any] = {}
+    rr = load_reranker(s.intel_rag_reranker) if s.intel_rag_reranker else None
+    reranker = (lambda q, docs: rr([(q, d) for d in docs])) if rr is not None else None
+
+    def search(pack_id: str, q: dict[str, Any]) -> list[str]:
+        name = manifests[pack_id]["embedder"]["name"]
+        emb = embedders.setdefault(name, load(name))
+        collection = ("own_posts", "creator_posts") if q["collection"] == "posts" else q["collection"]
+        hits = store.search(
+            conn, pack_id, collection, q["question"], emb.query(q["question"]), store.Filters(**q.get("filters", {})),
+            s.intel_rag_mode, reranker, limit=gate.K, rerank_pool=s.intel_rag_rerank_pool,
+        )  # fmt: skip
+        return [h.cite for h in hits]
+
+    return gate.evaluate(
+        search, pid, active, manifest, gate.read_jsonl(gate.GOLDEN), gate.relevant(gate.read_jsonl(gate.QRELS))
+    )
 
 
 @pack_app.command("init")

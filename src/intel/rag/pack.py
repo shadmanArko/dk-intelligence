@@ -25,6 +25,9 @@ BRAND_FILES: dict[str, str] = {  # name in the pack -> path in the data platform
     "facts.yaml": "docs/brand/facts.yaml",
     "playbook.yaml": "config/content/playbook.yaml",
 }
+TRENDS = "tables/trends.parquet"
+# origin-group labels (some name a religion) never enter a pack: rule 10, decision D2
+TREND_TAG_TYPES_OUT = ("community",)
 ACTIVE = "ACTIVE"
 MANIFEST = "manifest.json"
 
@@ -45,6 +48,22 @@ def latest_market_snapshot(market_dir: Path) -> Path:
     if not (snap / "content_rules.yaml").exists():
         raise PackError(f"{snap} has no content_rules.yaml")
     return snap
+
+
+def rice_dish_labels(mip_dir: Path) -> tuple[dict[str, str], str | None]:
+    """Wikidata id -> English name (else any name) from the data platform's newest rice-dish file, and its sha256.
+    Trend tags of type rice_dish are Wikidata ids ("Q46383"); clients need the name."""
+    files = sorted((mip_dir / "data" / "bulk" / "wikidata").glob("rice_dishes_*.json"))
+    if not files:
+        return {}, None
+    entities = json.loads(files[-1].read_text())["entities"]
+    labels = {}
+    for qid, e in entities.items():
+        names = e.get("labels") or {}
+        best = names.get("en") or names.get("de") or next(iter(names.values()), None)
+        if best:
+            labels[qid] = str(best["value"])
+    return labels, sha256(files[-1])
 
 
 Indexer = Callable[[Path, Path, dict[str, Path]], dict[str, Any]]
@@ -84,21 +103,40 @@ def build_brand_pack(
             raise PackError("a source changed while it was being copied; build again")
         extras: dict[str, Any] = {}
         files = dict(hashes)
+        if (snap / "content_feature_performance.parquet").exists():
+            import pandas as pd
+
+            trends = pd.read_parquet(snap / "content_feature_performance.parquet")
+            trends = trends[~trends["tag_type"].isin(TREND_TAG_TYPES_OUT)].reset_index(drop=True)
+            labels, labels_sha = rice_dish_labels(mip_dir)
+            trends["tag_label"] = [
+                labels.get(t, t) if kind == "rice_dish" else t.replace("_", " ")
+                for t, kind in zip(trends["tag_id"], trends["tag_type"], strict=True)
+            ]
+            (tmp / "tables").mkdir()
+            trends.to_parquet(tmp / TRENDS, index=False)
+            files[TRENDS] = sha256(tmp / TRENDS)
+            extras["trends"] = {
+                "rows": len(trends),
+                "excluded_tag_types": list(TREND_TAG_TYPES_OUT),
+                "rice_dish_labels_sha256": labels_sha,
+            }
         if indexer is not None:
             (tmp / "index").mkdir()
-            extras = indexer(tmp / "index", snap, {n: tmp / "brand" / n for n in sources})
+            extras.update(indexer(tmp / "index", snap, {n: tmp / "brand" / n for n in sources}))
             files.update({f"index/{f.name}": sha256(f) for f in sorted((tmp / "index").iterdir())})
         manifest = {
+            **extras,
             "pack_id": pack_id,
             "kind": "full" if indexer is not None else "brand_only",
             "built_at": at.isoformat(timespec="seconds"),
             "market_snapshot": snap.name,
             "files": files,
-            **extras,
         }
         (tmp / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True))
-        for f in [*(tmp / "brand").iterdir(), *((tmp / "index").iterdir() if (tmp / "index").exists() else [])]:
-            f.chmod(0o444)
+        for sub in ("brand", "index", "tables"):
+            for f in (tmp / sub).iterdir() if (tmp / sub).exists() else []:
+                f.chmod(0o444)
         tmp.rename(final)
     except BaseException:
         shutil.rmtree(tmp, ignore_errors=True)

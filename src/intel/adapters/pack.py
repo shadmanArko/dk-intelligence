@@ -1,4 +1,5 @@
-"""PackBrandSource: the brand part of the active knowledge pack, checksum-verified on every change of pack."""
+"""PackBrandSource and PackTrendSource: parts of the active knowledge pack, checksum-verified on every change of
+pack."""
 
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import yaml
 
 from intel.capabilities.ports import BrandPack
 from intel.capabilities.types import ToolProblem
-from intel.rag.pack import PackError, active_id, verify
+from intel.rag.pack import TRENDS, PackError, active_id, verify
 
 
 class PackBrandSource:
@@ -47,6 +48,36 @@ class PackBrandSource:
                 raise ToolProblem("BRAND_UNAVAILABLE", f"the brand pack can't be read: {e}") from e
             self._cached = pack
             return pack
+
+
+class PackTrendSource:
+    """The pack's trends table (market posts' engagement lift by tag). Fails closed like the brand source."""
+
+    def __init__(self, pack_root: Path) -> None:
+        self.root = pack_root
+        self._lock = threading.Lock()
+        self._cached: tuple[str, list[dict[str, Any]]] | None = None
+
+    def load(self) -> tuple[str, list[dict[str, Any]]]:
+        import pandas as pd
+
+        pack_id = active_id(self.root)
+        if pack_id is None:
+            raise ToolProblem("UPSTREAM_UNAVAILABLE", "no active knowledge pack", "the owner runs `intel pack build`")
+        with self._lock:
+            if self._cached is not None and self._cached[0] == pack_id:
+                return self._cached
+            try:
+                manifest = verify(self.root / pack_id)
+                if TRENDS not in manifest["files"]:
+                    raise PackError(f"{pack_id} has no trends table (built before P4.3)")
+                rows = pd.read_parquet(self.root / pack_id / TRENDS).to_dict("records")
+            except (PackError, OSError) as e:
+                raise ToolProblem(
+                    "UPSTREAM_UNAVAILABLE", f"trends can't be read: {e}", "uv run intel pack build"
+                ) from e
+            self._cached = (pack_id, [{str(k): v for k, v in r.items()} for r in rows])
+            return self._cached
 
 
 def _yaml(path: Path) -> dict[str, Any]:

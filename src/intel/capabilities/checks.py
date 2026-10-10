@@ -60,7 +60,10 @@ RULES: dict[str, Rule] = {
 GERMAN = re.compile(r"[äöüß]|\b(und|der|die|das|mit|für|jetzt|bestell\w*|samstag|frisch|lecker|heute|wir|ihr)\b", re.I)
 PRICE = re.compile(r"(?:€\s?(\d{1,3}(?:[.,]\d{1,2})?))|(?:(\d{1,3}(?:[.,]\d{1,2})?)\s?(?:€|eur\b|euro\b))", re.I)
 SUPERLATIVE = re.compile(
-    r"\b(nr\.?\s?1|no\.?\s?1|number one|best(?:e[nrs]?)? in berlin|der beste|die beste|das beste)\b", re.I
+    # "best in Berlin", also with words between ("best biryani in Berlin", "beste Kacchi Berlins")
+    r"\b(nr\.?\s?1|no\.?\s?1|number one|best(?:e[nrs]?)?(?:\s+[^\s.!?]+){0,5}?\s+berlin\w*|der beste|"
+    r"die beste|das beste|world'?s best|weltbeste\w*)\b",
+    re.I,
 )
 ONLY = re.compile(r"(berlin'?s only|only\b.{0,40}\bin berlin|einzig\w*)", re.I)
 HEALTH = re.compile(r"\b(gesund\w*|healthy|protein\w*|low[- ]fat|kalorienarm|superfood|detox|fettarm)\b", re.I)

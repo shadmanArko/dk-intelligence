@@ -8,6 +8,7 @@ Both halves apply the same parameterised filters; the query text is only ever a 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,8 +25,11 @@ POOL = 50
 TS_CONFIG = {"de": "german", "en": "english"}
 COLUMNS = (
     "cite", "collection", "source_id", "text", "title", "lang", "posted_at", "platform", "district", "area",
-    "listing_id", "listing_name", "rating_norm", "aspects", "suspicious", "dup_count",
+    "listing_id", "listing_name", "rating_norm", "aspects", "suspicious", "dup_count", "content_type", "account",
+    "url", "metrics",
 )  # fmt: skip
+UNCAPPED = ("own_posts",)
+POSTS = ("own_posts", "creator_posts")  # one account (ours): the per-source cap would hide most of our own posts
 
 
 @dataclass
@@ -39,6 +43,8 @@ class Filters:
     lang: str | None = None
     since: str | None = None
     until: str | None = None
+    platform: str | None = None
+    content_type: str | None = None
 
     def where(self) -> tuple[sql.Composable, list[Any]]:
         parts: list[sql.Composable] = []
@@ -52,6 +58,8 @@ class Filters:
             ("lang", "=", self.lang),
             ("posted_at", ">=", self.since),
             ("posted_at", "<", self.until),
+            ("platform", "=", self.platform),
+            ("content_type", "=", self.content_type),
         ):
             if val is not None:
                 parts.append(sql.SQL("{} {} %s").format(sql.Identifier(col), sql.SQL(op)))
@@ -106,7 +114,7 @@ def load_pack(
         with conn.cursor() as cur:
             cur.executemany(
                 f"""insert into rag.chunk (pack_id, {", ".join(COLUMNS)}, tsv, embedding)
-                    values (%s, {", ".join(["%s"] * len(COLUMNS))},
+                    values (%s, {", ".join("%s::jsonb" if c == "metrics" else "%s" for c in COLUMNS)},
                             setweight(to_tsvector(coalesce(%s, 'simple')::regconfig, coalesce(%s, '')), 'A')
                             || to_tsvector(coalesce(%s, 'simple')::regconfig, %s)
                             || to_tsvector('simple', %s),
@@ -139,21 +147,30 @@ def active_pack(conn: psycopg.Connection[Any]) -> str | None:
     return None if row is None else str(row[0] if not isinstance(row, dict) else row["pack_id"])
 
 
+def _many(collection: str | Sequence[str]) -> list[str]:
+    return [collection] if isinstance(collection, str) else list(collection)
+
+
 def dense(
-    conn: psycopg.Connection[Any], pack_id: str, collection: str, qvec: np.ndarray[Any, Any], f: Filters, k: int = POOL
+    conn: psycopg.Connection[Any],
+    pack_id: str,
+    collection: str | Sequence[str],
+    qvec: np.ndarray[Any, Any],
+    f: Filters,
+    k: int = POOL,
 ) -> list[dict[str, Any]]:
     where, args = f.where()
     q = sql.SQL(
         "select {cols}, 1 - (embedding <=> %s::vector) as score from rag.chunk "
-        "where pack_id = %s and collection = %s and {where} order by embedding <=> %s::vector limit %s"
+        "where pack_id = %s and collection = any(%s) and {where} order by embedding <=> %s::vector limit %s"
     ).format(cols=sql.SQL(", ").join(map(sql.Identifier, COLUMNS)), where=where)
     v = _vec(qvec)
     with conn.cursor(row_factory=dict_row) as cur:
-        return cur.execute(q, [v, pack_id, collection, *args, v, k]).fetchall()
+        return cur.execute(q, [v, pack_id, _many(collection), *args, v, k]).fetchall()
 
 
 def lexical(
-    conn: psycopg.Connection[Any], pack_id: str, collection: str, query: str, f: Filters, k: int = POOL
+    conn: psycopg.Connection[Any], pack_id: str, collection: str | Sequence[str], query: str, f: Filters, k: int = POOL
 ) -> list[dict[str, Any]]:
     where, args = f.where()
     # OR the query's lexemes in three configs: a natural-language question should not need every word to match
@@ -164,10 +181,12 @@ def lexical(
     )
     q = sql.SQL(
         "select {cols}, ts_rank_cd(tsv, " + tsq + ") as score from rag.chunk "
-        "where pack_id = %s and collection = %s and {where} and tsv @@ " + tsq + " order by score desc limit %s"
+        "where pack_id = %s and collection = any(%s) and {where} and tsv @@ " + tsq + " order by score desc limit %s"
     ).format(cols=sql.SQL(", ").join(map(sql.Identifier, COLUMNS)), where=where)
     with conn.cursor(row_factory=dict_row) as cur:
-        return cur.execute(q, [query, query, query, pack_id, collection, *args, query, query, query, k]).fetchall()
+        return cur.execute(
+            q, [query, query, query, pack_id, _many(collection), *args, query, query, query, k]
+        ).fetchall()
 
 
 def fuse(dense_rows: list[dict[str, Any]], lexical_rows: list[dict[str, Any]], k: int = RRF_K) -> list[Hit]:
@@ -184,17 +203,21 @@ def fuse(dense_rows: list[dict[str, Any]], lexical_rows: list[dict[str, Any]], k
 
 
 def diversify(hits: list[Hit], per_source: int = 2) -> list[Hit]:
-    """Collapse identical texts (keeping a count) and keep at most `per_source` hits per place or account."""
+    """Collapse identical texts (keeping a count) and keep at most `per_source` hits per place or account (our own
+    posts are one account, so they are not capped)."""
     seen_text: dict[str, Hit] = {}
     per: dict[str, int] = {}
     out: list[Hit] = []
     for h in hits:
         norm = " ".join(str(h.row["text"]).casefold().split())
+        if h.row.get("collection") in POSTS:
+            # the same caption cross-posted to several platforms differs only in a handle or a signature line
+            norm = "post:" + re.sub(r"[@#]\S+|dhaka ?kacchi|[^a-zäöüß]", "", norm)[:120]
         if norm in seen_text:
             seen_text[norm].duplicates += int(h.row.get("dup_count") or 1)
             continue
-        src = str(h.row.get("listing_id") or h.row.get("source_id"))
-        if per.get(src, 0) >= per_source:
+        src = str(h.row.get("listing_id") or h.row.get("account") or h.row.get("source_id"))
+        if h.row.get("collection") not in UNCAPPED and per.get(src, 0) >= per_source:
             continue
         per[src] = per.get(src, 0) + 1
         h.duplicates = int(h.row.get("dup_count") or 1)
@@ -209,7 +232,7 @@ Reranker = Callable[[str, list[str]], list[float]]
 def search(
     conn: psycopg.Connection[Any],
     pack_id: str,
-    collection: str,
+    collection: str | Sequence[str],
     query: str,
     qvec: np.ndarray[Any, Any] | None,
     f: Filters | None = None,

@@ -170,6 +170,8 @@ CASES = [
     ("PRICE_UNCONFIRMED", {"caption": GOOD + " Taster nur 9,99 €"}, {"caption": GOOD + " Box 15,00 €"}),
     ("PRICE_MISMATCH", {"caption": GOOD + " Box 12,50 €"}, {"caption": GOOD + " Lieferung 5 €"}),
     ("SUPERLATIVE", {"caption": GOOD + " Die beste in Berlin!"}, {}),
+    ("SUPERLATIVE", {"caption": GOOD + " Best biryani in Berlin!"}, {"caption": GOOD + " Best enjoyed hot. Berlin"}),
+    ("SUPERLATIVE", {"caption": GOOD + " Die beste Kacchi Berlins"}, {}),
     ("ONLY_CLAIM", {"caption": GOOD + " Berlins einziges Old-Dhaka-Kacchi"}, {}),
     ("HALAL_UNCERTIFIED", {"caption": GOOD + " 100% halal"}, {}),
     ("HEALTH_CLAIM", {"caption": GOOD + " und gesund"}, {}),

@@ -78,6 +78,9 @@ def test_clean_masks_contact_data_but_keeps_dates_and_flags_injection():
 def test_residual_scan_is_independent():
     assert residual_pii("call 0176 1234 5678 now") == ["phone"]
     assert residual_pii("write to a@b.de") == ["email"]
+    assert "iban" in residual_pii("DE89 3704 0044 0532 0130 00")
+    assert residual_pii("Techno @ Hase 01.02.2024 / 23:00 Uhr; SF1OG SS26 RUNWAY SHOW 02.06.25 8PM") == []
+    assert residual_pii("am 01.02.2024 unter 030 1234 5678") == ["phone"]
 
 
 # ---------- chunking ----------
@@ -304,8 +307,8 @@ def test_verify_citations_catches_invented_cites_fake_quotes_and_weak_support():
 def test_golden_set_file_is_well_formed():
     lines = (Path(__file__).resolve().parents[1] / "evals" / "rag" / "golden.jsonl").read_text().splitlines()
     qs = [json.loads(line) for line in lines if line.strip()]
-    assert len(qs) == 30 and len({q["id"] for q in qs}) == 30
-    assert {q["split"] for q in qs} == {"dev", "test"} and sum(q["kind"] == "no_answer" for q in qs) == 9
+    assert len(qs) == 42 and len({q["id"] for q in qs}) == 42
+    assert {q["split"] for q in qs} == {"dev", "test"} and sum(q["kind"] == "no_answer" for q in qs) == 11
     assert all("text" not in q for q in qs)  # questions only: real review text never goes into git
 
 
