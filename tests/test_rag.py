@@ -303,5 +303,5 @@ def test_golden_set_file_is_well_formed():
     lines = (Path(__file__).resolve().parents[1] / "evals" / "rag" / "golden.jsonl").read_text().splitlines()
     qs = [json.loads(line) for line in lines if line.strip()]
     assert len(qs) == 30 and len({q["id"] for q in qs}) == 30
-    assert {q["split"] for q in qs} == {"dev", "test"} and sum(q["kind"] == "no_answer" for q in qs) == 10
+    assert {q["split"] for q in qs} == {"dev", "test"} and sum(q["kind"] == "no_answer" for q in qs) == 9
     assert all("text" not in q for q in qs)  # questions only: real review text never goes into git

@@ -83,6 +83,7 @@ class McpSettings(BaseSettings):
     intel_mcp_disabled_tools: str = ""  # kill switch: comma-separated tool names
     intel_pack_dir: Path | None = None  # default: <data>/knowledge
     intel_rag_dsn: str | None = None  # read-only role on the knowledge database (rag_reader)
+    intel_rag_admin_dsn: str | None = None  # the builder role: loads packs (`intel pack load`), never the server
     intel_rag_embedder: str | None = None  # a key of intel.rag.embed.MODELS; chosen by the P4.2 benchmark
     intel_rag_reranker: str | None = None  # a key of intel.rag.rerank.RERANKERS
     intel_rag_min_evidence: float | None = None  # calibrated on the golden set (ADR 0027)

@@ -188,3 +188,46 @@ def score(results: dict[str, dict[str, list[str]]], split: str, seed: int = 7) -
 
 
 __all__ = ["MODELS", "chunks", "embed", "golden", "load_packs", "pool", "run", "score"]
+
+
+def run_reranked(
+    dsn: str, key: str, reranker: store.Reranker, mode: str = "hybrid", limit: int = 20
+) -> tuple[dict[str, list[str]], dict[str, float]]:
+    """One model with a reranker: ranked cites per question, and each question's top rerank score."""
+    emb = load(key)
+    ranked: dict[str, list[str]] = {}
+    top: dict[str, float] = {}
+    with psycopg.connect(dsn) as conn:
+        for q in golden():
+            hits = store.search(
+                conn,
+                f"bench-{key}",
+                q["collection"],
+                q["question"],
+                emb.query(q["question"]),
+                _filters(q),
+                mode,
+                reranker,
+                limit,
+            )
+            ranked[q["id"]] = [h.cite for h in hits]
+            top[q["id"]] = float(hits[0].rerank or 0.0) if hits else 0.0
+    return ranked, top
+
+
+def calibrate(top: dict[str, float], split: str = "dev") -> dict[str, Any]:
+    """The "not found" threshold: maximise correct decisions on the split (answerable >= t, no_answer < t)."""
+    qs = golden(split)
+    best: tuple[int, float] = (-1, 0.0)
+    for t in sorted({0.0, *top.values(), 1.0}):
+        correct = sum((top[q["id"]] >= t) == (q["kind"] == "answerable") for q in qs)
+        if correct > best[0] or (correct == best[0] and t < best[1]):
+            best = (correct, t)
+    t = best[1]
+    return {
+        "threshold": round(t, 4),
+        "correct": best[0],
+        "of": len(qs),
+        "answerable_below": [q["id"] for q in qs if q["kind"] == "answerable" and top[q["id"]] < t],
+        "no_answer_above": [q["id"] for q in qs if q["kind"] == "no_answer" and top[q["id"]] >= t],
+    }

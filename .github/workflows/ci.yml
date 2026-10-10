@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: mirror.gcr.io/library/postgres:16-alpine   # Docker Hub's postgres via Google's mirror (Hub rate limits); same major as intel-db
+        image: mirror.gcr.io/pgvector/pgvector:pg16   # intel-db's image (pgvector, for the RAG tests), via the mirror
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
