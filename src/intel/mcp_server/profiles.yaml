@@ -23,6 +23,7 @@ writer:
   prompts: [role_writer, caption_ideas]
 producer:
   tools: [brand_rules, upcoming_occasions, search_posts, search_brand]
+  forced: {search_posts: {source: own}}   # hidden and fixed: shot ideas come from our own posts only
   resources: ["dk://about", "dk://catalog", "dk://evidence/pack", "dk://brand/*", "dk://rules/*"]
   prompts: [role_producer, image_ideas, video_ideas]
 checker:

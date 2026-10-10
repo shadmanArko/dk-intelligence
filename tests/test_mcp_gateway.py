@@ -41,7 +41,9 @@ BUILT = [
     "model_status",
     "score_drafts",
     "search_brand",
+    "search_posts",
     "search_reviews",
+    "trend_signals",
     "upcoming_occasions",
     "verify_citations",
 ]
@@ -97,9 +99,9 @@ def test_profiles_cover_every_tool_and_only_known_tools():
 @pytest.mark.parametrize(
     ("profile", "visible"),
     [
-        ("writer", ["brand_rules", "get_facts", "search_brand", "verify_citations"]),
+        ("writer", ["brand_rules", "get_facts", "search_brand", "search_posts", "verify_citations"]),
         ("checker", ["check_drafts", "get_facts", "get_sources", "search_brand", "verify_citations"]),
-        ("producer", ["brand_rules", "search_brand", "upcoming_occasions"]),
+        ("producer", ["brand_rules", "search_brand", "search_posts", "upcoming_occasions"]),
         (
             "analyst",
             [
@@ -110,7 +112,9 @@ def test_profiles_cover_every_tool_and_only_known_tools():
                 "get_facts",
                 "get_sources",
                 "search_brand",
+                "search_posts",
                 "search_reviews",
+                "trend_signals",
                 "verify_citations",
             ],
         ),

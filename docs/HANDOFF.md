@@ -12,9 +12,13 @@ re-check them before acting.
 >    https://claude.ai/artifact/6FFancUafy3mvATaPRhMCB. D1–D7 approved with the recommended defaults.
 >    **P4.0 done** ([results](results/P4_0_spikes.md), ADR 0025). **P4.1 done 2026-10-09** ([results](results/P4_1_models_and_brand.md),
 >    ADR 0026): `.mcp.json` gives Claude Code 10 read-only tools (`dk_models`, `dk_brand`). **P4.2 done 2026-10-10**
->    ([results](results/P4_2_rag_reviews.md), ADR 0027 proposed): `dk_evidence` (cited search over reviews, brand, rules;
->    Harrier-0.6B + bge reranker, ONNX int8 on CPU). The owner runs `uv run intel pack init` once, then
->    `uv run intel pack build --index` and `uv run intel pack load`. **Next: P4.3** (posts, trends, owner spot check).
+>    ([results](results/P4_2_rag_reviews.md)): `dk_evidence` (cited search over reviews, brand, rules;
+>    Harrier-0.6B + bge reranker, ONNX int8 on CPU). **P4.3 done 2026-10-10** ([results](results/P4_3_posts_trends_gate.md),
+>    **ADR 0027 accepted**): `search_posts` (our 459 posts + 2,210 creator posts), `trend_signals`, `patterns.py`, and the
+>    activation gate: `uv run intel pack build --index --no-activate`, then `uv run intel pack load <pack>` loads it
+>    staged, gates it on the dev questions (`evals/rag/qrels.jsonl`) and activates it only if it passes.
+>    Owner to-do: the 10-answer spot check (`data/rag_bench/spotcheck.html`, local). **Next: P4.4** (dk_studio,
+>    content prompts, the Sunday pack step).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).

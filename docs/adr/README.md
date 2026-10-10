@@ -30,6 +30,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0023](0023-performance-budget-and-scaling.md) | Performance: latency budget, batching, warm-up, trigger-based scaling | Accepted |
 | [0025](0025-mcp-gateway-llm-agnostic.md) | One LLM-agnostic MCP gateway of four read-only servers | Accepted |
 | [0026](0026-mcp-data-exposure-and-audit.md) | MCP data classes, a field allowlist at the source, a hash-chained call audit | Accepted |
-| [0027](0027-knowledge-pack-and-rag-engine.md) | RAG as a judged artifact: knowledge packs, collections, reranked dense search, measured model choice | Proposed |
+| [0027](0027-knowledge-pack-and-rag-engine.md) | RAG as a judged artifact: knowledge packs, collections, reranked dense search, measured model choice | Accepted |
 
 Template: [0000-template.md](0000-template.md).

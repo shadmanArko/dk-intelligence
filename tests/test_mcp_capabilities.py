@@ -155,6 +155,15 @@ def test_upcoming_occasions_window_tone_and_timing():
     assert later["occasions"] == [] and later["berlin_events"] == []
 
 
+def test_generic_occasion_labels_get_the_public_holiday_name_and_a_distinct_id():
+    a = {"public_id": "national_day", "label": "national day", "names": ["Unity Day"], "first_day": "2026-11-04"}
+    b = {"public_id": "national_day", "label": "national day", "names": ["Republic Day"], "first_day": "2026-10-28"}
+    assert [insights._occasion_label(p) for p in (a, b)] == ["national day: Unity Day", "national day: Republic Day"]
+    assert insights._occasion_id(a) != insights._occasion_id(b)
+    diwali = {"public_id": "diwali", "label": "Diwali", "names": ["Diwali"], "first_day": "2026-11-08"}
+    assert insights._occasion_label(diwali) == "Diwali" and insights._occasion_id(diwali) == "diwali"
+
+
 def test_upcoming_occasions_has_no_timing_for_other_platforms():
     out = insights.upcoming_occasions(FakeApi(), platform="tiktok", today=dt.date(2026, 10, 15))
     assert out["timing"]["reason"] == "no_timing_for_platform"

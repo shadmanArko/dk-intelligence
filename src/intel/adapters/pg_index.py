@@ -80,7 +80,7 @@ class PgEvidenceIndex(EvidenceIndex):
         rr = self._rr()
         filters = store.Filters(
             district=q.district, area=q.area, aspect=q.aspect, rating_min=q.rating_min, rating_max=q.rating_max,
-            lang=q.lang, since=q.since, until=q.until,
+            lang=q.lang, since=q.since, until=q.until, platform=q.platform, content_type=q.content_type,
         )  # fmt: skip
         with self._connect() as conn:
             pack_id = self._pack(conn)

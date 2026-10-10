@@ -42,9 +42,10 @@ def chunks() -> list[Chunk]:
     )
 
 
-def golden(split: str | None = None) -> list[dict[str, Any]]:
+def golden(split: str | None = None, collections: tuple[str, ...] = ("reviews",)) -> list[dict[str, Any]]:
+    """The P4.2 benchmark packs index reviews only, so post questions (P4.3) are left out by default."""
     qs = [json.loads(line) for line in GOLDEN.read_text().splitlines() if line.strip()]
-    return [q for q in qs if split is None or q["split"] == split]
+    return [q for q in qs if (split is None or q["split"] == split) and q["collection"] in collections]
 
 
 def embed(keys: list[str], cs: list[Chunk]) -> dict[str, dict[str, Any]]:

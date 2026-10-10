@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from intel.adapters.intel_api import HttpIntelApi, ScoringLimits
-from intel.adapters.pack import PackBrandSource
-from intel.capabilities.evidence import EvidenceIndex
+from intel.adapters.pack import PackBrandSource, PackTrendSource
+from intel.capabilities.evidence import EvidenceIndex, TrendSource
 from intel.capabilities.ports import BrandSource, IntelApi
 from intel.capabilities.types import ToolProblem
 from intel.mcp_server.kit.audit import AuditLog
@@ -40,6 +40,7 @@ class Deps:
     disabled_tools: frozenset[str] = frozenset()
     kinds: dict[str, str] = field(default_factory=dict)
     evidence: EvidenceIndex | None = None
+    trends: TrendSource | None = None
     min_evidence: float | None = None  # top rerank score below which search says "not found" (calibrated, ADR 0027)
     strong_evidence: float = 0.5  # top rerank score from which evidence counts as strong
     min_support: float | None = None  # reranker score a claim needs from its cited source to count as supported
@@ -63,6 +64,7 @@ class Deps:
             disabled_tools=settings.disabled_tools,
             kinds=kinds,
             evidence=_evidence(settings),
+            trends=PackTrendSource(settings.pack_dir),
             min_evidence=settings.intel_rag_min_evidence,
             strong_evidence=settings.intel_rag_strong_evidence,
             min_support=settings.intel_rag_min_support,

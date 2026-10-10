@@ -28,3 +28,15 @@
 {"id": "a08", "collection": "reviews", "question": "complaints about the restaurant's wifi and parking", "filters": {}, "kind": "no_answer", "split": "test"}
 {"id": "a09", "collection": "reviews", "question": "Bewertungen über Crêpes und französisches Gebäck", "filters": {}, "kind": "no_answer", "split": "dev"}
 {"id": "a10", "collection": "reviews", "question": "which reviewer lives on which street", "filters": {}, "kind": "no_answer", "split": "test"}
+{"id": "p01", "collection": "own_posts", "question": "posts announcing that this week's orders are open", "filters": {}, "kind": "answerable", "split": "dev"}
+{"id": "p02", "collection": "own_posts", "question": "Posts über unser Getränk Borhani", "filters": {}, "kind": "answerable", "split": "test"}
+{"id": "p03", "collection": "own_posts", "question": "how did we describe the rice in our kacchi?", "filters": {}, "kind": "answerable", "split": "dev"}
+{"id": "p04", "collection": "own_posts", "question": "posts where we ask followers for their opinion or ideas", "filters": {}, "kind": "answerable", "split": "test"}
+{"id": "p05", "collection": "own_posts", "question": "posts about the spices we cook with", "filters": {}, "kind": "answerable", "split": "dev"}
+{"id": "p06", "collection": "creator_posts", "question": "creators trying or reviewing biryani in Berlin", "filters": {}, "kind": "answerable", "split": "test"}
+{"id": "p07", "collection": "creator_posts", "question": "TikToks about street food markets in Berlin", "filters": {}, "kind": "answerable", "split": "dev"}
+{"id": "p08", "collection": "creator_posts", "question": "Berlin food creators showing brunch spots", "filters": {}, "kind": "answerable", "split": "test"}
+{"id": "p09", "collection": "posts", "question": "videos about slow-cooked lamb or mutton", "filters": {}, "kind": "answerable", "split": "dev"}
+{"id": "p10", "collection": "posts", "question": "posts about a food festival or event in Berlin", "filters": {}, "kind": "answerable", "split": "test"}
+{"id": "pa1", "collection": "own_posts", "question": "our posts about the sushi menu", "filters": {}, "kind": "no_answer", "split": "dev"}
+{"id": "pa2", "collection": "posts", "question": "posts that list a customer's private phone number", "filters": {}, "kind": "no_answer", "split": "test"}

@@ -461,3 +461,34 @@ first-class answer.
 **Trade-off I would defend.** I shipped the second-best reranker on purpose. A model that's 1 point better on dev
 but 60× slower on the hardware we actually have isn't better for the business. The GPU option is written down with
 its numbers, so the owner can buy it later on evidence.
+
+## P4.3 · Correcting the brief, and measuring what the user actually sees
+
+**Situation.** The plan said "trends: topics rising week over week" and "index our posts". The trend table has no
+time dimension, and our captions are cross-posted to three platforms, so a top 10 often held the same caption three
+times. A weekly index rebuild also needed a rule for when a new index may replace the live one.
+
+**Task.** Add our posts, creator posts and trend signals to the RAG layer without overselling any of them, and make
+index updates safe enough to run unattended on Sundays.
+
+**Action.**
+- **Corrected the brief instead of faking it:** `trend_signals` reports "what lifts engagement vs similar posts", and
+  every answer says it is not a time trend. Origin-group tags never enter the pack (the fairness rule).
+- **Made performance comparable:** each post is rated against *its own account's* typical post (and only from a
+  reach of 50, after a reach-88 post looked 12× better than average), so a big account doesn't win by size.
+- **Changed the metric to match the user:** scored on distinct captions, then collapsed cross-posted copies in
+  search. Labelled blind (340 pooled pairs) and also searched the whole corpus by keyword, so recall wasn't
+  flattered by a shallow pool.
+- **Built the activation gate:** staged load, per-question comparison with the live index on the dev split, PII
+  scan, then activate. Tested with a deliberately broken index.
+
+**Result.**
+- Distinct relevant posts in the top 10 rose by a third (43 → 57 over 10 questions); dev nDCG@10 0.60 → 0.72.
+- Both no-answer questions are refused.
+- The real posts pack passed the gate (0 questions lost, 5 gained). The gate's PII scan caught 3 suspicious
+  strings on the first build: all false positives, fixed in the scanner, with tests that real numbers still fail.
+- The broken index was refused.
+
+**Trade-off I would defend.** On the test split, dense search alone was 0.04 ahead of the reranked stack. I kept the
+reranker: dev decides (5 questions can't separate them), and the reranker's score is what lets the system say "not
+found". The weak spot ("Mela" isn't linked to "festival") is written down with a measurable fix, not hidden.
