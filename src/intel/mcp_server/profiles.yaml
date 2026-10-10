@@ -3,31 +3,32 @@
 # Resources: exact URIs, or a prefix ending in "*".
 owner:
   tools: [score_drafts, model_status, upcoming_occasions, competitor_complaints, community_areas, funnel_status,
-          find_creators, search_reviews, search_posts, get_sources, trend_signals, check_drafts, brand_rules,
-          get_facts, grounding_pack, evaluate_drafts]
+          find_creators, search_reviews, search_brand, search_posts, get_sources, verify_citations, trend_signals,
+          check_drafts, brand_rules, get_facts, grounding_pack, evaluate_drafts]
   resources: ["dk://*"]
   prompts: ["*"]
 analyst:
-  tools: [search_reviews, search_posts, get_sources, trend_signals, competitor_complaints, community_areas,
-          funnel_status, find_creators, get_facts]
+  tools: [search_reviews, search_brand, search_posts, get_sources, verify_citations, trend_signals,
+          competitor_complaints, community_areas, funnel_status, find_creators, get_facts]
   resources: ["dk://about", "dk://catalog", "dk://models/*", "dk://evidence/*", "dk://brand/*", "dk://rules/*"]
   prompts: [cited_answer]
 planner:
   tools: [grounding_pack, upcoming_occasions, competitor_complaints, community_areas, funnel_status, trend_signals,
-          search_posts, brand_rules, get_facts]
+          search_posts, search_brand, brand_rules, get_facts]
   resources: ["dk://about", "dk://catalog", "dk://models/*", "dk://evidence/*", "dk://brand/*", "dk://rules/*"]
   prompts: [role_planner]
 writer:
-  tools: [grounding_pack, evaluate_drafts, brand_rules, get_facts, search_posts]
+  tools: [grounding_pack, evaluate_drafts, brand_rules, get_facts, search_posts, search_brand, verify_citations]
   resources: ["dk://about", "dk://catalog", "dk://evidence/pack", "dk://brand/*", "dk://rules/*"]
   prompts: [role_writer, caption_ideas]
 producer:
-  tools: [brand_rules, upcoming_occasions, search_posts]
+  tools: [brand_rules, upcoming_occasions, search_posts, search_brand]
   resources: ["dk://about", "dk://catalog", "dk://evidence/pack", "dk://brand/*", "dk://rules/*"]
   prompts: [role_producer, image_ideas, video_ideas]
 checker:
   # never any tool, resource or prompt that returns third-party text: a judge that read a hostile review could be
   # steered by it
-  tools: [evaluate_drafts, check_drafts, get_facts, get_sources]
+  tools: [evaluate_drafts, check_drafts, get_facts, get_sources, search_brand, verify_citations]
+  forced: {get_sources: {include_text: false}}   # hidden from the schema and fixed: the checker never reads review text
   resources: ["dk://about", "dk://catalog", "dk://evidence/pack", "dk://brand/*", "dk://rules/*"]
   prompts: [role_checker]

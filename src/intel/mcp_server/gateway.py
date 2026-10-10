@@ -14,24 +14,28 @@ from typing import Any
 import yaml
 from fastmcp import FastMCP
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from fastmcp.server.transforms import ToolTransform
+from fastmcp.tools.tool_transform import ArgTransformConfig, ToolTransformConfig
 
 from intel.capabilities.types import ToolProblem
 from intel.mcp_server.deps import Deps
 from intel.mcp_server.kit.middleware import AuditMiddleware, ContextMiddleware, CopyGuard, ProfileGate
 from intel.mcp_server.servers.brand import build_brand_server
+from intel.mcp_server.servers.evidence import build_evidence_server
 from intel.mcp_server.servers.models import build_models_server
 
 HERE = Path(__file__).parent
 SERVERS: dict[str, Callable[[Deps], FastMCP]] = {
     "models": build_models_server,
     "brand": build_brand_server,
+    "evidence": build_evidence_server,
 }
 TOOLS_API = "1.0"
 
 
 @cache
-def profiles() -> dict[str, dict[str, list[str]]]:
-    data: dict[str, dict[str, list[str]]] = yaml.safe_load((HERE / "profiles.yaml").read_text())
+def profiles() -> dict[str, dict[str, Any]]:
+    data: dict[str, dict[str, Any]] = yaml.safe_load((HERE / "profiles.yaml").read_text())
     return data
 
 
@@ -61,6 +65,18 @@ def build_gateway(profile: str, deps: Deps, only: str | None = None) -> FastMCP:
     gw = FastMCP("dk_intel", instructions=instructions(), version=TOOLS_API, mask_error_details=True)
     for build in chosen.values():
         gw.mount(build(deps))
+    forced = spec.get("forced") or {}
+    if forced:
+        gw.add_transform(
+            ToolTransform(
+                {
+                    tool: ToolTransformConfig(
+                        arguments={arg: ArgTransformConfig(hide=True, default=value) for arg, value in args.items()}
+                    )
+                    for tool, args in forced.items()
+                }
+            )
+        )
     resources = frozenset(spec.get("resources") or [])
     prompts = spec.get("prompts") or []
     # Errors: expected failures are ToolErrors (`[CODE] message. Try: …`, returned as tool results the model can

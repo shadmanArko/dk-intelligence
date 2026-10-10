@@ -783,6 +783,43 @@ own switch. On the VPS, stopping
 
 ## 4. The RAG engine (behind `dk_evidence`)
 
+### 4.0 Revision of 2026-10-10 (owner-approved; wins over §4.1–4.10 where they differ)
+
+1. **Same MLOps lifecycle as the models.** Every Sunday (or the Control Room's "Rebuild knowledge" button, or
+   `intel pack build`):
+   - **Build:** the Mac builds a knowledge pack from the new pull and snapshot, embedding only new rows (a cache).
+   - **Gate:** the eval gate compares the pack with the active one.
+   - **Ship:** a pack that passes is packaged and uploaded over door 2. The VPS inbox worker verifies the checksums
+     and loads it into intel-db (schema `rag`, pgvector) as *staged*, then activates it. The previous pack is kept
+     for rollback.
+   - **Report:** the Monday report, the Control Room and the VPS Training page show each pack's id, row counts,
+     quality scores and live search stats (latency, "not found" rate, citations used).
+   - **Schedule:** the Sunday step moves to P4.4 and shipping to the VPS to P4.5 (both were later).
+2. **Collections, one engine.** `brand` (the brand book, by section, **S0 public**, usable by a future customer
+   chatbot), `rules` (voice and rules, playbook, internal), `reviews`, `own_posts`, `creator_posts`.
+   - Each collection has its own filters, access per profile, and search tool or `collection` argument.
+   - Searching one collection keeps unrelated text out of the top results.
+   - The brand book used to be "prompt only"; it is now *also* a collection. Prices and hours still come only from
+     `get_facts`.
+3. **Embedding model: measured, not assumed.**
+   - Candidates, benchmarked on our golden set: multilingual-e5 (small, large-instruct), BGE-M3, Qwen3-Embedding
+     (0.6B, 4B, 8B) and Harrier-OSS-v1-0.6B.
+   - **Ship the best that fits the VPS.** If a larger model is clearly better (≥ +5 nDCG@10 points on the test
+     split), the owner gets the numbers and the options: search on the Mac only, a bigger VPS (paid, needs a
+     decision on ADR 0012), or the small model.
+   - Benchmarking runs on the Mac and may use torch (`bench` group, never in any image). Serving uses
+     ONNX or Ollama.
+4. **Less hallucination, built in:**
+   - hybrid search, then a **cross-encoder reranker** on the top 50 (Qwen3-Reranker or bge-reranker-v2-m3,
+     measured);
+   - a deterministic **context header** per chunk (place, district, rating, date) embedded with the text;
+   - **"not found" below a calibrated evidence threshold**, instead of weak matches;
+   - **`verify_citations`**: every quote must exist in its source, and the reranker scores each claim against its
+     cited passage. Unsupported sentences are flagged;
+   - facts only from tools.
+
+   The gate measures faithfulness, refusal correctness and recall.
+
 ### 4.1 The knowledge pack: the index is judged like a model
 
 ```

@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,8 +47,19 @@ def latest_market_snapshot(market_dir: Path) -> Path:
     return snap
 
 
-def build_brand_pack(mip_dir: Path, market_dir: Path, pack_root: Path, now: dt.datetime | None = None) -> str:
-    """Copy the brand sources into a new pack; returns its id. Never overwrites an existing pack."""
+Indexer = Callable[[Path, Path, dict[str, Path]], dict[str, Any]]
+"""(target index dir, market snapshot dir, brand sources by name) -> manifest extras; writes chunks and vectors."""
+
+
+def build_brand_pack(
+    mip_dir: Path,
+    market_dir: Path,
+    pack_root: Path,
+    now: dt.datetime | None = None,
+    indexer: Indexer | None = None,
+) -> str:
+    """Copy the brand sources into a new pack (and, with an indexer, its search index); returns its id.
+    Never overwrites an existing pack."""
     snap = latest_market_snapshot(market_dir)
     sources = {name: mip_dir / rel for name, rel in BRAND_FILES.items()}
     sources["content_rules.yaml"] = snap / "content_rules.yaml"
@@ -70,15 +82,22 @@ def build_brand_pack(mip_dir: Path, market_dir: Path, pack_root: Path, now: dt.d
         copied = {f"brand/{name}": sha256(tmp / "brand" / name) for name in sources}
         if copied != hashes:
             raise PackError("a source changed while it was being copied; build again")
+        extras: dict[str, Any] = {}
+        files = dict(hashes)
+        if indexer is not None:
+            (tmp / "index").mkdir()
+            extras = indexer(tmp / "index", snap, {n: tmp / "brand" / n for n in sources})
+            files.update({f"index/{f.name}": sha256(f) for f in sorted((tmp / "index").iterdir())})
         manifest = {
             "pack_id": pack_id,
-            "kind": "brand_only",
+            "kind": "full" if indexer is not None else "brand_only",
             "built_at": at.isoformat(timespec="seconds"),
             "market_snapshot": snap.name,
-            "files": hashes,
+            "files": files,
+            **extras,
         }
         (tmp / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True))
-        for f in (tmp / "brand").iterdir():
+        for f in [*(tmp / "brand").iterdir(), *((tmp / "index").iterdir() if (tmp / "index").exists() else [])]:
             f.chmod(0o444)
         tmp.rename(final)
     except BaseException:
