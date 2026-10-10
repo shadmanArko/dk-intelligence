@@ -70,6 +70,45 @@ def _qwen(model_id: str, batch_size: int = 16) -> Scorer:
     return score
 
 
+ONNX: dict[str, tuple[str, str]] = {
+    "bge-reranker-v2-m3": ("onnx-community/bge-reranker-v2-m3-ONNX", "onnx/model_quantized.onnx"),
+}
+
+
+def _onnx_cross_encoder(key: str, batch_size: int = 16, max_tokens: int = 512) -> Scorer:
+    """Serving backend: onnxruntime + tokenizers, no torch. Sigmoid of the relevance logit, like CrossEncoder."""
+    import numpy as np
+    import onnxruntime as ort
+    from huggingface_hub import hf_hub_download
+    from tokenizers import Tokenizer
+
+    repo, file = ONNX[key]
+    session = ort.InferenceSession(hf_hub_download(repo, file), providers=["CPUExecutionProvider"])
+    names = {i.name for i in session.get_inputs()}
+    tok = Tokenizer.from_file(hf_hub_download(repo, "tokenizer.json"))
+    tok.enable_truncation(max_tokens)
+    tok.enable_padding()
+
+    def score(pairs: list[tuple[str, str]]) -> list[float]:
+        out: list[float] = []
+        for i in range(0, len(pairs), batch_size):
+            enc = tok.encode_batch(pairs[i : i + batch_size])
+            feed = {
+                "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
+                "attention_mask": np.array([e.attention_mask for e in enc], dtype=np.int64),
+            }
+            if "token_type_ids" in names:
+                feed["token_type_ids"] = np.zeros_like(feed["input_ids"])
+            logits = np.asarray(session.run(None, feed)[0], dtype=np.float64).reshape(len(enc), -1)[:, 0]
+            out.extend((1 / (1 + np.exp(-logits))).tolist())
+        return out
+
+    return score
+
+
 def load_reranker(key: str) -> Scorer:
+    """`onnx:<key>` is the serving backend (no torch); a plain key is the benchmark backend."""
+    if key.startswith("onnx:"):
+        return _onnx_cross_encoder(key.removeprefix("onnx:"))
     model_id = RERANKERS[key]
     return _qwen(model_id) if key.startswith("qwen3") else _bge(model_id)

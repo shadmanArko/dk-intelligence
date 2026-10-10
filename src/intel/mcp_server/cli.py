@@ -136,7 +136,7 @@ def pack_load(
     if manifest.get("kind") != "full":
         raise typer.BadParameter(f"{pid} has no search index; build with --index")
     rows = pd.read_parquet(s.pack_dir / pid / "index" / "chunks.parquet")
-    rows["posted_at"] = rows["posted_at"].astype(object).where(rows["posted_at"].notna(), None)
+    rows = rows.astype(object).where(rows.notna(), None)  # parquet NaN/NaT -> SQL NULL
     records = rows.to_dict("records")
     for r in records:
         r["aspects"] = list(r["aspects"]) if r.get("aspects") is not None else []

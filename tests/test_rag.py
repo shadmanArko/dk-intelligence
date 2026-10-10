@@ -305,3 +305,17 @@ def test_golden_set_file_is_well_formed():
     assert len(qs) == 30 and len({q["id"] for q in qs}) == 30
     assert {q["split"] for q in qs} == {"dev", "test"} and sum(q["kind"] == "no_answer" for q in qs) == 9
     assert all("text" not in q for q in qs)  # questions only: real review text never goes into git
+
+
+def test_evidence_levels_never_hide_a_broad_question():
+    """Broad questions score low against any single review: they come back as weak (flagged), not as not found."""
+    rows = [{**ROWS[0], "rerank": 0.03}, {**ROWS[1], "rerank": 0.001}]
+    weak = evidence.search(FakeIndex(rows), EvidenceQuery("reviews", "why the worst ratings?"), 0.003, 0.47)
+    assert weak["found"] and weak["evidence"] == "weak" and "specific topics" in weak["guidance"]
+    assert [h["cite"] for h in weak["hits"]] == ["R-AAAAAAAA"]  # the hit below the floor is dropped
+    strong = evidence.search(FakeIndex(ROWS), EvidenceQuery("reviews", "kaltes Essen"), 0.003, 0.47)
+    assert strong["evidence"] == "strong" and strong["guidance"].startswith("hits with trust")
+    none = evidence.search(FakeIndex([{**ROWS[0], "rerank": 0.001}]), EvidenceQuery("reviews", "phone numbers"), 0.003)
+    assert not none["found"] and none["evidence"] == "none" and none["hits"] == []
+    unscored = evidence.search(FakeIndex([{**ROWS[0], "rerank": None}]), EvidenceQuery("reviews", "kalt"), 0.003)
+    assert unscored["evidence"] == "unscored" and unscored["found"]

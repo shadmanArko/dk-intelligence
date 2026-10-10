@@ -27,8 +27,10 @@ class PgEvidenceIndex(EvidenceIndex):
         dsn: str,
         embedder: Callable[[], Embedder] | None,
         reranker: Callable[[], Rerank] | None = None,
+        rerank_pool: int = store.POOL,
     ) -> None:
         self.dsn = dsn
+        self.rerank_pool = rerank_pool
         self._embedder_factory, self._reranker_factory = embedder, reranker
         self._embedder: Embedder | None = None
         self._reranker: Rerank | None = None
@@ -43,7 +45,7 @@ class PgEvidenceIndex(EvidenceIndex):
                 "UPSTREAM_UNAVAILABLE", "the knowledge database isn't reachable", "uv run intel pack init --start"
             ) from e
         conn.execute("set default_transaction_read_only = on")
-        conn.execute("set statement_timeout = '2s'")
+        conn.execute("set statement_timeout = '5s'")  # 36 ms warm; a cold first query on a busy Mac needs headroom
         return conn
 
     def _emb(self) -> Embedder | None:
@@ -79,7 +81,18 @@ class PgEvidenceIndex(EvidenceIndex):
             qvec = emb.query(q.query) if emb is not None else None
             mode = "hybrid" if qvec is not None else "lexical"
             reranker = (lambda query, docs: rr([(query, d) for d in docs])) if rr is not None else None
-            hits = store.search(conn, pack_id, q.collection, q.query, qvec, filters, mode, reranker, q.limit)
+            hits = store.search(
+                conn,
+                pack_id,
+                q.collection,
+                q.query,
+                qvec,
+                filters,
+                mode,
+                reranker,
+                q.limit,
+                rerank_pool=self.rerank_pool,
+            )
         rows = [{**h.row, "score": h.score, "rerank": h.rerank, "duplicates": h.duplicates} for h in hits]
         return EvidenceResult(pack_id=pack_id, mode=mode, hits=rows)
 

@@ -213,13 +213,14 @@ def search(
     reranker: Reranker | None = None,
     limit: int = 10,
     per_source: int = 2,
+    rerank_pool: int = POOL,
 ) -> list[Hit]:
     f = f or Filters()
     d = dense(conn, pack_id, collection, qvec, f) if mode in ("hybrid", "dense") and qvec is not None else []
     lx = lexical(conn, pack_id, collection, query, f) if mode in ("hybrid", "lexical") else []
     hits = diversify(fuse(d, lx), per_source)
     if reranker is not None and hits:
-        pool = hits[:POOL]
+        pool = hits[:rerank_pool]
         scores = reranker(
             query, [h.row.get("title") and f"{h.row['title']}\n{h.row['text']}" or h.row["text"] for h in pool]
         )

@@ -83,7 +83,17 @@ def _hit(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def search(index: EvidenceIndex, q: EvidenceQuery, min_evidence: float | None) -> dict[str, Any]:
+WEAK = (
+    "the matches are only loose. Check that each hit really answers the question before citing it. For a broad "
+    "question (why, what do people like), search again with specific topics (e.g. 'cold food', 'late delivery'). "
+    "If none of the hits answers it, say not found."
+)
+
+
+def search(
+    index: EvidenceIndex, q: EvidenceQuery, min_evidence: float | None, strong_evidence: float = 0.47
+) -> dict[str, Any]:
+    """Evidence levels by the top rerank score: strong, weak (hits kept and flagged), none (no hits)."""
     if not 2 <= len(q.query.strip()) <= 300:
         raise ToolProblem("INVALID_ARGUMENT", "query must be 2 to 300 characters")
     if not 1 <= q.limit <= 20:
@@ -91,18 +101,25 @@ def search(index: EvidenceIndex, q: EvidenceQuery, min_evidence: float | None) -
     result = index.search(q)
     hits = result.hits
     strength = None
+    level = "unscored"  # no reranker: lexical or dense order only
     if hits and hits[0].get("rerank") is not None:
         strength = round(float(hits[0]["rerank"]), 3)
-        if min_evidence is not None:
-            hits = [h for h in hits if float(h["rerank"]) >= min_evidence]
+        if min_evidence is not None and strength < min_evidence:
+            hits, level = [], "none"
+        else:
+            level = "strong" if strength >= strong_evidence else "weak"
+            if min_evidence is not None:  # noise below the floor never rides along with a good top hit
+                hits = [h for h in hits if float(h["rerank"]) >= min_evidence]
     found = bool(hits)
+    guidance = GUIDANCE if level in ("strong", "unscored") else WEAK if level == "weak" else ""
     return {
         "pack_id": result.pack_id,
         "mode": result.mode,
         "found": found,
+        "evidence": level if found else "none",
         "evidence_strength": strength,
         "hits": [_hit(h) for h in hits],
-        "guidance": GUIDANCE if found else "nothing in this collection answers the question well enough: say not found",
+        "guidance": guidance or "nothing in this collection answers the question: say not found",
         "prov": prov(f"knowledge pack ({q.collection})", result.pack_id),
     }
 

@@ -132,8 +132,66 @@ class OllamaEmbedder:
 
 
 def load(key: str) -> Embedder:
+    """`onnx:<key>` is the serving backend (no torch); a plain key is the benchmark backend."""
     if key == "hash":
         return HashEmbedder()
+    if key.startswith("onnx:"):
+        return OnnxEmbedder(key.removeprefix("onnx:"))
     if MODELS[key].name.startswith("ollama:"):
         return OllamaEmbedder(key)
     return SentenceTransformerEmbedder(key)
+
+
+def _hf_file(repo: str, filename: str) -> str:
+    from huggingface_hub import hf_hub_download
+
+    return str(hf_hub_download(repo, filename))
+
+
+class OnnxEmbedder:
+    """The serving backend: onnxruntime + tokenizers, no torch. Mean pooling + L2 norm, as sentence-transformers
+    does for e5. `key` maps to an ONNX export of the benchmarked model (int8 by default)."""
+
+    ONNX: dict[str, tuple[str, str]] = {
+        "e5-small": ("Xenova/multilingual-e5-small", "onnx/model_quantized.onnx"),
+        "e5-small-fp32": ("Xenova/multilingual-e5-small", "onnx/model.onnx"),
+    }
+
+    def __init__(self, key: str, max_tokens: int = 512, batch_size: int = 64, threads: int | None = None) -> None:
+        import onnxruntime as ort
+        from tokenizers import Tokenizer
+
+        repo, file = self.ONNX[key]
+        self.spec = MODELS[key.removesuffix("-fp32")]
+        self.name = f"onnx:{key}"  # distinct from the torch model's name: the embedding cache is keyed by it
+        opts = ort.SessionOptions()
+        if threads:
+            opts.intra_op_num_threads = threads
+        self.session = ort.InferenceSession(_hf_file(repo, file), opts, providers=["CPUExecutionProvider"])
+        self.inputs = {i.name for i in self.session.get_inputs()}
+        self.tok = Tokenizer.from_file(_hf_file(repo, "tokenizer.json"))
+        self.tok.enable_truncation(max_tokens)
+        self.tok.enable_padding()
+        self.batch_size = batch_size
+        self.dim = int(self._encode(["probe"]).shape[1])
+
+    def _encode(self, texts: list[str]) -> Vectors:
+        enc = self.tok.encode_batch(texts)
+        ids = np.array([e.ids for e in enc], dtype=np.int64)
+        mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
+        feed = {"input_ids": ids, "attention_mask": mask}
+        if "token_type_ids" in self.inputs:
+            feed["token_type_ids"] = np.zeros_like(ids)
+        hidden = self.session.run(None, feed)[0]
+        summed = (hidden * mask[..., None]).sum(axis=1)
+        return _normalise(summed / np.maximum(mask.sum(axis=1, keepdims=True), 1))
+
+    def documents(self, texts: list[str]) -> Vectors:
+        parts = [
+            self._encode([self.spec.passage_prefix + t for t in texts[i : i + self.batch_size]])
+            for i in range(0, len(texts), self.batch_size)
+        ]
+        return np.concatenate(parts) if parts else np.zeros((0, self.dim), dtype=np.float32)
+
+    def query(self, text: str) -> Vectors:
+        return self._encode([self.spec.query_prefix + text])[0]

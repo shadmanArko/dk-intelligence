@@ -191,7 +191,7 @@ __all__ = ["MODELS", "chunks", "embed", "golden", "load_packs", "pool", "run", "
 
 
 def run_reranked(
-    dsn: str, key: str, reranker: store.Reranker, mode: str = "hybrid", limit: int = 20
+    dsn: str, key: str, reranker: store.Reranker, mode: str = "hybrid", limit: int = 20, pool: int = store.POOL
 ) -> tuple[dict[str, list[str]], dict[str, float]]:
     """One model with a reranker: ranked cites per question, and each question's top rerank score."""
     emb = load(key)
@@ -209,6 +209,7 @@ def run_reranked(
                 mode,
                 reranker,
                 limit,
+                rerank_pool=pool,
             )
             ranked[q["id"]] = [h.cite for h in hits]
             top[q["id"]] = float(hits[0].rerank or 0.0) if hits else 0.0
