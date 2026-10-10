@@ -17,8 +17,12 @@ re-check them before acting.
 >    **ADR 0027 accepted**): `search_posts` (our 459 posts + 2,210 creator posts), `trend_signals`, `patterns.py`, and the
 >    activation gate: `uv run intel pack build --index --no-activate`, then `uv run intel pack load <pack>` loads it
 >    staged, gates it on the dev questions (`evals/rag/qrels.jsonl`) and activates it only if it passes.
->    Owner to-do: the 10-answer spot check (`data/rag_bench/spotcheck.html`, local). **Next: P4.4** (dk_studio,
->    content prompts, the Sunday pack step).
+>    **P4.4 done 2026-10-11** ([results](results/P4_4_studio_prompts.md), ADR 0028): `dk_studio` (`grounding_pack`,
+>    `evaluate_drafts`), 8 versioned prompts with a CI lint, token budgets, the Sunday `knowledge` step (soft, gated),
+>    and the tool-use eval (`python -m intel.mcp_server.tool_eval`, Ollama gpt-oss:20b). Finding: the content scorer
+>    ranks format and time, not caption text. Owner to-do: the 10-answer RAG spot check
+>    (`data/rag_bench/spotcheck.html`) and rating 10 idea sets (`data/evals/idea_sets.html`), both local pages.
+>    **Next: P4.5** (Streamable HTTP + JWT, LangChain contract test, example clients).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).

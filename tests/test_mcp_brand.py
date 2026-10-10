@@ -166,6 +166,11 @@ CASES = [
     ("THREADS_TAG_FORMAT", {"platform": "threads", "format": None, "caption": "Samstag Kacchi in Berlin #kacchi"}, {}),
     ("EMOJIS", {"caption": GOOD + " 🍛🍛🍛🍛🍛"}, {}),
     ("LANG_ORDER", {"caption": "Fresh Kacchi in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"}, {}),
+    (
+        "LANG_ORDER",
+        {"caption": "Why mutton? Kacchi needs time in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"},
+        {"caption": "Hammel oder Lamm? Schreibt es uns!\nKacchi in Berlin. #kacchibiryani #berlinfood #biryaniberlin"},
+    ),
     ("WERBUNG_MISSING", {"caption": GOOD, "paid": True}, {"caption": "Werbung: " + GOOD, "paid": True}),
     ("PRICE_UNCONFIRMED", {"caption": GOOD + " Taster nur 9,99 €"}, {"caption": GOOD + " Box 15,00 €"}),
     ("PRICE_MISMATCH", {"caption": GOOD + " Box 12,50 €"}, {"caption": GOOD + " Lieferung 5 €"}),

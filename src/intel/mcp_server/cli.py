@@ -125,77 +125,26 @@ def pack_load(
 ) -> None:
     """Load a pack's index into the knowledge database (INTEL_RAG_ADMIN_DSN, the builder role) as staged, run the
     activation gate against the active pack, and activate it only if the gate passes."""
-    import numpy as np
-    import pandas as pd
-    import psycopg
-
     from intel.rag import pack as kp
-    from intel.rag import store
+    from intel.rag.lifecycle import load_and_gate
     from intel.settings import McpSettings
 
     s = McpSettings()
     pid = pack_id or kp.active_id(s.pack_dir)
-    if pid is None or not s.intel_rag_admin_dsn:
-        raise typer.BadParameter("need a pack id (or an active pack) and INTEL_RAG_ADMIN_DSN (run `intel pack init`)")
-    manifest = kp.verify(s.pack_dir / pid)
-    if manifest.get("kind") != "full":
-        raise typer.BadParameter(f"{pid} has no search index; build with --index")
-    rows = pd.read_parquet(s.pack_dir / pid / "index" / "chunks.parquet")
-    rows = rows.astype(object).where(rows.notna(), None)  # parquet NaN/NaT -> SQL NULL
-    records = rows.to_dict("records")
-    for r in records:
-        r["aspects"] = list(r["aspects"]) if r.get("aspects") is not None else []
-    vectors = np.load(s.pack_dir / pid / "index" / "vectors.npy")
-    with psycopg.connect(s.intel_rag_admin_dsn, autocommit=True) as conn:
-        store.ensure_schema(conn)
-        n = store.load_pack(conn, pid, manifest, [{str(k): v for k, v in r.items()} for r in records], vectors)
-        typer.echo(f"{pid}: {n} chunks loaded (staged)")
-        if not activate:
-            return
-        result = None if skip_gate else _run_gate(conn, pid, manifest, s)
-        if result is not None:
-            out = s.pack_dir / "gates" / f"{pid}.json"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(result.as_dict(), indent=2))
-            typer.echo(json.dumps(result.as_dict(), indent=2))
-            if not result.passed:
-                typer.secho(f"gate FAILED: {pid} stays staged; the active pack is unchanged", fg="red")
-                raise typer.Exit(1)
-        store.activate(conn, pid)
-    kp.activate(s.pack_dir, pid)  # the brand and trends side reads the same pack as search
+    if pid is None:
+        raise typer.BadParameter("need a pack id (or an active pack)")
+    try:
+        out = load_and_gate(s, pid, skip_gate, activate, echo=typer.echo)
+    except kp.PackError as e:
+        raise typer.BadParameter(str(e)) from e
+    if out["gate"] is not None:
+        typer.echo(json.dumps(out["gate"], indent=2))
+    if not activate:
+        return
+    if not out["active"]:
+        typer.secho(f"gate FAILED: {pid} stays staged; the active pack is unchanged", fg="red")
+        raise typer.Exit(1)
     typer.secho(f"{pid} is active{' (gate skipped)' if skip_gate else ' (gate passed)'}", fg="green")
-
-
-def _run_gate(conn: Any, pid: str, manifest: dict[str, Any], s: Any) -> Any:
-    """Search the golden dev questions in both packs with the serving stack (each pack with its own embedder)."""
-    from intel.rag import gate, store
-    from intel.rag.embed import load
-    from intel.rag.rerank import load_reranker
-
-    active = store.active_pack(conn)
-    if active == pid:
-        active = None
-    manifests = {pid: manifest}
-    if active is not None:
-        row = conn.execute("select manifest from rag.pack where pack_id = %s", (active,)).fetchone()
-        manifests[active] = row[0]
-    embedders: dict[str, Any] = {}
-    rr = load_reranker(s.intel_rag_reranker) if s.intel_rag_reranker else None
-    reranker = (lambda q, docs: rr([(q, d) for d in docs])) if rr is not None else None
-
-    def search(pack_id: str, q: dict[str, Any]) -> list[str]:
-        name = manifests[pack_id]["embedder"]["name"]
-        emb = embedders.setdefault(name, load(name))
-        collection = ("own_posts", "creator_posts") if q["collection"] == "posts" else q["collection"]
-        hits = store.search(
-            conn, pack_id, collection, q["question"], emb.query(q["question"]), store.Filters(**q.get("filters", {})),
-            s.intel_rag_mode, reranker, limit=gate.K, rerank_pool=s.intel_rag_rerank_pool,
-        )  # fmt: skip
-        return [h.cite for h in hits]
-
-    return gate.evaluate(
-        search, pid, active, manifest, gate.read_jsonl(gate.GOLDEN), gate.relevant(gate.read_jsonl(gate.QRELS))
-    )
 
 
 @pack_app.command("init")

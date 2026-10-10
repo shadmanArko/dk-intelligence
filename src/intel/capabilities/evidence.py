@@ -56,6 +56,10 @@ class EvidenceIndex(Protocol):
         """Reranker score of (claim, passage) pairs, or None when no reranker is loaded."""
         ...
 
+    def own_posts(self, aspects: list[str]) -> list[dict[str, Any]]:
+        """Our own posts tagged with any of these aspects: cite, text, aspects, metrics (for the pattern join)."""
+        ...
+
 
 TRUST = {
     "reviews": "untrusted",
@@ -73,7 +77,8 @@ def _short(text: str, n: int = QUOTE_CHARS) -> str:
 PERF_KEYS = ("reach", "views", "likes", "engagement_rate", "vs_our_median", "like_rate", "vs_account_median")
 
 
-def _metrics(row: dict[str, Any]) -> dict[str, Any]:
+def metrics_of(row: dict[str, Any]) -> dict[str, Any]:
+    """The known performance keys of a post row (metrics stored as JSON)."""
     m = row.get("metrics")
     if isinstance(m, str):
         m = json.loads(m)
@@ -98,7 +103,7 @@ def _hit(row: dict[str, Any]) -> dict[str, Any]:
     }
     if collection in ("own_posts", "creator_posts"):
         out["source_kind"] = "own" if collection == "own_posts" else "creator"
-        out["perf"] = _metrics(row)
+        out["perf"] = metrics_of(row)
     return out
 
 

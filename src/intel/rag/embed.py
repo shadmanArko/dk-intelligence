@@ -133,7 +133,7 @@ class OllamaEmbedder:
 
 def load(key: str) -> Embedder:
     """`onnx:<key>` is the serving backend (no torch); a plain key is the benchmark backend."""
-    if key == "hash":
+    if key in ("hash", HashEmbedder.name):  # a pack records the name, "hash-256"
         return HashEmbedder()
     if key.startswith("onnx:"):
         return OnnxEmbedder(key.removeprefix("onnx:"))

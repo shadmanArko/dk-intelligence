@@ -31,5 +31,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0025](0025-mcp-gateway-llm-agnostic.md) | One LLM-agnostic MCP gateway of four read-only servers | Accepted |
 | [0026](0026-mcp-data-exposure-and-audit.md) | MCP data classes, a field allowlist at the source, a hash-chained call audit | Accepted |
 | [0027](0027-knowledge-pack-and-rag-engine.md) | RAG as a judged artifact: knowledge packs, collections, reranked dense search, measured model choice | Accepted |
+| [0028](0028-generation-in-the-client.md) | Generate in the client: workflow tools, prompts as code, a bounded score-and-rewrite loop | Accepted |
 
 Template: [0000-template.md](0000-template.md).
