@@ -82,10 +82,13 @@ def _onnx_cross_encoder(key: str, batch_size: int = 16, max_tokens: int = 512) -
     from huggingface_hub import hf_hub_download
     from tokenizers import Tokenizer
 
+    from intel.rag.embed import model_dir
+
     repo, file = ONNX[key]
-    session = ort.InferenceSession(hf_hub_download(repo, file), providers=["CPUExecutionProvider"])
+    local = model_dir(repo)
+    session = ort.InferenceSession(hf_hub_download(repo, file, local_dir=local), providers=["CPUExecutionProvider"])
     names = {i.name for i in session.get_inputs()}
-    tok = Tokenizer.from_file(hf_hub_download(repo, "tokenizer.json"))
+    tok = Tokenizer.from_file(hf_hub_download(repo, "tokenizer.json", local_dir=local))
     tok.enable_truncation(max_tokens)
     tok.enable_padding()
 

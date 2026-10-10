@@ -142,27 +142,41 @@ def load(key: str) -> Embedder:
     return SentenceTransformerEmbedder(key)
 
 
+def model_dir(repo: str) -> str:
+    """Serving models live as real files under data/models/<repo> (the artifact that later ships to the VPS),
+    not as cache symlinks: onnxruntime refuses external weights whose resolved path leaves the model folder."""
+    from intel.settings import McpSettings
+
+    return str(McpSettings().data_dir / "models" / repo.replace("/", "--"))
+
+
 def _hf_file(repo: str, filename: str) -> str:
     from huggingface_hub import hf_hub_download
 
-    return str(hf_hub_download(repo, filename))
+    return str(hf_hub_download(repo, filename, local_dir=model_dir(repo)))
 
 
 class OnnxEmbedder:
-    """The serving backend: onnxruntime + tokenizers, no torch. Mean pooling + L2 norm, as sentence-transformers
-    does for e5. `key` maps to an ONNX export of the benchmarked model (int8 by default)."""
+    """The serving backend: onnxruntime + tokenizers, no torch, int8. Pooling as the model was trained:
+    mean (e5), inside the graph (sentence-transformers exports, e.g. BGE-M3), or the last token (Qwen3/Harrier).
+    `key` maps to an ONNX export of the benchmarked model."""
 
-    ONNX: dict[str, tuple[str, str]] = {
-        "e5-small": ("Xenova/multilingual-e5-small", "onnx/model_quantized.onnx"),
-        "e5-small-fp32": ("Xenova/multilingual-e5-small", "onnx/model.onnx"),
+    # key -> (repo, file, pooling)
+    ONNX: dict[str, tuple[str, str, str]] = {
+        "e5-small": ("Xenova/multilingual-e5-small", "onnx/model_quantized.onnx", "mean"),
+        "e5-small-fp32": ("Xenova/multilingual-e5-small", "onnx/model.onnx", "mean"),
+        "bge-m3": ("Xenova/bge-m3", "onnx/sentence_transformers_quantized.onnx", "graph"),
+        "harrier-0.6b": ("onnx-community/harrier-oss-v1-0.6b-ONNX", "onnx/model_quantized.onnx", "graph"),
     }
 
     def __init__(self, key: str, max_tokens: int = 512, batch_size: int = 64, threads: int | None = None) -> None:
         import onnxruntime as ort
         from tokenizers import Tokenizer
 
-        repo, file = self.ONNX[key]
+        repo, file, self.pooling = self.ONNX[key]
         self.spec = MODELS[key.removesuffix("-fp32")]
+        if file.endswith("model_quantized.onnx") and self.pooling == "last":
+            _hf_file(repo, file + "_data")  # external weights live next to the graph
         self.name = f"onnx:{key}"  # distinct from the torch model's name: the embedding cache is keyed by it
         opts = ort.SessionOptions()
         if threads:
@@ -171,7 +185,10 @@ class OnnxEmbedder:
         self.inputs = {i.name for i in self.session.get_inputs()}
         self.tok = Tokenizer.from_file(_hf_file(repo, "tokenizer.json"))
         self.tok.enable_truncation(max_tokens)
-        self.tok.enable_padding()
+        if self.pooling == "last":
+            self.tok.enable_padding(direction="left")  # the last position is then every row's last real token
+        else:
+            self.tok.enable_padding()
         self.batch_size = batch_size
         self.dim = int(self._encode(["probe"]).shape[1])
 
@@ -182,7 +199,15 @@ class OnnxEmbedder:
         feed = {"input_ids": ids, "attention_mask": mask}
         if "token_type_ids" in self.inputs:
             feed["token_type_ids"] = np.zeros_like(ids)
-        hidden = self.session.run(None, feed)[0]
+        if "position_ids" in self.inputs:
+            feed["position_ids"] = np.clip(np.cumsum(mask, axis=1) - 1, 0, None)
+        out = self.session.run(None, feed)
+        if self.pooling == "graph":
+            names = [o.name for o in self.session.get_outputs()]
+            return _normalise(out[names.index("sentence_embedding")] if "sentence_embedding" in names else out[-1])
+        hidden = out[0]
+        if self.pooling == "last":
+            return _normalise(hidden[:, -1, :])
         summed = (hidden * mask[..., None]).sum(axis=1)
         return _normalise(summed / np.maximum(mask.sum(axis=1, keepdims=True), 1))
 

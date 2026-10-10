@@ -91,7 +91,7 @@ WEAK = (
 
 
 def search(
-    index: EvidenceIndex, q: EvidenceQuery, min_evidence: float | None, strong_evidence: float = 0.47
+    index: EvidenceIndex, q: EvidenceQuery, min_evidence: float | None, strong_evidence: float = 0.5
 ) -> dict[str, Any]:
     """Evidence levels by the top rerank score: strong, weak (hits kept and flagged), none (no hits)."""
     if not 2 <= len(q.query.strip()) <= 300:

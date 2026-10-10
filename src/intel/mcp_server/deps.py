@@ -41,7 +41,7 @@ class Deps:
     kinds: dict[str, str] = field(default_factory=dict)
     evidence: EvidenceIndex | None = None
     min_evidence: float | None = None  # top rerank score below which search says "not found" (calibrated, ADR 0027)
-    strong_evidence: float = 0.47  # top rerank score from which evidence counts as strong
+    strong_evidence: float = 0.5  # top rerank score from which evidence counts as strong
     min_support: float | None = None  # reranker score a claim needs from its cited source to count as supported
 
     @classmethod
@@ -82,4 +82,5 @@ def _evidence(settings: McpSettings) -> EvidenceIndex | None:
         (lambda: load(embedder_key)) if embedder_key else None,
         (lambda: load_reranker(reranker_key)) if reranker_key else None,
         rerank_pool=settings.intel_rag_rerank_pool,
+        mode=settings.intel_rag_mode,
     )

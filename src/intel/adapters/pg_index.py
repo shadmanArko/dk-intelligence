@@ -28,7 +28,9 @@ class PgEvidenceIndex(EvidenceIndex):
         embedder: Callable[[], Embedder] | None,
         reranker: Callable[[], Rerank] | None = None,
         rerank_pool: int = store.POOL,
+        mode: str = "dense",
     ) -> None:
+        self.mode = mode
         self.dsn = dsn
         self.rerank_pool = rerank_pool
         self._embedder_factory, self._reranker_factory = embedder, reranker
@@ -79,7 +81,7 @@ class PgEvidenceIndex(EvidenceIndex):
         with self._connect() as conn:
             pack_id = self._pack(conn)
             qvec = emb.query(q.query) if emb is not None else None
-            mode = "hybrid" if qvec is not None else "lexical"
+            mode = self.mode if qvec is not None else "lexical"
             reranker = (lambda query, docs: rr([(query, d) for d in docs])) if rr is not None else None
             hits = store.search(
                 conn,

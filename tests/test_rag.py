@@ -240,10 +240,12 @@ def test_the_index_adapter_end_to_end(pg):
         pg, lambda: HashEmbedder(), lambda: lambda pairs: [0.9 if "Fleisch" in p else 0.1 for _, p in pairs]
     )
     out = evidence.search(idx, EvidenceQuery("reviews", "zu wenig Fleisch", limit=3), min_evidence=0.5)
-    assert out["found"] and out["mode"] == "hybrid" and out["hits"][0]["trust"] == "untrusted"
+    assert out["found"] and out["mode"] == "dense" and out["hits"][0]["trust"] == "untrusted"
     assert all("Fleisch" in h["text"] for h in out["hits"]) and out["evidence_strength"] == 0.9
     nothing = evidence.search(idx, EvidenceQuery("reviews", "sushi in Hamburg", limit=3), min_evidence=0.95)
     assert not nothing["found"] and nothing["hits"] == [] and "not found" in nothing["guidance"]
+    hybrid = PgEvidenceIndex(pg, lambda: HashEmbedder(), None, mode="hybrid")
+    assert evidence.search(hybrid, EvidenceQuery("reviews", "zu wenig Fleisch"), None)["mode"] == "hybrid"
     broken = PgEvidenceIndex(pg, lambda: (_ for _ in ()).throw(MemoryError()))
     assert evidence.search(broken, EvidenceQuery("reviews", "Fleisch"), None)["mode"] == "lexical"
     srcs = evidence.get_sources(idx, [out["hits"][0]["cite"], "R-NOTHERE0"])

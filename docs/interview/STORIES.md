@@ -429,3 +429,35 @@ from 4.1k tokens (owner) to 650 (writer). 346 tests, 83.83% coverage.
 **Trade-off I would defend.** Stdio profiles are least privilege, not a security boundary: any local process can
 start `--profile owner`. I said so in the ADR instead of pretending otherwise. Real enforcement comes with signed
 tokens over HTTP, and the design already routes Phase 5 agents there.
+
+---
+
+## P4.2 · Choosing a RAG stack by measurement, and letting the test split overrule a favourite
+
+**Situation.** The owner asked for "the best embedding model in the world" and as little hallucination as
+possible. Leaderboards disagree, none covers German restaurant reviews, and the VPS has no GPU.
+
+**Task.** Pick the retrieval stack on our own data, honestly, within a CPU budget, and make "I don't know" a
+first-class answer.
+
+**Action.**
+- **Built a golden set:** 20 real questions plus 10 adversarial ones (personal-data bait, injection, allergens,
+  prices, topics the corpus doesn't cover). Labelled **blind**: candidates pooled from every system, shuffled, with
+  system and rank hidden. That came to 2,626 judged pairs, so no system was penalised for hits nobody had judged.
+- **Benchmarked** 7 embedding models, dense against hybrid, 2 rerankers and 3 rerank depths, with bootstrap
+  intervals. Chose on dev; looked at test once.
+- **Measured CPU latency** before choosing. The best reranker on dev took 73 s per query on CPU, so it became an
+  owner option (a GPU), not the default.
+- **Replaced a hard "not found" threshold** with evidence levels, after seeing it hide real answers to broad
+  questions.
+
+**Result.**
+- The dev favourite (0.85 nDCG@10) fell to 0.67 on test.
+- The CPU stack chosen on dev, Harrier-0.6B + a cross-encoder reranker (ONNX int8, about 1.1 s per query), scores
+  **0.84 on both splits**, against 0.23–0.51 for keyword or small-model search.
+- Hybrid search lost to dense everywhere.
+- `verify_citations` flags invented citations and claims that their source doesn't support.
+
+**Trade-off I would defend.** I shipped the second-best reranker on purpose. A model that's 1 point better on dev
+but 60× slower on the hardware we actually have isn't better for the business. The GPU option is written down with
+its numbers, so the owner can buy it later on evidence.

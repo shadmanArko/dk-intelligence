@@ -52,7 +52,15 @@
    - Choices are made on the dev split; the test split is looked at only at milestones.
    - **The rule: ship the best combination that fits the VPS.** A larger model needs at least +5 nDCG@10 on test
      to bring the owner a choice.
-   - **The result:** see `docs/results/P4_2_rag_reviews.md` and the table below, filled in at the end of P4.2.
+   - **The result (2,626 judged pairs; `docs/results/P4_2_rag_reviews.md`):** the serving stack is
+     **Harrier-OSS-v1-0.6B (dense) + bge-reranker-v2-m3 on the top 20, both ONNX int8 on CPU.**
+     - nDCG@10 is 0.84 on dev and 0.84 on test; about 1.1 s per query on CPU.
+     - Harrier and BGE-M3 tied on dev; dev recall broke the tie.
+   - **Qwen3-Reranker-0.6B is better on dev (0.85)** but takes about 73 s per query on a 4-thread CPU, so it needs
+     a GPU. Recorded as an owner option, not shipped.
+   - **Hybrid search lost to dense for every model.** Serving is dense; lexical remains the fallback.
+   - **Evidence levels** (dev calibration): none below 0.003, weak from 0.003 to 0.5, strong from 0.5. A hard
+     "not found" threshold was rejected, because it hid real answers to broad questions.
 6. **Serving has no torch.** The embedder and reranker run through onnxruntime and tokenizers (int8), on the Mac
    now and the VPS later. Torch is only in the Mac-only `bench` group.
 
