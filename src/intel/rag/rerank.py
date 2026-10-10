@@ -45,7 +45,7 @@ def _qwen(model_id: str, batch_size: int = 16) -> Scorer:
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(model_id, padding_side="left")
     model = AutoModelForCausalLM.from_pretrained(model_id, dtype=torch.float16 if device == "mps" else None)
-    model = model.to(device).eval()  # type: ignore[arg-type]  # transformers stubs: .to() typed oddly
+    model = model.to(device).eval()  # type: ignore[arg-type,unused-ignore]  # odd stubs; untyped in CI (no bench group)
     yes, no = tok.convert_tokens_to_ids("yes"), tok.convert_tokens_to_ids("no")
     prefix = (
         "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct "
