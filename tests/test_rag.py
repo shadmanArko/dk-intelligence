@@ -335,3 +335,25 @@ def test_a_missing_reranker_degrades_instead_of_failing(pg):
     out = evidence.search(idx, EvidenceQuery("reviews", "zu wenig Fleisch"), 0.003)
     assert out["found"] and out["evidence"] == "unscored" and out["evidence_strength"] is None
     assert idx.support([("a", "b")]) is None  # verify_citations then reports 'unverified', never a crash
+
+
+def test_the_builder_role_loads_without_database_privileges(pg):
+    """Exactly what `intel pack init` sets up: rag_builder owns schema rag but has no CREATE on the database."""
+    import psycopg
+    from psycopg import sql
+
+    pw = uuid.uuid4().hex
+    with psycopg.connect(pg, autocommit=True) as c:
+        role = f"rb_{uuid.uuid4().hex[:8]}"
+        c.execute(sql.SQL("create role {} login password {}").format(sql.Identifier(role), sql.Literal(pw)))
+        c.execute(sql.SQL("alter schema rag owner to {}").format(sql.Identifier(role)))
+        c.execute(sql.SQL("alter table rag.pack owner to {}").format(sql.Identifier(role)))
+        c.execute(sql.SQL("alter table rag.chunk owner to {}").format(sql.Identifier(role)))
+        c.execute(sql.SQL("revoke create on database {} from public").format(sql.Identifier(c.info.dbname)))
+    builder = psycopg.conninfo.make_conninfo(pg, user=role, password=pw)
+    with psycopg.connect(builder, autocommit=True) as c:
+        store.ensure_schema(c)  # must not need CREATE on the database
+        emb = HashEmbedder()
+        chunks = review_chunks(REVIEWS, LISTINGS)
+        rows = [{**ch.row(), "posted_at": ch.posted_at.to_pydatetime()} for ch in chunks]
+        assert store.load_pack(c, "kp-b", {}, rows, emb.documents([ch.embed_text for ch in chunks])) == 4

@@ -75,6 +75,10 @@ class Hit:
 
 
 def ensure_schema(conn: psycopg.Connection[Any]) -> None:
+    """Tables and indexes inside schema `rag`. The schema itself is created by a privileged role (pack init or a
+    migration); `create schema if not exists` would need CREATE on the database even when the schema exists."""
+    if conn.execute("select 1 from pg_namespace where nspname = 'rag'").fetchone() is None:
+        conn.execute("create schema rag")  # privileged callers only (tests, the benchmark DB)
     conn.execute(SCHEMA.read_text())
 
 
