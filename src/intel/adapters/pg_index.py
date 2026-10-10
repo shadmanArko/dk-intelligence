@@ -112,6 +112,16 @@ class PgEvidenceIndex(EvidenceIndex):
                 ).fetchall()
         return pack_id, rows
 
+    def own_posts(self, aspects: list[str]) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            pack_id = self._pack(conn)
+            with conn.cursor(row_factory=dict_row) as cur:
+                return cur.execute(
+                    "select cite, text, aspects, metrics from rag.chunk "
+                    "where pack_id = %s and collection = 'own_posts' and aspects && %s::text[]",
+                    (pack_id, aspects),
+                ).fetchall()
+
     def support(self, pairs: list[tuple[str, str]]) -> list[float] | None:
         rr = self._rr()
         return None if rr is None else rr(pairs)

@@ -1,8 +1,9 @@
 """The shared middleware every dk_intel server runs, outermost first (architecture §3.3).
 
 P4.1: context (request id, principal), audit (hash chain, denials included), profile gate (lists filtered, calls,
-reads and gets refused), copy guard (blocked words in our own copy fields). Error masking and rate limiting are
-FastMCP's own middleware, added by the gateway. Metrics, cache, egress and budget arrive in P4.4-P4.6.
+reads and gets refused), copy guard (blocked words in our own copy fields). P4.4: budget (a token cap per tool).
+Error masking, rate limiting and the response-size backstop are FastMCP's own middleware, added by the gateway.
+Metrics, cache and egress arrive in P4.5-P4.6.
 """
 
 from __future__ import annotations
@@ -191,3 +192,84 @@ def _has_blocked(value: Any, words: list[str]) -> bool:
     if isinstance(value, dict):
         return any(_has_blocked(v, words) for v in value.values())
     return False
+
+
+def est_tokens(data: Any) -> int:
+    """The budget estimate: UTF-8 bytes of the compact JSON / 3."""
+    return len(json.dumps(data, default=str, ensure_ascii=False, separators=(",", ":")).encode()) // 3
+
+
+def _longest_list(value: Any, path: tuple[Any, ...] = ()) -> tuple[tuple[Any, ...], int] | None:
+    best: tuple[tuple[Any, ...], int] | None = None
+    if isinstance(value, dict):
+        items: Any = value.items()
+    elif isinstance(value, list):
+        if len(value) > 1:
+            best = (path, len(value))
+        items = enumerate(value)
+    else:
+        return None
+    for k, v in items:
+        sub = _longest_list(v, (*path, k))
+        if sub is not None and (best is None or sub[1] > best[1]):
+            best = sub
+    return best
+
+
+class BudgetMiddleware(Middleware):
+    """A result over its tool's token budget loses items from its longest list until it fits, and says so: the client
+    gets a complete, valid answer with a hint to narrow the request, never JSON cut in the middle."""
+
+    def __init__(self, budgets: dict[str, int], log: AuditLog) -> None:
+        self.budgets, self.log = budgets, log
+
+    async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        result = await call_next(context)
+        data = getattr(result, "structured_content", None)
+        budget = self.budgets.get(context.message.name)
+        if budget is None or not isinstance(data, dict) or est_tokens(data) <= budget:
+            return result
+        data = json.loads(json.dumps(data, default=str))
+        before = est_tokens(data)
+        cut = 0
+        while est_tokens(data) > budget and (found := _longest_list(data)) is not None:
+            node = data
+            for k in found[0]:
+                node = node[k]
+            node.pop()
+            cut += 1
+        data["budget_note"] = (
+            f"result trimmed to the {budget}-token budget ({cut} list items removed): narrow the request "
+            "(a filter, a smaller limit or response_format='concise')"
+        )
+        self.log.append(
+            request_id=REQUEST_ID.get(), kind="budget_cut", name=context.message.name, before=before, cut=cut
+        )
+        return ToolResult(content=json.dumps(data, default=str), structured_content=data)
+
+
+ENUM_ARGS = frozenset(
+    {"platform", "source", "sort", "direction", "section", "response_format", "content_type", "lang", "collection",
+     "size", "tag_type", "format", "occasion_tone"}
+)  # fmt: skip
+
+
+def _lower_enums(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            k: v.strip().lower() if k in ENUM_ARGS and isinstance(v, str) else _lower_enums(v) for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_lower_enums(v) for v in value]
+    return value
+
+
+class NormaliseArgs(Middleware):
+    """Models often send "TikTok" or "Instagram " for an enum value; the tool-use eval saw 11 such refusals and a
+    retry each (tokens). Enum-like arguments are lower-cased and trimmed before validation; nothing else changes."""
+
+    async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        args = context.message.arguments
+        if isinstance(args, dict):
+            context.message.arguments = _lower_enums(args)
+        return await call_next(context)

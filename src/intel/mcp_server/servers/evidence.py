@@ -47,8 +47,12 @@ def build_evidence_server(deps: Deps) -> FastMCP:
     @mcp.tool(annotations=READ_ONLY, meta=S2, timeout=15.0)
     def search_reviews(
         query: Query,
-        district: str | None = None,
-        area: Annotated[str | None, Field(description="a Berlin planning area, e.g. Leopoldplatz")] = None,
+        district: Annotated[
+            str | None, Field(description="a Berlin district (Bezirk), e.g. Mitte, Neukölln, Friedrichshain-Kreuzberg")
+        ] = None,
+        area: Annotated[
+            str | None, Field(description="a smaller planning area inside a district, e.g. Leopoldplatz")
+        ] = None,
         aspect: Annotated[str | None, Field(description="e.g. delivery_time, portion, taste, rice, meat")] = None,
         rating_min: Rating = None,
         rating_max: Rating = None,

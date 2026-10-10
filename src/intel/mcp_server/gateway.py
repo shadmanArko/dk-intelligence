@@ -14,21 +14,31 @@ from typing import Any
 import yaml
 from fastmcp import FastMCP
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 from fastmcp.server.transforms import ToolTransform
 from fastmcp.tools.tool_transform import ArgTransformConfig, ToolTransformConfig
 
 from intel.capabilities.types import ToolProblem
 from intel.mcp_server.deps import Deps
-from intel.mcp_server.kit.middleware import AuditMiddleware, ContextMiddleware, CopyGuard, ProfileGate
+from intel.mcp_server.kit.middleware import (
+    AuditMiddleware,
+    BudgetMiddleware,
+    ContextMiddleware,
+    CopyGuard,
+    NormaliseArgs,
+    ProfileGate,
+)
 from intel.mcp_server.servers.brand import build_brand_server
 from intel.mcp_server.servers.evidence import build_evidence_server
 from intel.mcp_server.servers.models import build_models_server
+from intel.mcp_server.servers.studio import build_studio_server
 
 HERE = Path(__file__).parent
 SERVERS: dict[str, Callable[[Deps], FastMCP]] = {
     "models": build_models_server,
     "brand": build_brand_server,
     "evidence": build_evidence_server,
+    "studio": build_studio_server,
 }
 TOOLS_API = "1.0"
 
@@ -36,6 +46,12 @@ TOOLS_API = "1.0"
 @cache
 def profiles() -> dict[str, dict[str, Any]]:
     data: dict[str, dict[str, Any]] = yaml.safe_load((HERE / "profiles.yaml").read_text())
+    return data
+
+
+@cache
+def budgets() -> dict[str, int]:
+    data: dict[str, int] = yaml.safe_load((HERE / "budgets.yaml").read_text())
     return data
 
 
@@ -92,8 +108,11 @@ def build_gateway(profile: str, deps: Deps, only: str | None = None) -> FastMCP:
             disabled=deps.disabled_tools,
         )
     )
+    gw.add_middleware(NormaliseArgs())
     gw.add_middleware(RateLimitingMiddleware(max_requests_per_second=10.0, burst_capacity=20))
     gw.add_middleware(CopyGuard(lambda: _blocked_words(deps), deps.audit))
+    gw.add_middleware(BudgetMiddleware(budgets(), deps.audit))
+    gw.add_middleware(ResponseLimitingMiddleware(max_size=32_768))  # the last backstop (~11k tokens)
     return gw
 
 

@@ -56,6 +56,13 @@ CORE_STEPS: dict[str, tuple[str, str]] = {
         "Sends the package to the VPS inbox (an upload-only door: cannot read or delete anything) and checks "
         "the bytes arrived exactly.",
     ),
+    "knowledge": (
+        "Rebuild the knowledge pack",
+        "Rebuilds the search index the AI assistants use (competitor reviews, our posts, creator posts, the brand "
+        "book, what lifts engagement) from this week's data. Only new text is embedded. The new pack goes live only "
+        "if it passes its gate: no question it could answer last week is lost, and no personal data is left in it. "
+        "Otherwise last week's stays. Never fails the model run.",
+    ),
     "report": (
         "Report the result",
         "Uploads a short run report; the VPS turns it into a Telegram message (new model waiting, no "
@@ -103,6 +110,15 @@ CORE_NODES: list[dict[str, Any]] = [
     {"id": "judge", "label": "Judge (7 checks)", "lane": "mac", "col": 3, "row": 1, "step": "judge"},
     {"id": "package", "label": "Package", "lane": "mac", "col": 4, "row": 1, "step": "package"},
     {"id": "upload", "label": "VPS inbox", "sub": "upload-only", "lane": "vps", "col": 5, "row": 1, "step": "upload"},
+    {
+        "id": "knowledge",
+        "label": "Knowledge pack",
+        "sub": "gated",
+        "lane": "mac",
+        "col": 3,
+        "row": 3,
+        "step": "knowledge",
+    },
     {"id": "report", "label": "Run report", "sub": "→ Telegram", "lane": "vps", "col": 5, "row": 2, "step": "report"},
     {
         "id": "approve",
@@ -134,6 +150,9 @@ CORE_EDGES: list[tuple[str, str]] = [
     ("judge", "package"),
     ("package", "upload"),
     ("judge", "report"),
+    ("market", "knowledge"),
+    ("pull", "knowledge"),
+    ("knowledge", "report"),
     ("upload", "approve"),
     ("approve", "serve"),
     ("serve", "ledger_src"),

@@ -350,3 +350,39 @@ def test_opportunities_join_competitor_weak_spots_with_our_winning_posts():
     assert [p["cite"] for p in out[0]["our_posts"]] == ["P-1"] and len(out[0]["our_posts"][0]["text"]) == 140
     assert out[0]["gap_areas"] == [{"name": "Leopoldplatz", "district": "Mitte"}] and "not a fact" in out[0]["note"]
     assert "gap_areas" not in patterns.opportunities(complaints, posts)[0]
+
+
+# ---------- the lifecycle (intel pack load and the Sunday step share it) ----------
+
+
+def test_load_and_gate_activates_a_good_pack_and_keeps_a_refused_one_staged(pg, tmp_path, monkeypatch):  # noqa: F811
+    import psycopg
+
+    from intel.rag import lifecycle
+    from intel.settings import McpSettings
+
+    mip, market = _snapshot(tmp_path)
+    root = tmp_path / "knowledge"
+    pid = kp.build_brand_pack(mip, market, root, indexer=make_indexer(HashEmbedder(), tmp_path / "cache"))
+    s = McpSettings(intel_pack_dir=root, intel_rag_admin_dsn=pg, intel_rag_reranker="", intel_rag_mode="dense")
+    out = lifecycle.load_and_gate(s, pid, echo=lambda _: None)
+    assert out["active"] and out["gate"]["passed"] and kp.active_id(root) == pid
+    assert (root / "gates" / f"{pid}.json").exists()
+
+    monkeypatch.setattr(lifecycle.gate, "evaluate", lambda *a, **k: gate.GateResult(pid, None, False, ["worse"]))
+    pid2 = kp.build_brand_pack(
+        mip, market, root, now=dt.datetime(2030, 1, 1, tzinfo=UTC),
+        indexer=make_indexer(HashEmbedder(), tmp_path / "cache"),
+    )  # fmt: skip
+    refused = lifecycle.load_and_gate(s, pid2, echo=lambda _: None)
+    assert not refused["active"] and kp.active_id(root) == pid  # the files side never moved
+    with psycopg.connect(pg) as c:
+        assert store.active_pack(c) == pid
+        assert c.execute("select status from rag.pack where pack_id = %s", (pid2,)).fetchone()[0] == "staged"
+
+
+def test_the_sunday_step_skips_without_a_knowledge_database(monkeypatch):
+    from intel.rag import lifecycle
+
+    monkeypatch.setenv("INTEL_RAG_ADMIN_DSN", "")
+    assert lifecycle.weekly_refresh(None)["status"] == "skipped"

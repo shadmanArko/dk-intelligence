@@ -492,3 +492,34 @@ index updates safe enough to run unattended on Sundays.
 **Trade-off I would defend.** On the test split, dense search alone was 0.04 ahead of the reranked stack. I kept the
 reranker: dev decides (5 questions can't separate them), and the reranker's score is what lets the system say "not
 found". The weak spot ("Mela" isn't linked to "festival") is written down with a measurable fix, not hidden.
+
+## P4.4 · Workflow tools, measured tokens, and the finding that the scorer doesn't read captions
+
+**Situation.** The owner wanted AI help with content plans and ideas, "spending very few tokens", at €0, and usable
+from any model. A naive design gives the client 18 primitive tools and lets it chain 8 calls per plan.
+
+**Task.** Design the content workflow so any client model can do it cheaply and safely, then prove it with a real
+plan and a model-agnostic eval.
+
+**Action.**
+- **Two workflow tools:**
+  - `grounding_pack` does in one parallel call what took 8, and degrades part by part;
+  - `evaluate_drafts` gives one verdict per draft, and a missing score never punishes a draft.
+- **Prompts as versioned code,** linted in CI: tools exist and are allowed for every profile, no blocked words,
+  size limits.
+- **Hard token budgets** that trim lists rather than truncate JSON.
+- **Measured the contract with a free local model** (gpt-oss:20b via Ollama, 26 tasks), then fixed what it
+  stumbled on: missing descriptions, capitalised enums.
+- **Made a real 14-day plan** through the tools and recorded the loop's numbers.
+
+**Result.**
+- 69% fewer result tokens for grounding.
+- Tool-use success 90% on the first run (floor 80%), 100% on dev and held out after fixing what it found.
+- 100% of kept captions pass the checks; the mean score rose from 0.565 to 0.589.
+- **The finding:** different captions in the same slot scored identically. The content scorer ranks *when and in
+  what format*, not *what is written*. The loop's score gain came from moving two carousels to reels.
+
+**Trade-off I would defend.** I could have shown "the score went up after rewriting" and stopped. Instead the
+results say the rewrite loop can't optimise wording with this scorer, keep the loop capped at 2 rounds, and hand
+the question "should captions carry weight?" to the next model retrain and its judge, instead of tuning anything
+against a test set.

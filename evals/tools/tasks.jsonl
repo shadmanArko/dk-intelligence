@@ -1,0 +1,26 @@
+{"id": "t01", "split": "dev", "task": "What do customers complain about most at Berlin biryani places?", "expect": [["competitor_complaints", "search_reviews"]]}
+{"id": "t02", "split": "dev", "task": "Find customer reviews that say the food arrived cold in Neukölln.", "expect": [["search_reviews"]], "args": {"search_reviews": {"district": "Neukölln"}}}
+{"id": "t03", "split": "dev", "task": "Which of our own posts about Borhani did best?", "expect": [["search_posts"]], "args": {"search_posts": {"source": "own"}}}
+{"id": "t04", "split": "dev", "task": "Which occasions are coming up in the next 14 days that matter for Instagram?", "expect": [["upcoming_occasions", "grounding_pack"]]}
+{"id": "t05", "split": "dev", "task": "Check this Instagram caption against our brand rules: 'Best biryani in Berlin! 100% halal'", "expect": [["check_drafts", "evaluate_drafts"]]}
+{"id": "t06", "split": "dev", "task": "Score this Facebook caption if we post it on Friday 16 October 2026 at 18:30 Berlin time: 'Samstag gibt es frische Kacchi in Berlin. Slow-cooked mutton, sealed in the pot.'", "expect": [["score_drafts", "evaluate_drafts"]]}
+{"id": "t07", "split": "dev", "task": "What does our brand book say about how Dhaka Kacchi started?", "expect": [["search_brand"]]}
+{"id": "t08", "split": "dev", "task": "What does a regular box cost and on which days do we deliver?", "expect": [["get_facts"]]}
+{"id": "t09", "split": "dev", "task": "Which Berlin areas score high for us but have no biryani place yet?", "expect": [["community_areas"]]}
+{"id": "t10", "split": "dev", "task": "What kinds of topics lift engagement on TikTok in Berlin?", "expect": [["trend_signals"]], "args": {"trend_signals": {"platform": "tiktok"}}}
+{"id": "t11", "split": "dev", "task": "Find Berlin food creators on TikTok we could work with.", "expect": [["find_creators"]]}
+{"id": "t12", "split": "dev", "task": "How many website visits did our posts bring, and where do people drop off?", "expect": [["funnel_status"]]}
+{"id": "t13", "split": "dev", "task": "Are our production models healthy and up to date?", "expect": [["model_status"]]}
+{"id": "t14", "split": "dev", "task": "Give me everything I need to plan Instagram posts for the next 14 days in one go.", "expect": [["grounding_pack"]], "args": {"grounding_pack": {"platform": "instagram"}}}
+{"id": "t15", "split": "dev", "task": "Show me how Berlin creators post about brunch spots.", "expect": [["search_posts"]], "args": {"search_posts": {"source": "creators"}}}
+{"id": "t16", "split": "dev", "task": "What hashtag count and caption rules apply to Instagram reels for us?", "expect": [["brand_rules"]]}
+{"id": "t17", "split": "dev", "task": "Show me the full source of the citation R-8N5CTWZD.", "expect": [["get_sources"]]}
+{"id": "t18", "split": "dev", "task": "Is this sentence supported by its citation? 'Customers complained the biryani had no salt and no flavour [R-8N5CTWZD].'", "expect": [["verify_citations"]]}
+{"id": "t19", "split": "dev", "task": "What do reviewers in Mitte write about late deliveries?", "expect": [["search_reviews"]], "args": {"search_reviews": {"district": "Mitte"}}}
+{"id": "t20", "split": "dev", "task": "Judge these two Instagram drafts for Saturday 17 October 2026 at 12:00 Berlin time and tell me which to keep: A) 'Samstag: frische Kacchi in Berlin. Fresh kacchi, sealed and slow-cooked. #kacchibiryani #berlinfood #biryaniberlin' B) 'Nr. 1 Biryani!!!'", "expect": [["evaluate_drafts", "check_drafts"]]}
+{"id": "h01", "split": "held_out", "task": "Where do competitors disappoint customers on portion size?", "expect": [["competitor_complaints", "search_reviews"]]}
+{"id": "h02", "split": "held_out", "task": "Find our own posts about the Mela event.", "expect": [["search_posts"]], "args": {"search_posts": {"source": "own"}}}
+{"id": "h03", "split": "held_out", "task": "Are there days in the next two weeks when we should not post sales on Facebook?", "expect": [["upcoming_occasions", "grounding_pack"]]}
+{"id": "h04", "split": "held_out", "task": "Which rice dishes get more engagement than usual on YouTube?", "expect": [["trend_signals"]], "args": {"trend_signals": {"platform": "youtube"}}}
+{"id": "h05", "split": "held_out", "task": "Check this TikTok caption: 'Der Topf geht auf. Kacchi in Berlin, langsam gegart. #kacchi #berlinfood #biryani'", "expect": [["check_drafts", "evaluate_drafts"]]}
+{"id": "h06", "split": "held_out", "task": "Which areas in Mitte should we target with ads?", "expect": [["community_areas"]]}

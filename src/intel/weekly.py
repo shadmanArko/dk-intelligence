@@ -664,6 +664,30 @@ def _run_weekly(
         rep.update(status="error", failed_step=step, error=f"{type(e).__name__}: {e}"[:500])
         prog.fail(step, rep["error"])
         log(traceback.format_exc())
+    if rep.get("pull_id"):  # the knowledge pack: a soft step, it never fails the model run
+        prog.start("knowledge")
+        try:
+            from intel.rag.lifecycle import weekly_refresh
+
+            k = weekly_refresh(d / "pulls" / rep["pull_id"], log)
+            rep["knowledge"] = {key: v for key, v in k.items() if key != "gate"} | {
+                "gate_passed": (k.get("gate") or {}).get("passed"),
+                "gate_lost": (k.get("gate") or {}).get("lost"),
+            }
+            if k["status"] == "skipped":
+                prog.skip("knowledge", k["why"])
+            else:
+                prog.done(
+                    "knowledge",
+                    f"{k['pack']} {'is live' if k['status'] == 'active' else 'refused by its gate: last week stays'}",
+                    {"chunks": k.get("chunks"), "newly embedded": k.get("newly_embedded")},
+                )
+        except Exception as e:
+            rep["knowledge"] = {"status": "error", "error": f"{type(e).__name__}: {e}"[:300]}
+            prog.fail("knowledge", rep["knowledge"]["error"])
+            log(traceback.format_exc())
+    else:
+        prog.skip("knowledge", "no pull this week")
     if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key and rep.get("pull_id"):
         try:  # reference profiles for the VPS's model monitoring (ADR 0018); never fails the run
             new_runs = [rd for rd, rr in results if rr["kind"].removesuffix("_run") in SCORERS]

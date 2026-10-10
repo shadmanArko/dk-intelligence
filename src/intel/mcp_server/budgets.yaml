@@ -1,0 +1,22 @@
+# Token budget per tool result (estimated as UTF-8 bytes / 3), the worst case a client must ever pay for one call
+# (architecture §2, "Budget" columns, max). The budget middleware trims the longest list of an over-budget result and
+# says so; FastMCP's ResponseLimitingMiddleware (32 KB) is the last backstop. Ratchet: budgets only fall unless an
+# ADR says otherwise (CI-tested).
+score_drafts: 8000
+check_drafts: 8000
+evaluate_drafts: 4000
+grounding_pack: 3500
+model_status: 1500
+upcoming_occasions: 3000
+competitor_complaints: 3000
+community_areas: 3000
+funnel_status: 2500
+find_creators: 3000
+search_reviews: 4000
+search_brand: 2500
+search_posts: 4000
+get_sources: 6000
+verify_citations: 4000
+trend_signals: 2000
+brand_rules: 2500
+get_facts: 2500
