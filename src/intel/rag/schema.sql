@@ -1,6 +1,6 @@
--- The RAG store (architecture §4.0, §4.5). Additive only (ADR 0015). Run by the builder role; the extension is
--- created once by the superuser (`intel pack init` on the Mac; migration 0007 on the VPS in P4.5).
-create schema if not exists rag;
+-- The RAG store (architecture §4.0, §4.5). Additive only (ADR 0015). Run by the builder role. The superuser creates
+-- the extension and the schema `rag` (owned by rag_builder) once: `intel pack init` on the Mac, migration 0007 on the
+-- VPS. The builder has no CREATE on the database, so this file never creates the schema itself.
 
 create table if not exists rag.pack (
     pack_id     text primary key,
