@@ -321,3 +321,17 @@ def test_evidence_levels_never_hide_a_broad_question():
     assert not none["found"] and none["evidence"] == "none" and none["hits"] == []
     unscored = evidence.search(FakeIndex([{**ROWS[0], "rerank": None}]), EvidenceQuery("reviews", "kalt"), 0.003)
     assert unscored["evidence"] == "unscored" and unscored["found"]
+
+
+def test_a_missing_reranker_degrades_instead_of_failing(pg):
+    from intel.adapters.pg_index import PgEvidenceIndex
+
+    _load(pg)
+
+    def broken():  # type: ignore[no-untyped-def]
+        raise OSError("model files missing")
+
+    idx = PgEvidenceIndex(pg, lambda: HashEmbedder(), broken)
+    out = evidence.search(idx, EvidenceQuery("reviews", "zu wenig Fleisch"), 0.003)
+    assert out["found"] and out["evidence"] == "unscored" and out["evidence_strength"] is None
+    assert idx.support([("a", "b")]) is None  # verify_citations then reports 'unverified', never a crash

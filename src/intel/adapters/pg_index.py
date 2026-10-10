@@ -37,6 +37,7 @@ class PgEvidenceIndex(EvidenceIndex):
         self._embedder: Embedder | None = None
         self._reranker: Rerank | None = None
         self._embedder_failed = False
+        self._reranker_failed = False
         self._lock = threading.Lock()
 
     def _connect(self) -> psycopg.Connection[Any]:
@@ -61,8 +62,11 @@ class PgEvidenceIndex(EvidenceIndex):
 
     def _rr(self) -> Rerank | None:
         with self._lock:
-            if self._reranker is None and self._reranker_factory is not None:
-                self._reranker = self._reranker_factory()
+            if self._reranker is None and not self._reranker_failed and self._reranker_factory is not None:
+                try:
+                    self._reranker = self._reranker_factory()
+                except Exception:  # noqa: BLE001 - degrade to unranked hits, reported as evidence=unscored
+                    self._reranker_failed = True
             return self._reranker
 
     def _pack(self, conn: psycopg.Connection[Any]) -> str:
