@@ -37,12 +37,21 @@ train = [
     "mlflow>=3,<4",
     "pandera>=0.34,<0.35",
 ]          # Mac only; the VPS image installs without it
+bench = [            # Mac only, opt-in (`--group bench`): embedding and reranker benchmarks; never in any image
+    "sentence-transformers==6.1.0",
+    "torch==2.14.0",
+    "transformers==5.17.0",
+]
+rag = [              # the serving side of RAG: ONNX runtime, no torch
+    "onnxruntime==1.30.0",
+    "tokenizers==0.23.2",
+]
 mcp = [
     "fastmcp==4.0.11",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
 ]
 
 [tool.uv]
-default-groups = ["dev", "train", "mcp"]
+default-groups = ["dev", "train", "mcp", "rag"]
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -147,7 +156,7 @@ ignore_errors = true
 [tool.coverage.run]
 source = ["intel"]
 branch = true
-omit = ["src/intel/cli.py"]           # thin typer wrapper; its commands are tested through the functions they call
+omit = ["src/intel/cli.py", "src/intel/rag/bench.py"]   # typer wrapper; the Mac-only benchmark driver (torch)
 
 [tool.coverage.report]
 precision = 2                         # compare unrounded: with 0 decimals, 75.99% passed a 76% floor

@@ -82,6 +82,18 @@ class McpSettings(BaseSettings):
     intel_mcp_audit_dir: Path | None = None  # default: <data>/mcp/audit
     intel_mcp_disabled_tools: str = ""  # kill switch: comma-separated tool names
     intel_pack_dir: Path | None = None  # default: <data>/knowledge
+    intel_rag_dsn: str | None = None  # read-only role on the knowledge database (rag_reader)
+    intel_rag_admin_dsn: str | None = None  # the builder role: loads packs (`intel pack load`), never the server
+    # Chosen by the P4.2 benchmark (ADR 0027, docs/results/P4_2_rag_reviews.md): the best stack that runs on a CPU
+    intel_rag_embedder: str | None = "onnx:harrier-0.6b"  # int8 ONNX, ~140 ms per query on CPU
+    intel_rag_reranker: str | None = "onnx:bge-reranker-v2-m3"  # int8 ONNX cross-encoder, ~1 s for 20 pairs
+    intel_rag_mode: str = "dense"  # dense beat hybrid for every model on dev; hybrid stays available
+    intel_rag_rerank_pool: int = 20
+    # Evidence levels by the top rerank score (dev calibration, ADR 0027): >= strong -> "strong"; between -> "weak"
+    # (hits returned and flagged: broad questions score low against any single review); < min -> "none".
+    intel_rag_min_evidence: float | None = 0.003
+    intel_rag_strong_evidence: float = 0.5
+    intel_rag_min_support: float | None = 0.5  # a claim needs this rerank score from a cited source
 
     def path(self, p: Path) -> Path:
         p = p.expanduser()

@@ -7,6 +7,7 @@ from typing import Any
 
 from intel.adapters.intel_api import HttpIntelApi, ScoringLimits
 from intel.adapters.pack import PackBrandSource
+from intel.capabilities.evidence import EvidenceIndex
 from intel.capabilities.ports import BrandSource, IntelApi
 from intel.capabilities.types import ToolProblem
 from intel.mcp_server.kit.audit import AuditLog
@@ -38,6 +39,10 @@ class Deps:
     principal: str
     disabled_tools: frozenset[str] = frozenset()
     kinds: dict[str, str] = field(default_factory=dict)
+    evidence: EvidenceIndex | None = None
+    min_evidence: float | None = None  # top rerank score below which search says "not found" (calibrated, ADR 0027)
+    strong_evidence: float = 0.5  # top rerank score from which evidence counts as strong
+    min_support: float | None = None  # reranker score a claim needs from its cited source to count as supported
 
     @classmethod
     def from_settings(cls, settings: McpSettings, principal: str) -> Deps:
@@ -57,4 +62,25 @@ class Deps:
             principal=principal,
             disabled_tools=settings.disabled_tools,
             kinds=kinds,
+            evidence=_evidence(settings),
+            min_evidence=settings.intel_rag_min_evidence,
+            strong_evidence=settings.intel_rag_strong_evidence,
+            min_support=settings.intel_rag_min_support,
         )
+
+
+def _evidence(settings: McpSettings) -> EvidenceIndex | None:
+    if not settings.intel_rag_dsn:
+        return None
+    from intel.adapters.pg_index import PgEvidenceIndex
+    from intel.rag.embed import load
+    from intel.rag.rerank import load_reranker
+
+    embedder_key, reranker_key = settings.intel_rag_embedder, settings.intel_rag_reranker
+    return PgEvidenceIndex(
+        settings.intel_rag_dsn,
+        (lambda: load(embedder_key)) if embedder_key else None,
+        (lambda: load_reranker(reranker_key)) if reranker_key else None,
+        rerank_pool=settings.intel_rag_rerank_pool,
+        mode=settings.intel_rag_mode,
+    )

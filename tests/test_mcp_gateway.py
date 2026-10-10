@@ -37,9 +37,13 @@ BUILT = [
     "find_creators",
     "funnel_status",
     "get_facts",
+    "get_sources",
     "model_status",
     "score_drafts",
+    "search_brand",
+    "search_reviews",
     "upcoming_occasions",
+    "verify_citations",
 ]
 OWNER_ONLY = {"score_drafts", "model_status"}
 
@@ -93,10 +97,23 @@ def test_profiles_cover_every_tool_and_only_known_tools():
 @pytest.mark.parametrize(
     ("profile", "visible"),
     [
-        ("writer", ["brand_rules", "get_facts"]),
-        ("checker", ["check_drafts", "get_facts"]),
-        ("producer", ["brand_rules", "upcoming_occasions"]),
-        ("analyst", ["community_areas", "competitor_complaints", "find_creators", "funnel_status", "get_facts"]),
+        ("writer", ["brand_rules", "get_facts", "search_brand", "verify_citations"]),
+        ("checker", ["check_drafts", "get_facts", "get_sources", "search_brand", "verify_citations"]),
+        ("producer", ["brand_rules", "search_brand", "upcoming_occasions"]),
+        (
+            "analyst",
+            [
+                "community_areas",
+                "competitor_complaints",
+                "find_creators",
+                "funnel_status",
+                "get_facts",
+                "get_sources",
+                "search_brand",
+                "search_reviews",
+                "verify_citations",
+            ],
+        ),
     ],
 )
 def test_roles_see_and_may_call_only_their_tools(deps, profile, visible):
@@ -284,3 +301,25 @@ def test_the_committed_mcp_json_command_starts_and_lists_tools(tmp_path):
 
     assert _run(go()) == BUILT
     assert subprocess.run(["git", "check-ignore", "-q", ".mcp.json"], cwd=REPO).returncode == 1  # committed
+
+
+def test_the_checker_can_never_ask_for_review_text(deps):
+    async def go():
+        async with Client(build_gateway("checker", deps)) as c:
+            tool = next(t for t in await c.list_tools() if t.name == "get_sources")
+            assert "include_text" not in tool.inputSchema.get("properties", {})
+            with pytest.raises(ToolError, match="get_sources"):  # refused (details masked), never forwarded
+                await c.call_tool("get_sources", {"cites": ["R-AAAAAAAA"], "include_text": True})
+
+    _run(go())
+
+
+def test_evidence_tools_say_unavailable_without_a_knowledge_database(deps):
+    async def go():
+        async with Client(build_gateway("owner", deps)) as c:
+            with pytest.raises(ToolError, match=r"\[UPSTREAM_UNAVAILABLE\].*knowledge database"):
+                await c.call_tool("search_reviews", {"query": "kaltes Essen"})
+            prompt = await c.get_prompt("cited_answer", {"scope": "reviews"})
+            assert "verify_citations" in prompt.messages[0].content.text
+
+    _run(go())
