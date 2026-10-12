@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     intel_db_dsn: str | None = None
     intel_inbox_dir: Path = Path("/inbox")
     intel_store_dir: Path = Path("/store")
+    intel_knowledge_dir: Path = Path("/knowledge")  # knowledge packs and serving models for intel-mcp (ADR 0030)
     intel_approval_days: int = Field(default=7, ge=1)
     intel_inbox_interval_s: int = Field(default=30, ge=5)
     intel_git_sha: str = "unknown"  # set by deploy/deploy.sh
@@ -90,6 +91,10 @@ class McpSettings(BaseSettings):
     intel_mcp_allowed_hosts: str = ""  # extra Host names, e.g. this Mac's tailnet name (127.0.0.1, localhost always)
     intel_mcp_owner_logins: str = ""  # comma-separated Tailscale logins allowed to use the owner profile remotely
     intel_mcp_revoked_file: Path | None = None  # default: <data>/mcp/revoked.txt
+    intel_ship_knowledge: bool = False  # Mac: the Sunday run ships each newly active pack to the VPS (owner opt-in)
+    intel_mcp_pack_sync: bool = False  # the VPS container: keep the database on packs/ACTIVE (ADR 0030)
+    intel_mcp_bind: str = "127.0.0.1"  # 0.0.0.0 only inside the VPS container, where only one port is published
+    intel_model_dir: Path | None = None  # default: <data>/models (on the VPS: the read-only knowledge volume)
     intel_pack_dir: Path | None = None  # default: <data>/knowledge
     intel_rag_dsn: str | None = None  # read-only role on the knowledge database (rag_reader)
     intel_rag_admin_dsn: str | None = None  # the builder role: loads packs (`intel pack load`), never the server
@@ -119,6 +124,10 @@ class McpSettings(BaseSettings):
     @property
     def pack_dir(self) -> Path:
         return self.path(self.intel_pack_dir) if self.intel_pack_dir else self.data_dir / "knowledge"
+
+    @property
+    def model_dir(self) -> Path:
+        return self.path(self.intel_model_dir) if self.intel_model_dir else self.data_dir / "models"
 
     @property
     def limits_dir(self) -> Path:

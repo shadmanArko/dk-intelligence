@@ -74,6 +74,7 @@ class KnowledgePack(BaseModel):
     newly_embedded: int | None = None
     gate_passed: bool | None = None
     gate_lost: list[str] | None = Field(default=None, max_length=50)
+    shipped: bool | None = None  # sent to the VPS through the inbox (only when the owner opted in)
     why: str | None = Field(default=None, max_length=200)
     error: str | None = Field(default=None, max_length=300)
 
@@ -83,7 +84,8 @@ def knowledge_line(k: KnowledgePack | None) -> str | None:
         return None
     if k.status == "active":
         new = f", {k.newly_embedded:,} new texts embedded" if k.newly_embedded else ""
-        return f"📚 Knowledge pack <code>{H(k.pack or '?')}</code> is live (gate passed{new})"
+        sent = " and sent to the VPS" if k.shipped else (" (upload to the VPS failed)" if k.shipped is False else "")
+        return f"📚 Knowledge pack <code>{H(k.pack or '?')}</code> is live (gate passed{new}){sent}"
     if k.status == "kept_previous":
         lost = ", ".join(k.gate_lost or []) or "?"
         return f"📚 Knowledge pack refused by its gate (lost {H(lost)}): last week's stays live"

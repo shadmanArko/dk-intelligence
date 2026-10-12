@@ -33,5 +33,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0027](0027-knowledge-pack-and-rag-engine.md) | RAG as a judged artifact: knowledge packs, collections, reranked dense search, measured model choice | Accepted |
 | [0028](0028-generation-in-the-client.md) | Generate in the client: workflow tools, prompts as code, a bounded score-and-rewrite loop | Accepted |
 | [0029](0029-transports-auth-and-keys.md) | Reach dk_intel over stdio or tailnet-only HTTP, with short-lived per-profile tokens | Accepted |
+| [0030](0030-dk-intel-on-the-vps.md) | Run dk_intel on the VPS as a separate, opt-in container, fed through the existing doors | Accepted |
 
 Template: [0000-template.md](0000-template.md).

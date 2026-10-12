@@ -27,6 +27,7 @@ swappiness: 10
 tailscale_serves:          # https port on the tailnet -> local service
   - {https: 443, target: "http://127.0.0.1:8710"}   # intel-api pages
   - {https: 8443, target: "http://127.0.0.1:3330"}  # Grafana
+  - {https: 8444, target: "http://127.0.0.1:8711"}  # intel-mcp, the MCP server for AI clients (ADR 0030; tailnet only)
 
 cron_jobs:                 # all on the deploy user's crontab; existing hand-made identical lines are adopted
   - name: intel-db backup

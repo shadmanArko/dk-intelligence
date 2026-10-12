@@ -63,6 +63,8 @@ class Registry:
     def scan_inbox(self) -> list[Intake]:
         out = []
         for side in sorted(self.inbox.glob("*.tar.gz.sha256")):
+            if side.name.startswith("knowledge-"):  # knowledge packages have their own intake (serve/knowledge.py)
+                continue
             tgz = side.with_name(side.name.removesuffix(".sha256"))
             if not tgz.exists():
                 continue

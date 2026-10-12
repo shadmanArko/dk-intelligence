@@ -16,7 +16,7 @@ AM="quay.io/prometheus/${AM#prom/}"
 echo "== promtool check config"
 docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro" --entrypoint promtool "$PROM" check config /etc/prometheus/prometheus.yml
 echo "== promtool test rules"
-docker run --rm -v "$PWD/prometheus:/p:ro" --entrypoint promtool "$PROM" test rules /p/tests/slo_test.yml /p/tests/ops_test.yml /p/tests/models_test.yml
+docker run --rm -v "$PWD/prometheus:/p:ro" --entrypoint promtool "$PROM" test rules /p/tests/slo_test.yml /p/tests/ops_test.yml /p/tests/models_test.yml /p/tests/mcp_test.yml
 
 echo "== amtool check-config"
 # The rendered files live in a private temp dir (mode 700), so the tool containers run as the calling user: the same

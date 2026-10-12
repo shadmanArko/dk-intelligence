@@ -586,3 +586,32 @@ numbers, not guesses.
 measures half a point lower, and a ratchet that breaks CI on noise teaches people to ignore ratchets. Capacity is
 stated plainly (about 0.8 searches/s under contention), with the growth triggers written down, instead of buying
 hardware early.
+
+## P4.7 · Shipping an ML service to production without widening a single door
+
+**Situation.** A 2 GB search service had to run on a shared 7.8 GB VPS next to a live ordering system. The rules:
+Claude never gets a shell there, and the Mac reaches the VPS only through three narrow doors (read-only tunnel,
+upload-only inbox, CI deploy).
+
+**Task.** Put dk_intel on the VPS for agents that run while the Mac is off, without new access paths and without
+risking the ordering system or the scoring API.
+
+**Action.**
+- **Measured first:** the owner's `free -h`, the service's warm and peak memory, the image and pack sizes. Then I
+  chose full search with a 2.5 GB limit over a keyword-only fallback.
+- **A separate, opt-in container** from its own scanned image. It holds no Telegram token, no API database access
+  and no inbox mount, and joins only its own network.
+- **Data through the existing upload-only inbox,** as a new package kind verified twice: the outer checksum, every
+  inner checksum, path safety, and the Mac's gate result. A rollback is a 1 KB marker.
+- **Database roles that can only touch one schema,** created without passwords in SQL. The deploy sets them from
+  the VPS's `.env` through environment variables, never in arguments.
+- **Backups without the rebuildable third-party text,** and without grants, so a restore works anywhere.
+- **The go-live as nine copy-paste steps** for the owner; secrets go through hidden prompts and the clipboard.
+
+**Result.** All three doors are unchanged. A failed MCP deploy stops only itself. The memory alert and a
+one-command stop protect the ordering system. Tests cover tampering, path escapes, role boundaries, the deploy
+paths and the alerts.
+
+**Trade-off I would defend.** The MCP image is pulled by commit tag and label-checked, not by a digest named in
+the deploy request. Pinning the digest would have meant changing the forced command, which is one of the three
+doors. The label check gives the same guarantee, and the doors stay exactly as they were.

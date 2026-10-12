@@ -126,9 +126,28 @@ def build_http_app(
     return RefusalAudit(TailnetIdentity(root, listener, settings.owner_logins), deps.audit, listener)
 
 
+def _pack_sync_loop(settings: McpSettings, every_s: float = 300.0) -> None:
+    """VPS: follow packs/ACTIVE (written by intel-api's knowledge intake) into the database. Never fatal."""
+    import logging
+    import time
+
+    from intel.rag.lifecycle import sync_to_active
+
+    log = logging.getLogger("intel.mcp.packs")
+    while True:
+        try:
+            result = sync_to_active(settings)
+            if result["status"] == "activated":
+                log.warning("knowledge pack %s is now active (%s chunks loaded)", result["pack"], result["chunks"])
+        except Exception:  # noqa: BLE001 - the server keeps serving the pack it has
+            log.exception("knowledge pack sync failed")
+        time.sleep(every_s)
+
+
 def serve(settings: McpSettings, deps: Deps, listeners: list[Listener]) -> None:
     """Run the listeners in one process (one event loop), both bound to loopback."""
     import asyncio
+    import threading
 
     import uvicorn
 
@@ -136,16 +155,19 @@ def serve(settings: McpSettings, deps: Deps, listeners: list[Listener]) -> None:
     servers = [
         uvicorn.Server(
             uvicorn.Config(
-                build_http_app(settings, deps, listener), host="127.0.0.1", port=ports[listener], log_level="warning"
+                build_http_app(settings, deps, listener),
+                host=settings.intel_mcp_bind,
+                port=ports[listener],
+                log_level="warning",
             )
         )
         for listener in listeners
     ]
 
+    if settings.intel_mcp_pack_sync:
+        threading.Thread(target=_pack_sync_loop, args=(settings,), name="pack-sync", daemon=True).start()
     warm = getattr(deps.evidence, "warm", None)
     if warm is not None:  # one shared process: pay the model load once, at start, off the request path
-        import threading
-
         threading.Thread(target=warm, name="warm-models", daemon=True).start()
 
     async def run() -> None:

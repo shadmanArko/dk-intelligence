@@ -9,7 +9,11 @@ cd "$(dirname "$0")"
 source ./metrics.sh
 dest="/opt/dhaka-kacchi/backups/intel_$(date -u +%Y-%m-%d_%H%M%S).sql.gz"
 tmp="$dest.partial"
-docker compose exec -T intel-db pg_dump -U intel --no-owner intel | gzip > "$tmp"
+# --exclude-table-data='rag.*': the knowledge base is rebuildable from its pack and keeps third-party review text out
+# of the off-site backup (ADR 0030); its tables' structure stays. --no-privileges: intel owns everything; the rag-only
+# roles and their grants are (re)created by deploy.sh, so a restore never fails on a role it doesn't have.
+docker compose exec -T intel-db pg_dump -U intel --no-owner --no-privileges --exclude-table-data='rag.*' intel \
+  | gzip > "$tmp"
 gzip -t "$tmp" && mv "$tmp" "$dest"
 echo "$(date -u +%FT%TZ) intel-db backup -> $dest ($(du -h "$dest" | cut -f1))"
 write_metrics intel_backup <<METRICS

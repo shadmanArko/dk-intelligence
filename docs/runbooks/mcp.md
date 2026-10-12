@@ -45,3 +45,66 @@ Everything below runs on the Mac, from the repo root:
    (`uv run python -m intel.mcp_server.tool_eval`).
 3. **A profile:** one entry in `profiles.yaml`, then `uv run intel mcp catalog`.
 4. **A client:** `intel mcp config` learns its format, plus one example and one contract test.
+
+## On the VPS (ADR 0030)
+
+### Go-live, once (owner)
+Before you start: this release's CI deploy is live (it brings the knowledge intake and migration 0007). Run
+everything on the VPS as `deploy`, not root.
+
+1. **Mac: create the VPS's own signing secret** (a separate key, so Mac tokens never work on the VPS):
+   ```bash
+   cd "/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence" && uv run intel mcp init --host vps --write-env
+   ```
+   Expected: `INTEL_MCP_SECRET_VPS written to .env (value not shown)`.
+2. **Mac: send the search models (once, ~1.2 GB) and the current pack (~65 MB)** through the upload-only inbox:
+   ```bash
+   cd "/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence" && uv run intel pack ship --models
+   ```
+   Expected: two `uploaded knowledge-…` lines.
+3. **VPS: two database passwords.** Generated on the VPS; they never leave it:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy && ( umask 077; { echo "INTEL_MCP_READER_PASSWORD=$(openssl rand -hex 24)"; echo "INTEL_MCP_LOADER_PASSWORD=$(openssl rand -hex 24)"; } >> .env ) && echo ok
+   ```
+4. **Mac: copy the VPS secret to the clipboard** (it isn't shown):
+   ```bash
+   cd "/Users/shadman.arko/Documents/Work_DoNotTouch/Dhaka Kacchi/dk-intelligence" && grep '^INTEL_MCP_SECRET_VPS=' .env | cut -d= -f2- | tr -d '\n' | pbcopy && echo copied
+   ```
+   **VPS:** paste it into the hidden prompt:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy && read -rsp "INTEL_MCP_SECRET_VPS: " S && echo && ( umask 077; printf 'INTEL_MCP_SECRET_VPS=%s\n' "$S" >> .env ) && unset S && echo saved
+   ```
+5. **VPS: the tailnet name, your login, and the switch** (`COMPOSE_PROFILES=mcp` is decision D8):
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy && read -rp "This VPS's tailnet name (…ts.net): " H && read -rp "Your Tailscale login: " L && { echo "INTEL_MCP_ALLOWED_HOSTS=$H"; echo "INTEL_MCP_OWNER_LOGINS=$L"; echo "COMPOSE_PROFILES=mcp"; } >> .env && echo ok
+   ```
+6. **VPS: the tailnet port** (Ansible adds `tailscale serve` 8444 → 127.0.0.1:8711). Preview first, then apply:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence && ansible-playbook -i infra/inventory.yml infra/site.yml --check --diff -K
+   ```
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence && ansible-playbook -i infra/inventory.yml infra/site.yml -K
+   ```
+7. **VPS: deploy.** This starts intel-mcp next to intel-api:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy && ./deploy.sh 2>&1 | tail -8
+   ```
+   Expected: `== deployed <commit>` and then `== intel-mcp <commit> healthy`. Paste the output back.
+8. **VPS, 5 minutes later:** the pack is loaded, and memory looks fine:
+   ```bash
+   cd /opt/dhaka-kacchi/dk-intelligence/deploy && docker compose ps intel-mcp && docker compose logs --tail 30 intel-mcp | grep -i "knowledge pack" ; docker stats --no-stream --format "{{.Name}} {{.MemUsage}}" | grep -E "mcp|intel-db" ; free -h
+   ```
+   Paste the output back. Claude then tests it from the Mac over the tailnet with a short-lived VPS token.
+9. **Mac: weekly shipping.** Add `INTEL_SHIP_KNOWLEDGE=true` to the Mac's `.env`. From then on, each Sunday's gated
+   pack goes to the VPS by itself, and the Sunday message says "and sent to the VPS".
+
+### Day to day
+| Task | Command |
+|---|---|
+| Stop it (kill switch; ordering and intel-api are unaffected) | `cd /opt/dhaka-kacchi/dk-intelligence/deploy && docker compose stop intel-mcp` |
+| Start it again | `cd /opt/dhaka-kacchi/dk-intelligence/deploy && docker compose up -d intel-mcp` |
+| Logs | `cd /opt/dhaka-kacchi/dk-intelligence/deploy && docker compose logs --tail 100 intel-mcp` |
+| Revoke a VPS token | `cd /opt/dhaka-kacchi/dk-intelligence/deploy && echo <jti> >> mcp-revoked.txt` (a jti is not secret; works within a minute) |
+| Roll the knowledge back | Mac: `uv run intel pack rollback <earlier pack id> --vps` |
+| Issue a token for an agent | Mac: `uv run intel mcp token issue --client <name> --profile <role> --host vps --ttl 30d --write-env INTEL_MCP_TOKEN_<NAME>` |
+| Turn it off for good | remove `COMPOSE_PROFILES=mcp` from `deploy/.env`, then `docker compose stop intel-mcp` |

@@ -270,6 +270,10 @@ def test_the_knowledge_pack_step_reaches_the_sunday_message():
         report(knowledge={"status": "active", "pack": "kp-1", "newly_embedded": 37, "collections": {"reviews": 1}})
     )
     assert "kp-1</code> is live (gate passed, 37 new texts embedded)" in run_message(live)
+    sent = RunReport.model_validate(report(knowledge={"status": "active", "pack": "kp-1", "shipped": True}))
+    assert "is live (gate passed) and sent to the VPS" in run_message(sent)
+    failed = RunReport.model_validate(report(knowledge={"status": "active", "pack": "kp-1", "shipped": False}))
+    assert "(upload to the VPS failed)" in run_message(failed)
     kept = RunReport.model_validate(
         report(knowledge={"status": "kept_previous", "pack": "kp-2", "gate_lost": ["q03", "q08"]})
     )
