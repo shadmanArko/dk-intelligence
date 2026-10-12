@@ -2,8 +2,9 @@
 
 A small, readable multi-agent system, built to show how the pieces fit together before the real one is designed.
 It uses one orchestrator, three kinds of agent and two MCP servers, and has a console where you can watch a run and
-start one yourself. **Read-only on everything real.** The only write goes to the local `proposals.json`. Nothing
-here is deployed: the production image copies only `src/`.
+start one yourself. **By default it is read-only on everything real:** the only write goes to the local
+`proposals.json`. With `--publish drafts` (below) it also creates *drafts* in the owner's publishing Calendar, never
+anything that can post: there is no approve call here. Nothing is deployed: the production image copies only `src/`.
 
 ```
  CODE: fetch            AI: planner          AI: 3 writers, in parallel        CODE: re-check + propose
@@ -18,6 +19,7 @@ both, but those steps cost no tokens and can't be skipped or misreported.
 ## The pieces (each file in one sentence)
 | File | What it is |
 |---|---|
+| `media.py`, `handover.py`, `.claude/agents/designer.md` | the media step and the hand-over to dk-publishing: see "Making the media" below |
 | `demo_publisher/server.py` | **MCP server #2**, a toy "second product" with `list_slots` (reads `calendar.json`) and `propose_post` (appends to `proposals.json`). It shows how any product exposes tools. |
 | `.mcp.json` | **How servers connect:** three stdio commands. dk_intel appears twice, once per profile, so **the server** decides what each role may call. |
 | `.claude/agents/*.md` | **The agents:** front matter (`tools:` allowlist, `model:`) and a prompt. The engine uses `planner` and `writer`; `writer-lead` is for the interactive `/plan-week` only. |
@@ -52,6 +54,47 @@ uv run python lab/agentic-slice/trace.py
 
 **The LLM as orchestrator (to compare):** start `claude` inside `lab/agentic-slice/`. `/mcp` should show 3 servers
 and `/agents` should show 3 agents. Then type `/plan-week instagram`.
+
+## Making the media (M8): from a kept caption to a draft in the Calendar
+```
+ … 3 writers (AI) ─ each caption that passed ─►  designer (AI, 3 read-only tools, preview only)
+                                                          │ the creative part of a ContentSpec
+ CODE: finalize (id, format, slot, captions, avoid-list are set by code) → dry-run → brand check of every on-screen word
+       (dk_intel) → render, one at a time (reels engine CLI) → handover.py: upload once, dry-run batch, real batch → Calendar
+```
+```bash
+uv run python lab/agentic-slice/run.py --publish render     # design + check + render. Nothing is sent anywhere, no key needed
+uv run python lab/agentic-slice/run.py --publish dry-run    # + validate with dk-publishing, creating nothing
+uv run python lab/agentic-slice/run.py --publish drafts     # + create drafts; the owner approves in the Calendar tab
+uv run python lab/agentic-slice/run.py --publish drafts --suffix r2   # redo a slot whose post was rejected (new key)
+uv run python lab/agentic-slice/handover.py --manifest <manifest.json> --dry-run   # hand over renders by hand
+uv run python lab/agentic-slice/handover.py --status        # what was approved, published, failed
+```
+Needs the reels engine as a sibling folder (`../dhaka-kacchi-reels`, or `DK_REELS_DIR`). The publishing modes need
+`DK_PUBLISH_URL` and `DK_PUBLISH_KEY` in `.env` (a key with the **draft** right only; never printed or logged).
+
+| File | What it is |
+|---|---|
+| `.claude/agents/designer.md` | the **designer**: three `dk_reels` tools (`search_assets`, `search_music`, `preview_spec`), no render, no shell |
+| `media.py` | what code decides around the designer: job ids, the spec envelope, the footage ledger, the reels CLI contract |
+| `handover.py` | manifest → drafts: plans variants per platform, checks them against the live `GET /v1/spec`, holds what can't go out (with a reason), uploads once, one dry-run-then-real batch |
+| `handover.json` | `reviewed_languages` (the owner adds a language once a native speaker has checked it) and conservative option defaults (TikTok privacy `only_me`) |
+
+**Rules it keeps** (each is a test): drafts only; idempotent (`post_key` = job id; a slot that already has a post is
+skipped before any AI is spent); nothing dropped silently (a held post says why); on-screen text that fails dk_intel's
+brand check is never rendered; text in a language nobody has checked is held; an agent can never render.
+
+**Measured, real runs on the frozen week** (`--publish render`, Instagram; details in
+[docs/results/M8_media_pipeline.md](../../docs/results/M8_media_pipeline.md)):
+
+| Version | Runs | Posts finished | Tokens per run | Time |
+|---|---|---|---|---|
+| v6 captions only (no media), for reference | 3 | 6 of 9: every post that can pass | 21k | 35 s |
+| v7 + designer + checks + renders, run A | 1 | 1 of 2 (the other lost to a loudness bug, since fixed) | 40.7k | 101 s |
+| v7, run B | 1 | **2 of 2** | 48.1k | 117 s |
+
+About 24k tokens and 58 s per finished post. Not yet run against the live publisher (no draft key): the bridge is tested
+against a fake that enforces the contract's rules.
 
 ## On a schedule
 The same engine with `--trigger schedule`, so history shows which runs came from the schedule. For Mondays at 09:00

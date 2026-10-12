@@ -42,6 +42,13 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | A15 | **Examples screened by our own rules** | best past posts run through the brand check: blocked → never shown; broken format → "voice only" | stopped teaching the old English-first format | `screen` |
 | A16 | **Measure every change on frozen inputs** | `eval.py`: freeze a week, run a version N times, compare proposed / score / tokens / time | caught a version that looked cheaper but proposed less (v4, v5) | `eval.py` |
 | A17 | **Observable by default** | every agent start/end, tool call/result and token count → `runs/<id>.jsonl`; console graph and result cards; dk_intel audit as an independent record | every finding here came from looking at a trace | `console.py`, `trace.py` |
+| A18 | **A cheap self-repair loop: validate without doing** | the designer previews its spec (`preview_spec`: validate + resolve, ~1 s, no render) and fixes the exact paths named in the refusal; the render is code's, once | a refused first draft was fixed from the error text alone; no render is ever wasted on an invalid spec | `dk_reels` MCP, `designer.md` |
+| A19 | **Read the refusals your agent got, then fix the prompt, then measure** | one real designer run showed 2 of 3 previews refused for two avoidable reasons; the prompt now says them | 4 turns / 20.6k tokens / 27 s → 2 turns / 8.9k / 13 s on the same brief (one run each: an indication) | `designer.md` |
+| A20 | **Code owns identity, schedule and what must not drift** | job id, format and size, slot, captions and the avoid-list are set by code; the designer's answer is only its creative content; a test shows a designer that sets the schedule is ignored | 0 scheduling decisions by AI | `media.finalize_spec` |
+| A21 | **Pre-check "does it already exist" before any AI runs** | a post can't change under its key, and a re-run would make a different one; code asks the publisher first and skips the slot | a repeated run spends 0 tokens on finished slots (planner only) | `orchestrate` |
+| A22 | **No render tool for the autonomous agent** | a render is minutes of CPU; an agent that can call it can loop on it. Agents preview, code renders (the `ops` profile exists for people and code) | cost can't run away | `dk_reels` profiles |
+| A23 | **A different layer for different judgment** | on-screen words go through dk_intel (the one source of brand rules) with the same code path as captions; the renderer holds none | no second copy of the rules to drift | `check_texts` |
+| A24 | **Run the real thing once; the fakes will not find these** | the fake-model suite passed while two real runs found a 3.5 GB-per-run disk leak, a `--dry-run` that hid the texts to be checked, music that failed QA once in ten, and a missing outcome in the log | four defects fixed, each with a test | M8 results |
 | A18 | **One run at a time; failures stay local** | lock file; a failed helper turns red and the run still finishes | tested | `orchestrate` |
 | A19 | **Humans approve every write** | agents only create proposals | — | `propose_post` |
 
@@ -62,6 +69,9 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | N12 | **Semantic or result caching** of agent outputs for identical inputs | weekly inputs differ | many products asking similar questions | skip repeat work |
 | N13 | **Long-running memory and compaction** (notes outside the context) | each agent lives for one task | agents that work across days or many steps | stable long tasks |
 | N14 | **Local or open model for unattended runs** (D11) | the P4.5 captions needed rewrites; quality unmeasured | after N1 gives a quality signal to compare on | €0 at volume |
+| N15 | **Template-writing agent** (code per *style*, never per post) behind gates and the owner's approval | the designer only combines the five existing templates; no style gap has been logged yet | the designer emits `style_request`s, or an occasion needs a look that doesn't exist | new styles without a developer; needs the template registry first (M9) |
+| N16 | **Process-claims rule in dk_intel** | found in M8 (see results); the designer prompt covers only its own output | owner decides the rule | one source, all stages covered |
+| N17 | **Cross-posting one master to several platforms** | the bridge supports it; each slot publishes to its own platform | the owner wants one reel on Instagram, Facebook, TikTok and YouTube | 3–4× the reach per render |
 
 ## 4. Anti-patterns we hit (don't repeat)
 - **Each agent as a full Claude Code** (coding prompt, CLAUDE.md, every tool): ~20k tokens per turn of
@@ -74,6 +84,14 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 - **Trusting the AI's field names** (`id` vs `slot_id`) and dropping silently (A13).
 - **Examples that teach the wrong format** (old best posts) (A15).
 - **Judging a change by tokens alone:** v4 was cheaper but proposed less. Always read quality next to cost (A16).
+- **Claims inherited down the chain.** A planner angle from a competitor gap ("order accuracy") became a writer's promise
+  ("we personally check every Kacchi") and then a picture ("Checked. Confirmed."), and every check passed because no rule
+  named that claim type. Each stage trusted the one before. Put process and promise claims in the one rulebook, and tell
+  every stage to describe what it can show, not how we work (M8 results).
+- **Passing the fakes and calling it verified.** Test doubles prove the wiring, not the world. Drive the real tool once
+  with the real model before saying it works (A24).
+- **A cache that answers before the question is asked.** `--dry-run` returned the cached render and no plan, so the
+  check that needed the plan silently had nothing to check (A24).
 
 ## 5. Checklist for a new agentic system or product
 1. Write down the steps. Mark each as **judgment** (AI) or **fixed** (code).
@@ -86,9 +104,14 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 7. Fake-model tests for the wiring. A frozen-input eval for quality × cost. Compare every change on both.
 8. Pick the model per step by measurement. Start cheap, escalate on failure (N8).
 9. Budget guards and a kill switch before anything runs on a schedule (N4).
+10. Give a media or code-generating agent a way to *preview*, never to produce the expensive artefact (A18, A22).
+11. Pre-check "already done" before spending AI on a slot (A21), and let code set ids, schedules and captions (A20).
+12. Run it for real once and read the traces before trusting the tests (A24).
 
 ## 6. Cost model
-Measured (v6): **~10k tokens per written post** (a run that wrote 2 and screened out 1 cost 21k), most of it
+Measured (M8, two real runs, a post with its media): **~24k tokens and ~58 s per finished post** (writer ~9k, designer
+~9k, planner share ~2k, the rest code at 0 tokens; renders add ~22 s per reel). At the same assumed prices a post is
+about $0.08; on the subscription, €0. Measured (v6, captions only): **~10k tokens per written post** (a run that wrote 2 and screened out 1 cost 21k), most of it
 input. 100 posts ≈ 0.85M in + 0.15M out. On Sonnet-class pricing (~$2 / $10 per 1M) that's ≈ **$3 per 100 posts**;
 on the subscription, €0 extra. Prices
 change: check the providers' pages, and recompute with `eval.py` numbers.

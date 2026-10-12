@@ -104,6 +104,10 @@ def _reminders(source: BrandSource, platform: str) -> list[str]:
     plat = rules.get("platform") or {}
     out.append(f"first line ≤{plat.get('first_line_max')} characters, ≤{plat.get('emoji_max')} emojis")
     out.append("no superlatives, health or allergen claims, no 'halal' without a named certifier")
+    out.append(
+        "no claims about how or when we work (checking, cooking times, 'new in Berlin') and no 'feeds N people': "
+        "show the food; only facts from get_facts"
+    )
     out.append("prices, hours and claims only from get_facts; run evaluate_drafts on every draft")
     return out
 

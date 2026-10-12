@@ -43,6 +43,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px;
 .b-writing,.b-checking{background:var(--bg);color:var(--mute)}
 .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
 .idea{font-size:13px}
+.media{display:flex;gap:10px;align-items:flex-start} .media img{width:96px;border-radius:8px;border:1px solid var(--line);flex:none}
 .cap{background:var(--bg);border-radius:10px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .cap .tag{color:var(--srv)} .cap.empty{color:var(--mute);font-style:italic}
 .meter{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute)}
@@ -67,26 +68,41 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px;
 <section class="card"><h2>dk_intel's own audit (independent record)</h2><table><thead><tr><th>at</th><th>profile</th><th>tool</th><th>status</th><th>ms</th></tr></thead><tbody id="aud"></tbody></table></section>
 </main>
 <script>
-const NODES={orchestrator:[20,135,'Orchestrator · fetch','code: run.py'],planner:[215,135,'planner','AI · 1 turn'],
-'helper-1':[420,40,'writer helper 1','parallel'],'helper-2':[420,135,'writer helper 2','parallel'],'helper-3':[420,230,'writer helper 3','parallel'],
-checker:[625,135,'re-check + propose','code · 0 tokens'],report:[830,135,'report + proposals','proposals.json']};
-const EDGES=[['orchestrator','planner'],['planner','helper-1'],['planner','helper-2'],['planner','helper-3'],
-['helper-1','checker'],['helper-2','checker'],['helper-3','checker'],['checker','report']];
-const SRV={dk_intel_planner:[150,285,'dk_intel · planner profile'],dk_intel_writer:[390,285,'dk_intel · writer profile'],demo_publisher:[640,285,'demo_publisher (product #2)']};
+const DEMO={w:170,vb:'0 0 1000 330',
+ nodes:{orchestrator:[20,135,'Orchestrator · fetch','code: run.py'],planner:[215,135,'planner','AI · 1 turn'],
+ 'helper-1':[420,40,'writer helper 1','parallel'],'helper-2':[420,135,'writer helper 2','parallel'],'helper-3':[420,230,'writer helper 3','parallel'],
+ checker:[625,135,'re-check + propose','code · 0 tokens'],report:[830,135,'report + proposals','proposals.json']},
+ edges:[['orchestrator','planner'],['planner','helper-1'],['planner','helper-2'],['planner','helper-3'],
+ ['helper-1','checker'],['helper-2','checker'],['helper-3','checker'],['checker','report']],
+ srv:{dk_intel_planner:[150,285,'dk_intel · planner profile'],dk_intel_writer:[390,285,'dk_intel · writer profile'],demo_publisher:[640,285,'demo_publisher (product #2)']}};
+// media runs (--publish render | dry-run | drafts): each writer is followed by its designer, then code checks, renders and hands over
+const MEDIA={w:160,vb:'0 0 1260 330',
+ nodes:{orchestrator:[10,135,'Orchestrator · fetch','code: run.py'],planner:[190,135,'planner','AI · 1 turn'],
+ 'helper-1':[370,40,'writer 1','AI'],'helper-2':[370,135,'writer 2','AI'],'helper-3':[370,230,'writer 3','AI'],
+ 'designer-1':[550,40,'designer 1','AI'],'designer-2':[550,135,'designer 2','AI'],'designer-3':[550,230,'designer 3','AI'],
+ checker:[730,135,'re-check + brand check','code · 0 tokens'],renderer:[910,75,'render','code · 0 tokens'],
+ handover:[910,195,'hand over','code · 0 tokens'],report:[1090,135,'report','drafts + report']},
+ edges:[['orchestrator','planner'],['planner','helper-1'],['planner','helper-2'],['planner','helper-3'],
+ ['helper-1','designer-1'],['helper-2','designer-2'],['helper-3','designer-3'],
+ ['designer-1','checker'],['designer-2','checker'],['designer-3','checker'],['checker','renderer'],['renderer','handover'],['handover','report']],
+ srv:{dk_intel_planner:[150,285,'dk_intel · planner profile'],dk_intel_writer:[370,285,'dk_intel · writer profile'],
+ dk_reels_creative:[590,285,'dk_reels · creative profile'],dk_publishing:[910,285,'dk-publishing API (drafts)']}};
+let L=DEMO;
+function setMode(publish){L=publish&&publish!=='demo'?MEDIA:DEMO;$('g').setAttribute('viewBox',L.vb)}
 let st={},ev=[],current=null,es=null;
-const $=id=>document.getElementById(id), W=170,H=56;
+const $=id=>document.getElementById(id), H=56;
 function draw(){const g=$('g');let s='';
- for(const [a,b] of EDGES){const[x1,y1]=NODES[a],[x2,y2]=NODES[b];const sa=st[a]?.status,sb=st[b]?.status;
+ for(const [a,b] of L.edges){const[x1,y1]=L.nodes[a],[x2,y2]=L.nodes[b];const sa=st[a]?.status,sb=st[b]?.status;
   const cls=sb==='done'?'ok':(sb==='running'||sa==='running')?'on':'';
-  s+=`<path class="edge ${cls}" d="M${x1+W},${y1+H/2} C${x1+W+20},${y1+H/2} ${x2-20},${y2+H/2} ${x2},${y2+H/2}"/>`}
- for(const [k,[x,y,l]] of Object.entries(SRV)){s+=`<g class="srv" id="srv-${k}"><rect x="${x}" y="${y}" width="210" height="30"/><text x="${x+10}" y="${y+20}">${l}</text></g>`}
- for(const [k,[x,y,l,sub]] of Object.entries(NODES)){const n=st[k]||{};const c={running:'var(--run)',done:'var(--done)',failed:'var(--fail)'}[n.status]||'var(--wait)';
+  s+=`<path class="edge ${cls}" d="M${x1+L.w},${y1+H/2} C${x1+L.w+20},${y1+H/2} ${x2-20},${y2+H/2} ${x2},${y2+H/2}"/>`}
+ for(const [k,[x,y,l]] of Object.entries(L.srv)){s+=`<g class="srv" id="srv-${k}"><rect x="${x}" y="${y}" width="210" height="30"/><text x="${x+10}" y="${y+20}">${l}</text></g>`}
+ for(const [k,[x,y,l,sub]] of Object.entries(L.nodes)){const n=st[k]||{};const c={running:'var(--run)',done:'var(--done)',failed:'var(--fail)'}[n.status]||'var(--wait)';
   const k_=t=>t>=1000?Math.round(t/1000)+'k':String(t);
   const info=n.status&&n.model&&n.model!=='code'?`${n.calls||0} calls${n.tokens?' · '+k_(n.tokens)+' tok':''}${n.ms?' · '+Math.round(n.ms/1000)+' s':''}`:(n.status||sub);
-  s+=`<g class="node" onclick="show('${k}')"><rect x="${x}" y="${y}" width="${W}" height="${H}" stroke="${c}"/><text x="${x+12}" y="${y+23}">${l}</text><text class="sub" x="${x+12}" y="${y+42}">${info}</text></g>`}
+  s+=`<g class="node" onclick="show('${k}')"><rect x="${x}" y="${y}" width="${L.w}" height="${H}" stroke="${c}"/><text x="${x+12}" y="${y+23}">${l}</text><text class="sub" x="${x+12}" y="${y+42}">${info}</text></g>`}
  g.innerHTML=s}
 function flash(server){const el=document.getElementById('srv-'+server);if(!el)return;el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),900)}
-function apply(e){if(e.node==='writer-lead')e.node='checker';ev.push(e);const n=st[e.node]=st[e.node]||{calls:0,events:[]};n.events.push(e);
+function apply(e){if(e.node==='writer-lead')e.node='checker';if(e.node==='orchestrator'&&e.kind==='start')setMode(e.publish);ev.push(e);const n=st[e.node]=st[e.node]||{calls:0,events:[]};n.events.push(e);
  if(e.kind==='start'){n.status='running';n.task=e.task;n.tools=e.tools;n.model=e.model}
  if(e.kind==='tool_call'){n.calls++;flash(e.server)}
  if(e.kind==='end'){n.status=e.status;n.ms=e.ms_total;n.tokens=(e.tokens_in||0)+(e.tokens_out||0);n.output=e.output;n.error=e.error;
@@ -103,6 +119,7 @@ function show(k){const n=st[k];$('dtitle').textContent='Details: '+k;if(!n){$('d
  if(n.output)h+=`<p><b>answer</b></p><pre>${esc(JSON.stringify(n.output,null,2))}</pre>`;if(n.error)h+=`<p style="color:var(--fail)"><b>error</b> ${esc(n.error)}</p>`;
  $('detail').innerHTML=h}
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STATE_LABEL={rendered:'✓ Rendered',would_submit:'✓ Valid (dry run)',submitted:'✓ Draft in Calendar',replayed:'✓ Already a draft'};
 const LABEL={proposed:'✓ Proposed',skipped:'Skipped',failed:'✕ Failed',writing:'Writing…',checking:'Checking…',not_planned:'Not written'};
 let rTimer=null;function resultSoon(){clearTimeout(rTimer);rTimer=setTimeout(loadResult,300)}
 async function loadResult(){if(!current)return;const r=await (await fetch(`/api/runs/${current}/result`)).json();const x=r.run,ps=r.posts;
@@ -116,13 +133,14 @@ async function loadResult(){if(!current)return;const r=await (await fetch(`/api/
  $('posts').innerHTML=ps.map(p=>{const d=p.date?new Date(p.date+'T12:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):(p.day||'');
   const cap=p.caption?esc(p.caption).replace(/#\w+/g,m=>`<span class="tag">${m}</span>`):'';
   const sc=typeof p.score==='number'?p.score:null;const col=sc===null?'var(--wait)':p.verdict==='keep'?'var(--done)':'var(--run)';
-  return `<div class="post ${p.status}"><div class="post-h"><div><div class="when">${esc(d)} · ${esc(p.time||'')}</div><div class="fmt">${esc(p.format||'')} · ${esc(plat)} · slot ${esc(p.slot_id)} · ${esc(p.agent)}</div></div><span class="badge b-${p.status}">${LABEL[p.status]||esc(p.status)}</span></div>
+  return `<div class="post ${p.status}"><div class="post-h"><div><div class="when">${esc(d)} · ${esc(p.time||'')}</div><div class="fmt">${esc(p.format||'')} · ${esc(plat)} · slot ${esc(p.slot_id)} · ${esc(p.agent)}</div></div><span class="badge b-${p.status}">${(p.state&&STATE_LABEL[p.state])||LABEL[p.status]||esc(p.status)}</span></div>
   <div><div class="lbl">The idea (planner)</div><div class="idea">${p.status==='not_planned'?'– (not planned: code ruled this slot out before any AI ran)':esc(p.angle||'')}</div></div>
   <div><div class="lbl">The caption (writer)</div><div class="cap${cap?'':' empty'}">${cap||(p.status==='failed'?'no caption':p.status==='not_planned'?'no caption: 0 tokens spent':'being written…')}</div></div>
+  ${p.thumb||p.design?`<div class="media">${p.thumb?`<img src="${esc(p.thumb)}" alt="frame from the rendered post">`:''}<div><div class="lbl">The picture (designer)</div><div class="idea"><b>${esc(p.design?.hook||'')}</b></div><div class="why">${esc(p.design?.why||'')}</div></div></div>`:''}
   ${sc!==null?`<div><div class="lbl">The check (dk_intel evaluate_drafts)</div><div class="meter" title="content_scorer: chance this post beats our usual engagement on ${esc(plat)}"><b style="color:${col};font-size:16px;min-width:42px">${Math.round(sc*100)}%</b><div class="bar"><i style="width:${Math.round(sc*100)}%;background:${col}"></i></div><span class="badge" style="color:${col}">${esc(p.verdict)}</span></div><div class="why">chance to beat our usual engagement${p.tried>1?' · best of '+esc(p.tried)+' drafts':''}${p.status==='not_planned'?' · with any caption (slot check)':p.rounds?' · '+esc(p.rounds)+' check'+(p.rounds>1?'s':''):''}</div></div>`:''}
   ${p.why?`<div class="why"><b>${p.status==='proposed'?'Result':'Why'}:</b> ${esc(p.why)}</div>`:''}
   ${p.sources.length?`<div class="chips" title="citation ids from dk_intel: the evidence this post is built on">${p.sources.map(s=>`<span>${esc(s)}</span>`).join('')}</div>`:''}</div>`}).join('')}
-function openRun(id){current=id;st={};ev=[];$('feed').innerHTML='';draw();if(es)es.close();loadResult();
+function openRun(id){current=id;st={};ev=[];setMode();$('feed').innerHTML='';draw();if(es)es.close();loadResult();
  es=new EventSource(`/api/runs/${id}/stream`);es.onmessage=m=>{const e=JSON.parse(m.data);apply(e);if(e.kind==='end'||e.kind==='delegate')resultSoon()};
  es.addEventListener('done',()=>{es.close();refresh();audit(id);loadResult()});document.querySelectorAll('#hist tr').forEach(r=>r.classList.toggle('sel',r.dataset.id===id))}
 async function audit(id){const a=await (await fetch(`/api/runs/${id}/audit`)).json();

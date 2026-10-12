@@ -89,6 +89,32 @@ elif "WRITER helper" in prompt:
         "tried": 3,
         "sources": ["R-AAAAAAAA"],
     }
+elif "DESIGNER" in prompt:
+    brief = json.loads(task)
+    job, make = brief["job_id"], brief["make"]
+    halal_slot = os.environ.get("FAKE_HALAL_SLOT")
+    hook = "100% halal kacchi" if halal_slot and job.endswith("-" + halal_slot) else "Sealed. Then opened."
+    wrong = os.environ.get("FAKE_WRONG_KIND_SLOT") and job.endswith("-" + os.environ["FAKE_WRONG_KIND_SLOT"])
+    if make == "video" and not wrong:
+        content = {
+            "kind": "video", "template": "beat-reel", "hook": hook, "hook_sub": "Deckel ab, Kacchi drin",
+            "music": {"track": "auto", "culture": "desi", "mood": ["hip-hop"], "pre_drop_beats": 8},
+            "shots": [{"category": "Marination"}, {"category": "Pot opening", "min_rating": 2, "on": "drop",
+                      "caption": "Lid off", "sub": "Deckel ab"}, {"category": "Eating"}],
+        }  # fmt: skip
+    else:
+        content = {
+            "kind": "slides",
+            "size": "carousel",
+            "slides": [{"template": "photo", "category": "Eating", "title": hook}],
+        }
+    spec = {
+        "spec_version": 1, "job_id": job, "language": ["en", "de"], "content": content,
+        "captions": {"instagram": "the designer must not set this"},
+        "publish": {"platforms": ["tiktok"], "at": "2020-01-01T00:00:00+00:00"},
+    }  # fmt: skip
+    tool(named("preview_spec"), {"spec": spec}, {"ok": True, "plan": {}})
+    answer = {"job_id": job, "spec": spec, "why": "the lid coming off"}
 else:  # writer-lead
     results = json.loads(task)["results"]
     for r in results:

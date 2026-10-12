@@ -617,3 +617,41 @@ model-load failures loud and retried, and had scored search live within the hour
 **Trade-off I would defend.** The MCP image is pulled by commit tag and label-checked, not by a digest named in
 the deploy request. Pinning the digest would have meant changing the forced command, which is one of the three
 doors. The label check gives the same guarantee, and the doors stay exactly as they were.
+
+
+## M8 · Connecting an agent system to a renderer and a publisher, and what running it for real found
+
+**Situation.** Three systems existed and did not talk: a planner/writer agent lab, a Remotion engine that renders
+branded reels from a JSON spec, and a publisher that drafts, approves and posts. The owner wanted an orchestrator with
+sub-agents, one of which designs the media, ending in drafts waiting for approval, at €0 and with no paid API.
+
+**Task.** Wire them so AI is used only where judgment is needed, nothing publishes without the owner, and a re-run can't
+duplicate or contradict a post.
+
+**Action.**
+- **A designer agent that writes intent, never code.** It fills the creative part of a spec using three read-only tools
+  and can *preview* a spec in about a second, but has no render tool: a render is minutes of CPU, so an agent that could
+  call it could loop on it. Code renders, once.
+- **Code owns what an AI must not control:** the job id, the format, the slot, the captions and the footage used
+  recently. A test shows a designer that tries to set the schedule is ignored; I broke the rule on purpose to prove the
+  test catches it.
+- **A hand-over bridge in plain code** that checks every post against the publisher's live contract, holds anything that
+  can't go out *with a reason*, uploads each file once, and sends one dry-run-then-real batch of drafts. A slot that
+  already has a post is skipped before any AI is spent.
+- **Then I ran the whole thing for real, twice, and read the traces.** The fake-model tests had passed; the real runs
+  found four defects they could not have: the renderer copied 3.5 GB into the temp folder on every run and never
+  freed it (it filled my disk twice); `--dry-run` returned a cached render and hid the very texts the brand check needed;
+  one auto-picked track in ten rendered too loud and failed QA after an AI had been paid for the post; and the console
+  couldn't say what became of a media post. Each got a test.
+
+**Result.** A finished post costs about 24k tokens and 58 s (two real runs on a frozen week), on the subscription.
+The designer went from 4 turns and 20.6k tokens to 2 turns and 8.9k by reading its own refusals and fixing the prompt.
+The renderer is 2.5× faster on stills and 1.5× on a reel, and no longer leaks. The same runs exposed an invented claim
+("we personally check every Kacchi") that passed every automated check because no rule named it; I flagged it to the
+owner rather than quietly patching one stage.
+
+**Trade-off I would defend.** I did not build the queue-and-worker architecture the render project had planned: the
+orchestrator runs on the same Mac as the footage, so a queue would only add a failure mode. I kept a seam so it
+becomes the right answer the day the orchestrator moves. I also did not claim live verification: nothing has touched the
+real publisher yet (no key), so the bridge is proven against a fake that enforces the contract, and the first live run is
+a dry run.
