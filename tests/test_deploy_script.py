@@ -21,6 +21,10 @@ FAKE_DOCKER = r"""#!/usr/bin/env bash
 # Fake docker: logs each call; behaviour from FAKE_* variables.
 echo "docker $* | INTEL_IMAGE=${INTEL_IMAGE:-}" >> "$FAKE_LOG"
 args="$*"
+if [[ "$args" == "pull --quiet"* && -n "${FAKE_PULL_FAILS:-}" ]]; then  # fail the first N pulls
+  n=$(cat "$FAKE_LOG.pulls" 2>/dev/null || echo 0); echo $((n + 1)) > "$FAKE_LOG.pulls"
+  (( n < FAKE_PULL_FAILS )) && { echo "connection reset by peer" >&2; exit 1; }
+fi
 case "$args" in
   "compose ps -q intel-api") [[ -n "${FAKE_OLD:-}" ]] && echo "cid-old" ;;
   "inspect --format {{.Image}} cid-old") echo "sha256:oldimage" ;;
@@ -72,6 +76,7 @@ def vps(tmp_path):
             "INTEL_DEPLOY_SETTLE_S": "0",
             "INTEL_METRICS_DIR": str(metrics_dir),
             "INTEL_MCP_SMOKE_TRIES": "2",
+            "INTEL_PULL_RETRY_S": "0",
             "INTEL_MCP_SMOKE_SLEEP_S": "0",
             **fake,
         }
@@ -308,3 +313,16 @@ def test_a_sick_intel_mcp_is_stopped_but_never_rolls_back_intel_api(vps):
     assert "docker compose stop intel-mcp | INTEL_IMAGE=" in calls
     assert f"docker tag ghcr.io/shadmanarko/dk-intelligence@{DIGEST} dk-intelligence:current | INTEL_IMAGE=" in calls
     assert vps["outcomes"]() == ["deployed", "mcp_failed"]
+
+
+def test_a_flaky_registry_is_retried_and_a_dead_one_fails_cleanly(vps):
+    head = vps["head"]
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_PULL_FAILS="2")
+    assert r.returncode == 0 and r.stdout.count("pull attempt") == 2 and vps["outcomes"]() == ["deployed"]
+
+
+def test_three_failed_pulls_switch_nothing(vps):
+    head = vps["head"]
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_PULL_FAILS="3")
+    assert r.returncode == 1 and not any("compose up" in c for c in vps["calls"]())
+    assert vps["outcomes"]() == ["failed"]
