@@ -206,3 +206,23 @@ def test_the_cache_serves_repeats_but_never_errors_or_other_packs():
         return out
 
     assert _run(go()) == [1, 1, 2, 3, 4]
+
+
+def test_a_degraded_answer_is_never_cached():
+    from intel.mcp_server.kit.middleware import ResultCache
+
+    calls = {"n": 0}
+    server = FastMCP("t")
+
+    @server.tool
+    def grounding_pack() -> dict[str, Any]:
+        calls["n"] += 1
+        return {"n": calls["n"], "unavailable": [{"part": "x"}] if calls["n"] == 1 else []}
+
+    server.add_middleware(ResultCache(lambda: "kp-1"))
+
+    async def go() -> list[int]:
+        async with Client(server) as c:
+            return [(await c.call_tool("grounding_pack", {})).structured_content["n"] for _ in range(3)]
+
+    assert _run(go()) == [1, 2, 2]  # the degraded first answer is not kept; the complete one is

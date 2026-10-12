@@ -301,6 +301,9 @@ def test_with_the_profile_intel_mcp_ships_with_the_same_commit(vps):
     assert any("exec -T -e INTEL_MCP_READER_PASSWORD -e INTEL_MCP_LOADER_PASSWORD intel-db psql" in c for c in calls)
     assert not any("=r " in c or "=l " in c for c in calls)  # passwords pass by environment, never in arguments
     assert f"docker tag {mcp} dk-intelligence-mcp:current | INTEL_IMAGE=" in calls
+    first_roles = next(i for i, c in enumerate(calls) if "intel-db psql" in c)
+    first_up = next(i for i, c in enumerate(calls) if c.startswith("docker compose up"))
+    assert first_roles < first_up  # passwords before intel-mcp starts: its loader logs in on the first try
     assert vps["outcomes"]() == ["deployed", "mcp_deployed"]
 
 

@@ -363,7 +363,9 @@ class ResultCache(Middleware):
             metrics.CACHE_HITS.labels(name).inc()
             return hit[1]
         result = await call_next(context)
-        if not getattr(result, "is_error", False):
+        data = getattr(result, "structured_content", None)
+        degraded = isinstance(data, dict) and bool(data.get("unavailable"))  # a part was down: ask again next time
+        if not getattr(result, "is_error", False) and not degraded:
             if len(self._store) >= self.max_entries:
                 self._store.pop(next(iter(self._store)))
             self._store[key] = (now, result)

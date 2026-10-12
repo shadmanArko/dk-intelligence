@@ -79,16 +79,14 @@ def _onnx_cross_encoder(key: str, batch_size: int = 16, max_tokens: int = 512) -
     """Serving backend: onnxruntime + tokenizers, no torch. Sigmoid of the relevance logit, like CrossEncoder."""
     import numpy as np
     import onnxruntime as ort
-    from huggingface_hub import hf_hub_download
     from tokenizers import Tokenizer
 
-    from intel.rag.embed import model_dir
+    from intel.rag.embed import model_file
 
     repo, file = ONNX[key]
-    local = model_dir(repo)
-    session = ort.InferenceSession(hf_hub_download(repo, file, local_dir=local), providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(model_file(repo, file), providers=["CPUExecutionProvider"])
     names = {i.name for i in session.get_inputs()}
-    tok = Tokenizer.from_file(hf_hub_download(repo, "tokenizer.json", local_dir=local))
+    tok = Tokenizer.from_file(model_file(repo, "tokenizer.json"))
     tok.enable_truncation(max_tokens)
     tok.enable_padding()
 

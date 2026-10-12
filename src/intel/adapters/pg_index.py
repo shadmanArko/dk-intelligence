@@ -6,7 +6,9 @@ falls back to keyword-only and says so (`mode: lexical`). Every session is read-
 
 from __future__ import annotations
 
+import logging
 import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -19,6 +21,8 @@ from intel.rag import store
 from intel.rag.embed import Embedder
 
 Rerank = Callable[[list[tuple[str, str]]], list[float]]
+RETRY_S = 600.0
+log = logging.getLogger("intel.mcp.index")
 
 
 class PgEvidenceIndex(EvidenceIndex):
@@ -36,8 +40,8 @@ class PgEvidenceIndex(EvidenceIndex):
         self._embedder_factory, self._reranker_factory = embedder, reranker
         self._embedder: Embedder | None = None
         self._reranker: Rerank | None = None
-        self._embedder_failed = False
-        self._reranker_failed = False
+        self._embedder_failed: float | bool = False  # the time of the last failed load, or False
+        self._reranker_failed: float | bool = False
         self._lock = threading.Lock()
         # at most 2 model runs at once: onnxruntime already uses every core per run, so 10 parallel searches
         # oversubscribed the CPU (P4.6 load test); queueing is faster than thrashing
@@ -65,20 +69,29 @@ class PgEvidenceIndex(EvidenceIndex):
 
     def _emb(self) -> Embedder | None:
         with self._lock:
-            if self._embedder is None and not self._embedder_failed and self._embedder_factory is not None:
+            if self._embedder is None and self._due("_embedder_failed") and self._embedder_factory is not None:
                 try:
                     self._embedder = self._embedder_factory()
+                    self._embedder_failed = False
                 except Exception:  # noqa: BLE001 - degrade to keyword search, reported as mode=lexical
-                    self._embedder_failed = True
+                    log.exception("embedder failed to load: search is keyword-only until it loads")
+                    self._embedder_failed = time.monotonic()
             return self._embedder
+
+    def _due(self, attr: str) -> bool:
+        """A failed model load is retried after RETRY_S, never given up for good (go-live, 2026-10-12)."""
+        failed = getattr(self, attr)
+        return not failed or time.monotonic() - float(failed) >= RETRY_S
 
     def _rr(self) -> Rerank | None:
         with self._lock:
-            if self._reranker is None and not self._reranker_failed and self._reranker_factory is not None:
+            if self._reranker is None and self._due("_reranker_failed") and self._reranker_factory is not None:
                 try:
                     self._reranker = self._reranker_factory()
+                    self._reranker_failed = False
                 except Exception:  # noqa: BLE001 - degrade to unranked hits, reported as evidence=unscored
-                    self._reranker_failed = True
+                    log.exception("reranker failed to load: evidence is 'unscored' until it loads")
+                    self._reranker_failed = time.monotonic()
             return self._reranker
 
     def _pack(self, conn: psycopg.Connection[Any]) -> str:
