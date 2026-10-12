@@ -14,6 +14,9 @@ approved the whole plan ("go, full permission"). Don't re-ask what is decided; r
   their interview showcase for leading ML engineering: build it like a production system, with measured results.
 - They voice-type in informal English. Read for intent: "rack" or "rag" means RAG; "go", "yes" or "start" means go
   ahead.
+- They ask you to "think like a VP of engineering / the best MLOps engineer": senior judgement, a production
+  system, the best social media content engine for the business. They also build the ordering system, the market
+  data platform, a link builder and the publishing tool themselves.
 - They want **a clear recommendation and an order, not a menu**, short answers in plain words with no abbreviations,
   and visual pages they can see (published artifacts, the Agent Console).
 - At the end of a task: verify it yourself (tests, CI, the deploy), then report the result plus **only** what needs
