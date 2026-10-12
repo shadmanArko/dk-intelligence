@@ -1,6 +1,6 @@
 # Phase 4 · P4.7: dk_intel on the VPS (2026-10-12)
 
-Code and tests are done; go-live is the owner's steps in [docs/runbooks/mcp.md](../runbooks/mcp.md#on-the-vps-adr-0030).
+**Live on the VPS since 2026-10-12**, after the owner's go-live steps ([docs/runbooks/mcp.md](../runbooks/mcp.md#on-the-vps-adr-0030)).
 Decision: [ADR 0030](../adr/0030-dk-intel-on-the-vps.md).
 
 ## Measured before deciding
@@ -64,4 +64,44 @@ Nine copy-paste steps in the runbook:
 8. **Check memory and the pack load.**
 9. **Turn on weekly shipping.**
 
-After step 8, Claude tests from the Mac over the tailnet, and this document gets the VPS latency and memory numbers.
+## Go-live (2026-10-12)
+- **Steps 1–8 done by the owner:**
+  - the models (1,079 MB) and pack (65 MB) uploaded through the inbox in 17½ minutes and were installed by intel-api;
+  - `tailscale serve` 8444 is tailnet only;
+  - the deploy reported `intel-mcp … healthy`.
+- **One false start:** the Ansible command was pasted into the tailnet-name prompt. It was cancelled with Ctrl+C
+  before anything was written; the step only writes after both answers.
+- **Found at go-live and fixed the same hour** ([PR #17](https://github.com/shadmanArko/dk-intelligence/pull/17)):
+  - **Search ran keyword-only.** The Hugging Face download helper writes lock files next to the model files even
+    when nothing needs downloading, and the VPS mounts them read-only. Present files are now used directly; the
+    fix was reproduced and verified in the image with a read-only mount. A failed model load is now logged and
+    retried after 10 minutes (it used to be silent and permanent).
+  - **A degraded `grounding_pack` was cached for 5 minutes** (it was built before the pack had loaded). Degraded
+    answers are never cached now.
+  - **The loader's first login failed**, because deploy.sh set the role passwords after starting intel-mcp. They
+    are set before now.
+- **Deploy hiccup:** the release's first CI deploy failed on a reset image pull; a rerun fixed it. Pulls now retry
+  ([postmortem](../postmortems/2026-10-12-deploy-pull-reset.md)).
+
+### Measured on the VPS (from the Mac over the tailnet, after warm-up)
+| Query | Latency | Evidence |
+|---|---|---|
+| reviews: "Lieferung kam kalt an" | 3.8 s | strong (0.97) |
+| reviews: "too little meat" | 4.1 s | strong (0.99) |
+| own posts: "Borhani" | 8.3 s | strong (0.99) |
+| creators: "brunch spots" | 2.6 s | strong (0.86) |
+| reviews: "sushi in Hamburg" (no answer exists) | 3.6 s | **weak** (0.03), as on the Mac |
+| `grounding_pack` (instagram) | 0.5 s | all parts present |
+| `get_facts` | 0.5 s | — |
+
+- **Search latency:** median **3.8 s**, about 3× the Mac's 1.3 s (fewer, slower cores). Fine for agents. If it
+  matters later, the levers are the rerank pool (20 → 10) and capping caption length for reranking.
+- **Memory (after the searches):**
+  - intel-mcp **1.71 GB of 2.5 GB**;
+  - intel-db 122 MB of 512 MB;
+  - intel-api 156 MB (unchanged);
+  - the host still has **4.0 GB available**, with 34 MB of swap in use.
+- **Isolation, checked over the tailnet:**
+  - a writer token sees exactly 7 tools;
+  - the owner profile works only with the owner's Tailscale login;
+  - **a Mac token is refused by the VPS** (separate keys).

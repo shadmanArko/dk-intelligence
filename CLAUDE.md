@@ -15,7 +15,7 @@ for the owner, and the next task (Phase 5: agents). Then the [architecture](docs
 | 1 (M0–M8) | walking skeleton: pull → train → judge → package → approve → serve → ledger | done |
 | 2 (2.1–2.6) | models that help sell: reach, weakness miner, community map, occasions, funnel, creators | done |
 | 3 (H0–H11) | MLOps hardening ([plan](docs/PHASE3_MLOPS_PLAN.md)) | done, except **H10 (GDPR) on PR #4, unmerged by the owner's choice** |
-| 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; the VPS go-live is the owner's runbook steps |
+| 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; dk_intel live on the VPS since 2026-10-12 |
 | **5** | **agents**: decisions D5, D9–D11 first ([hand-over](docs/mcp/PHASE5_HANDOVER.md)) | next |
 
 Older docs (PHASE1_PLAN.md, PHASE2_PLAN.md) say "MCP is Phase 3". That was renumbered on 2026-10-08: Phase 3 became

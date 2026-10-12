@@ -30,8 +30,9 @@ re-check them before acting.
 >    ratchet, the knowledge line in the Sunday report (the first live Sunday pack step passed on 10-11). Runbook:
 >    `docs/runbooks/mcp.md`; Phase 5 decisions: `docs/mcp/PHASE5_HANDOVER.md`. **P4.7 code done 2026-10-12**
 >    ([results](results/P4_7_vps.md), ADR 0030): `intel-mcp` container (opt-in compose profile), packs and models
->    through the inbox, migration 0007, alerts. **Owner to-do:** the 9 go-live steps in `docs/runbooks/mcp.md`
->    ("On the VPS"); then Claude tests over the tailnet and records the VPS numbers. **Next: Phase 5** (agents;
+>    through the inbox, migration 0007, alerts. **Live on the VPS 2026-10-12**: search median 3.8 s,
+>    intel-mcp 1.71 GB of 2.5 GB, host 4.0 GB available. Owner to-do: `INTEL_SHIP_KNOWLEDGE=true` in the Mac's `.env`
+>    (weekly pack shipping). **Next: Phase 5** (agents;
 >    decisions D5, D9–D11 in `docs/mcp/PHASE5_HANDOVER.md` first).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.

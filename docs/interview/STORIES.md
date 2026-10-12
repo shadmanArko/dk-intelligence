@@ -610,7 +610,9 @@ risking the ordering system or the scoring API.
 
 **Result.** All three doors are unchanged. A failed MCP deploy stops only itself. The memory alert and a
 one-command stop protect the ordering system. Tests cover tampering, path escapes, role boundaries, the deploy
-paths and the alerts.
+paths and the alerts. At go-live, a read-only volume exposed a library writing lock files next to the
+models, so search silently ran keyword-only. I reproduced it in the image with a read-only mount, fixed it, made
+model-load failures loud and retried, and had scored search live within the hour (median 3.8 s, 1.7 GB of 2.5 GB).
 
 **Trade-off I would defend.** The MCP image is pulled by commit tag and label-checked, not by a digest named in
 the deploy request. Pinning the digest would have meant changing the forced command, which is one of the three
