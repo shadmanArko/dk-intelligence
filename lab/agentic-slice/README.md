@@ -39,10 +39,12 @@ Once only: the headless `claude` must be signed in. Run `claude` in a terminal, 
 ```bash
 uv run python lab/agentic-slice/console.py
 ```
-Open http://127.0.0.1:8770 (this Mac only), pick a platform and press **▶ Run now**. The boxes go
+Open http://127.0.0.1:8770 (this Mac only), pick a platform and press **▶ Run now**. At the top, **What it produced** shows
+one card per post: when and where, the planner's idea, the writer's caption, dk_intel's check (chance to beat our
+usual engagement) and whether it was proposed or skipped, and why. Below it, **How it got there**: The boxes go
 waiting → running → done. The three helpers run at the same moment, and the dashed server boxes flash on each MCP
 call. Click any box to see its prompt, tools, every call and result, its tokens and its answer. A run takes about
-2–4 minutes and is billed to your Claude subscription (no API key).
+70 seconds and ~50k tokens and is billed to your Claude subscription (no API key).
 
 **From the terminal:**
 ```bash
@@ -64,20 +66,34 @@ The same engine with `--trigger schedule`, so history shows which runs came from
 Only one run happens at a time (`runs/.running`). If the button and the schedule collide, the second one exits with
 "a run is already in progress".
 
-## Two real runs (2026-10-12, Sonnet, on the subscription)
-| Run | Trigger | Wall time | Agents | Tool calls | Tokens | Proposed / skipped |
-|---|---|---|---|---|---|---|
-| instagram | terminal | 71 s | 5 | 15 | 377k | 2 / 1 (s3: still `rewrite` after 2 rewrites, 0.46) |
-| facebook | Run button | 68 s | 5 | 16 | 420k | 1 / 2 (both still `rewrite`) |
+## Real runs (2026-10-12, on the subscription)
+| Run | Engine | Wall time | Tool calls | Tokens | Proposed / skipped |
+|---|---|---|---|---|---|
+| instagram, terminal | first version | 71 s | 15 | 377k | 2 / 1 |
+| facebook, Run button | first version | 68 s | 16 | 420k | 1 / 2 |
+| **instagram, Run button** | **token-lean** | **69 s** | **9** | **47k (−87%)** | **2 / 1** (kept: 62%, 57%; skipped: 46%) |
 
-- The three helpers ran side by side, for 20 s, 17 s and 38 s. One after another they would have taken 75 s instead
-  of 38 s.
-- dk_intel's audit chain recorded the same MCP calls as the engine.
-- Twice an agent tried a tool outside its allowlist: a writer tried `search_posts`, and the writer-lead tried
-  `list_slots`. Claude Code refused both (shown as ERROR in the feed), and the agents carried on without them.
-- The gate held: nothing with verdict `rewrite` was proposed.
-- Found on the first real run: with `--tools ""` the agent saw **no** tools, because MCP tools are deferred behind
-  ToolSearch, which is a built-in. The engine now sets `ENABLE_TOOL_SEARCH=false`, and a test pins it.
+**Where the tokens went, and what fixed it.** Every turn re-sends the agent's whole context, so the fixed part
+matters more than anything else. It was measured with an empty one-turn call:
+
+| Re-sent on every turn | Before | Fix |
+|---|---|---|
+| Claude Code's own coding instructions | ~8.7k | `--system-prompt` = the agent's own prompt only |
+| The repo's CLAUDE.md and memory | ~5.7k | each agent starts in an empty folder outside the repo |
+| Descriptions of tools it may not call | ~3k | `--disallowedTools` hides them, so they aren't sent at all |
+| **Fixed context per turn** | **~20k** | **~2k** |
+
+The agents also take fewer turns:
+- the planner calls both tools in one turn;
+- writers judge 3 options in **one** `evaluate_drafts` call and keep the best, instead of rewriting one at a time;
+- the writer-lead's mechanical job runs on Haiku;
+- code fills in the post time and content type.
+
+The quality checks are unchanged: dk_intel still judges every caption, and nothing below "keep" is proposed.
+
+Also from the first real run: with `--tools ""` the agent saw **no** tools, because MCP tools are deferred behind
+ToolSearch, a built-in. The engine sets `ENABLE_TOOL_SEARCH=false`, and a test pins it. Agents that tried a tool
+outside their allowlist were refused; now those tools aren't even shown to them.
 
 ## What to look at (the lessons for the real design)
 1. **The boundary lives in the server, not in the prompt.** The planner connects with dk_intel's `planner` profile.

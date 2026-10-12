@@ -26,12 +26,35 @@ table{width:100%;border-collapse:collapse;font-size:13px} td,th{text-align:left;
 tr.sel{background:color-mix(in srgb,var(--acc) 12%,transparent)} tbody tr{cursor:pointer}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);padding:8px;border-radius:6px;font-size:12px;max-height:260px;overflow:auto}
 .legend span{margin-right:12px;font-size:12px;color:var(--mute)} .dot{display:inline-block;width:9px;height:9px;border-radius:9px;margin-right:4px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.stat{flex:1 1 120px;background:var(--bg);border-radius:8px;padding:8px 12px}
+.stat b{display:block;font-size:20px;line-height:1.2} .stat span{font-size:12px;color:var(--mute)}
+.posts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.post{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.post.proposed{border-color:var(--done)} .post.failed{border-color:var(--fail)}
+.post-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.when{font-weight:600} .fmt{font-size:12px;color:var(--mute)}
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.b-proposed{background:color-mix(in srgb,var(--done) 18%,transparent);color:var(--done)}
+.b-skipped{background:color-mix(in srgb,var(--run) 18%,transparent);color:var(--run)}
+.b-failed{background:color-mix(in srgb,var(--fail) 18%,transparent);color:var(--fail)}
+.b-writing,.b-checking{background:var(--bg);color:var(--mute)}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.idea{font-size:13px}
+.cap{background:var(--bg);border-radius:10px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
+.cap .tag{color:var(--srv)} .cap.empty{color:var(--mute);font-style:italic}
+.meter{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute)}
+.bar{flex:1;height:7px;border-radius:7px;background:var(--line);overflow:hidden} .bar i{display:block;height:100%;border-radius:7px}
+.chips{display:flex;flex-wrap:wrap;gap:4px} .chips span{font:11px ui-monospace,monospace;padding:2px 6px;border-radius:5px;background:var(--bg);color:var(--mute)}
+.why{font-size:12px;color:var(--mute)}
 </style></head><body>
 <header><h1>Agent Console</h1><span class="pill" id="state">idle</span><span class="grow"></span>
 <select id="platform"><option>instagram</option><option>facebook</option></select>
 <button id="go">▶ Run now</button></header>
 <main>
-<section class="card" style="grid-column:1/-1"><h2>The run, live</h2>
+<section class="card" style="grid-column:1/-1"><h2 id="rtitle">What it produced</h2><div class="stats" id="stats"></div>
+<div class="posts" id="posts"><div class="why">No run yet: press Run now.</div></div></section>
+<section class="card" style="grid-column:1/-1"><h2>How it got there: the run, live</h2>
 <div class="legend"><span><i class="dot" style="background:var(--wait)"></i>waiting</span><span><i class="dot" style="background:var(--run)"></i>running</span>
 <span><i class="dot" style="background:var(--done)"></i>done</span><span><i class="dot" style="background:var(--fail)"></i>failed</span>
 <span>dashed boxes = MCP servers (they light up on each call) · click a box for everything it did</span></div>
@@ -71,16 +94,35 @@ function apply(e){ev.push(e);const n=st[e.node]=st[e.node]||{calls:0,events:[]};
   e.kind==='end'?`${e.status} ${e.error||''}`:e.kind==='start'?`start ${e.agent||e.plan||''}`:e.kind==='thought'?`“${e.text}”`:JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['t','ms','node','kind'].includes(k))));
  line.textContent=`${(e.ms/1000).toFixed(1).padStart(6)}s ${e.node.padEnd(12)} ${what}`;$('feed').prepend(line);draw()}
 function show(k){const n=st[k];$('dtitle').textContent='Details: '+k;if(!n){$('detail').textContent='not started';return}
- const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
  let h=`<p><b>status</b> ${n.status||'-'} · <b>model</b> ${n.model||'-'} · ${n.ms?(n.ms/1000).toFixed(1)+' s':''} · ${n.tokens||0} tokens</p>`;
  if(n.tools)h+=`<p><b>allowed tools</b><br>${n.tools.map(esc).join('<br>')}</p>`;
  if(n.task)h+=`<p><b>task</b></p><pre>${esc(n.task)}</pre>`;
  for(const e of n.events.filter(e=>e.kind==='tool_call'||e.kind==='tool_result'))h+=`<pre>${e.kind==='tool_call'?'→ '+esc(e.tool)+' '+esc(e.input):'← '+esc(e.tool)+(e.is_error?' ERROR':'')+' '+esc(e.output)}</pre>`;
  if(n.output)h+=`<p><b>answer</b></p><pre>${esc(JSON.stringify(n.output,null,2))}</pre>`;if(n.error)h+=`<p style="color:var(--fail)"><b>error</b> ${esc(n.error)}</p>`;
  $('detail').innerHTML=h}
-function openRun(id){current=id;st={};ev=[];$('feed').innerHTML='';draw();if(es)es.close();
- es=new EventSource(`/api/runs/${id}/stream`);es.onmessage=m=>apply(JSON.parse(m.data));
- es.addEventListener('done',()=>{es.close();refresh();audit(id)});document.querySelectorAll('#hist tr').forEach(r=>r.classList.toggle('sel',r.dataset.id===id))}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LABEL={proposed:'✓ Proposed',skipped:'Skipped',failed:'✕ Failed',writing:'Writing…',checking:'Checking…'};
+let rTimer=null;function resultSoon(){clearTimeout(rTimer);rTimer=setTimeout(loadResult,300)}
+async function loadResult(){if(!current)return;const r=await (await fetch(`/api/runs/${current}/result`)).json();const x=r.run,ps=r.posts;
+ const plat=(x.platform||'').replace(/^./,c=>c.toUpperCase());const nP=ps.filter(p=>p.status==='proposed').length;
+ const k=t=>t>=1000?(t/1000).toFixed(t>=10000?0:1)+'k':String(t||0);
+ $('rtitle').textContent=`What it produced: ${plat}, ${x.id}`;
+ $('stats').innerHTML=[[x.status==='running'?'running…':x.status,'run status'],[`${nP} of ${ps.length||3}`,'posts proposed'],
+  [x.seconds+' s','time'],[k(x.tokens),x.tokens_cached?`tokens (${k(x.tokens_cached)} cached)`:'tokens'],[ps.length?k(Math.round(x.tokens/ps.length)):'-','tokens per post'],
+  [x.tool_calls,'MCP tool calls'],[x.trigger||'-','started by']].map(([b,s])=>`<div class="stat"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
+ if(!ps.length){$('posts').innerHTML=`<div class="why">${x.status==='failed'?'The run failed before any post was planned: see the feed below.':'The planner is choosing 3 posts…'}</div>`;return}
+ $('posts').innerHTML=ps.map(p=>{const d=p.date?new Date(p.date+'T12:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):(p.day||'');
+  const cap=p.caption?esc(p.caption).replace(/#\w+/g,m=>`<span class="tag">${m}</span>`):'';
+  const sc=typeof p.score==='number'?p.score:null;const col=sc===null?'var(--wait)':p.verdict==='keep'?'var(--done)':'var(--run)';
+  return `<div class="post ${p.status}"><div class="post-h"><div><div class="when">${esc(d)} · ${esc(p.time||'')}</div><div class="fmt">${esc(p.format||'')} · ${esc(plat)} · slot ${esc(p.slot_id)} · ${esc(p.agent)}</div></div><span class="badge b-${p.status}">${LABEL[p.status]||esc(p.status)}</span></div>
+  <div><div class="lbl">The idea (planner)</div><div class="idea">${esc(p.angle||'')}</div></div>
+  <div><div class="lbl">The caption (writer)</div><div class="cap${cap?'':' empty'}">${cap||(p.status==='failed'?'no caption':'being written…')}</div></div>
+  ${sc!==null?`<div><div class="lbl">The check (dk_intel evaluate_drafts)</div><div class="meter" title="content_scorer: chance this post beats our usual engagement on ${esc(plat)}"><b style="color:${col};font-size:16px;min-width:42px">${Math.round(sc*100)}%</b><div class="bar"><i style="width:${Math.round(sc*100)}%;background:${col}"></i></div><span class="badge" style="color:${col}">${esc(p.verdict)}</span></div><div class="why">chance to beat our usual engagement${p.tried?' · best of '+esc(p.tried)+' drafts':''}${p.rounds?' · '+esc(p.rounds)+' check'+(p.rounds>1?'s':''):''}</div></div>`:''}
+  ${p.why?`<div class="why"><b>${p.status==='proposed'?'Result':'Why'}:</b> ${esc(p.why)}</div>`:''}
+  ${p.sources.length?`<div class="chips" title="citation ids from dk_intel: the evidence this post is built on">${p.sources.map(s=>`<span>${esc(s)}</span>`).join('')}</div>`:''}</div>`}).join('')}
+function openRun(id){current=id;st={};ev=[];$('feed').innerHTML='';draw();if(es)es.close();loadResult();
+ es=new EventSource(`/api/runs/${id}/stream`);es.onmessage=m=>{const e=JSON.parse(m.data);apply(e);if(e.kind==='end'||e.kind==='delegate')resultSoon()};
+ es.addEventListener('done',()=>{es.close();refresh();audit(id);loadResult()});document.querySelectorAll('#hist tr').forEach(r=>r.classList.toggle('sel',r.dataset.id===id))}
 async function audit(id){const a=await (await fetch(`/api/runs/${id}/audit`)).json();
  $('aud').innerHTML=a.map(x=>`<tr><td>${(x.at||'').slice(11,19)}</td><td>${x.profile}</td><td>${x.name}</td><td>${x.status}</td><td>${x.ms}</td></tr>`).join('')||'<tr><td colspan=5>no MCP calls recorded</td></tr>'}
 async function refresh(){const r=await (await fetch('/api/runs')).json();const s=await (await fetch('/api/status')).json();

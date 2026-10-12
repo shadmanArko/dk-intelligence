@@ -9,7 +9,7 @@ import sys
 import time
 
 args = sys.argv[1:]
-prompt = args[args.index("--append-system-prompt") + 1]
+prompt = args[args.index("--system-prompt") + 1]
 task = args[args.index("-p") + 1]
 tools = args[args.index("--allowedTools") + 1].split(",")
 delay = float(os.environ.get("FAKE_DELAY_S", "0.3"))
@@ -21,10 +21,16 @@ with open(os.environ.get("FAKE_ARGS_LOG", os.devnull), "a") as f:  # what the en
                 "builtins": args[args.index("--tools") + 1],
                 "task": task,
                 "tool_search": os.environ.get("ENABLE_TOOL_SEARCH"),
+                "cwd": os.getcwd(),
+                "hidden": args[args.index("--disallowedTools") + 1].split(",") if "--disallowedTools" in args else [],
             }
         )
         + "\n"
     )
+
+
+def named(short):
+    return next(t for t in tools if t.endswith("__" + short))
 
 
 def out(e):
@@ -47,8 +53,8 @@ def tool(name, inp, result):
 
 out({"type": "system", "subtype": "init", "tools": tools})
 if "PLANNER" in prompt:
-    tool(tools[3], {"platform": "instagram"}, {"slots": ["s1", "s2", "s3"]})
-    tool(tools[0], {"platform": "instagram", "days": 7}, {"occasions": []})
+    tool(named("list_slots"), {"platform": "instagram"}, {"slots": ["s1", "s2", "s3"]})
+    tool(named("grounding_pack"), {"platform": "instagram", "days": 7}, {"occasions": []})
     answer = {
         "slots": [
             {"slot_id": f"s{i}", "day": d, "time": "17:00", "format": "reel", "angle": a, "sources": ["R-AAAAAAAA"]}
@@ -62,8 +68,8 @@ elif "WRITER helper" in prompt:
         print("simulated failure", file=sys.stderr)
         sys.exit(1)
     tool(
-        tools[0],
-        {"drafts": [{"platform": "instagram", "caption": "Samstag Kacchi in Berlin"}]},
+        named("evaluate_drafts"),
+        {"drafts": [{"ref": r, "platform": "instagram", "caption": "Samstag Kacchi in Berlin"} for r in "abc"]},
         {"results": [{"verdict": "keep"}]},
     )
     answer = {
@@ -72,12 +78,13 @@ elif "WRITER helper" in prompt:
         "verdict": "keep",
         "score": 0.6,
         "rounds": 1,
+        "tried": 3,
         "sources": ["R-AAAAAAAA"],
     }
 else:  # writer-lead
     results = json.loads(task)["results"]
     for r in results:
-        tool(tools[1], {"slot_id": r["slot_id"]}, {"proposal_id": "p-" + r["slot_id"]})
+        tool(named("propose_post"), {"slot_id": r["slot_id"]}, {"proposal_id": "p-" + r["slot_id"]})
     answer = {
         "proposed": [{"slot_id": r["slot_id"], "proposal_id": "p-" + r["slot_id"]} for r in results],
         "skipped": [],

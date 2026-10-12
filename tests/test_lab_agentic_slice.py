@@ -10,6 +10,13 @@ import pytest
 LAB = Path(__file__).resolve().parents[1] / "lab" / "agentic-slice"
 
 
+OFFERED = {
+    "dk_intel_planner": ["grounding_pack", "upcoming_occasions", "get_facts", "search_posts", "brand_rules"],
+    "dk_intel_writer": ["grounding_pack", "evaluate_drafts", "brand_rules", "get_facts", "search_posts"],
+    "demo_publisher": ["list_slots", "propose_post"],
+}
+
+
 def _load(name: str):  # type: ignore[no-untyped-def]
     spec = importlib.util.spec_from_file_location(f"lab_{name}", LAB / f"{name}.py")
     assert spec and spec.loader
@@ -24,6 +31,7 @@ def engine(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "RUNS", tmp_path / "runs")
     monkeypatch.setattr(run, "LOCK", tmp_path / "runs" / ".running")
     monkeypatch.setattr(run, "CLAUDE", str(LAB / "testing" / "fake_claude.py"))
+    monkeypatch.setattr(run, "_OFFERED", dict(OFFERED))  # what tools/list would return, without starting servers
     monkeypatch.setenv("FAKE_ARGS_LOG", str(tmp_path / "args.jsonl"))
     monkeypatch.setenv("FAKE_DELAY_S", "0.4")
     return run
@@ -64,9 +72,19 @@ def test_each_agent_gets_only_its_own_tools_and_no_builtins(engine, tmp_path):
     assert all(c["builtins"] == "" for c in calls)  # no shell, web or file tools for any agent
     assert all(c["tool_search"] == "false" for c in calls)  # else the MCP tools hide behind the removed ToolSearch
     planner, *helpers, lead = calls
-    assert all(t.startswith(("mcp__dk_intel_planner__", "mcp__demo_publisher__list_slots")) for t in planner["tools"])
-    assert all(t.startswith("mcp__dk_intel_writer__") for h in helpers for t in h["tools"])
+    assert planner["tools"] == ["mcp__dk_intel_planner__grounding_pack", "mcp__demo_publisher__list_slots"]
+    assert all(h["tools"] == ["mcp__dk_intel_writer__evaluate_drafts"] for h in helpers)
     assert lead["tools"] == ["mcp__dk_intel_writer__evaluate_drafts", "mcp__demo_publisher__propose_post"]
+    # the token budget: every other tool of its servers is hidden (not even described), and no agent starts in the
+    # repo (so no CLAUDE.md or memory rides along on every turn)
+    assert sorted(planner["hidden"]) == sorted(
+        [f"mcp__dk_intel_planner__{t}" for t in OFFERED["dk_intel_planner"] if t != "grounding_pack"]
+        + ["mcp__demo_publisher__propose_post"]
+    )
+    assert "mcp__dk_intel_writer__evaluate_drafts" not in helpers[0]["hidden"] and len(helpers[0]["hidden"]) == 4
+    assert all(not Path(c["cwd"]).resolve().is_relative_to(LAB.parents[1]) for c in calls)
+    briefs = [json.loads(h["task"]) for h in helpers]
+    assert all(b["planned_posted_at"].endswith(("+01:00", "+02:00")) and b["content_type"] == "reel" for b in briefs)
     cfgs = {p.stem.removesuffix(".mcp"): json.loads(p.read_text()) for p in engine.RUNS.glob("*/*.mcp.json")}
     assert set(cfgs["planner"]["mcpServers"]) == {"dk_intel_planner", "demo_publisher"}
     assert set(cfgs["helper-1"]["mcpServers"]) == {"dk_intel_writer"}  # a writer can't even reach the calendar
@@ -117,3 +135,21 @@ def test_trace_prints_the_run_even_without_the_audit(engine, monkeypatch, capsys
     out = capsys.readouterr().out
     assert "delegate → helper-1, helper-2, helper-3" in out and "→ demo_publisher.propose_post" in out
     assert "dk_intel audit: unavailable" in out
+
+
+def test_the_result_view_shows_each_post_and_what_became_of_it(engine, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    console = _load("console")
+    monkeypatch.setattr(console, "RUNS", engine.RUNS)
+    monkeypatch.setenv("FAKE_FAIL_SLOT", "s2")
+    engine.orchestrate("instagram", "button")
+    c = TestClient(console.app)
+    (run,) = c.get("/api/runs").json()
+    r = c.get(f"/api/runs/{run['id']}/result").json()
+    assert r["run"]["platform"] == "instagram" and r["run"]["status"] == "done"
+    by = {p["slot_id"]: p for p in r["posts"]}
+    assert [by[s]["status"] for s in ("s1", "s2", "s3")] == ["proposed", "failed", "proposed"]
+    s1 = by["s1"]
+    assert s1["caption"] and s1["angle"] == "rice" and s1["score"] == 0.6 and s1["tried"] == 3 and s1["date"]
+    assert "p-s1" in s1["why"] and by["s2"]["caption"] is None and "What it produced" in c.get("/").text
