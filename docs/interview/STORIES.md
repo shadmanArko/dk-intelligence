@@ -555,3 +555,34 @@ the same contract holds over every transport.
 **Trade-off I would defend.** HS256 with one key per host instead of OAuth 2.1. Inside a single-user tailnet, an
 authorization server is cost without benefit. The ADR says exactly when that changes: the day anything becomes
 public.
+
+## P4.6 · Hardening by measurement: the load test that found a global rate limit
+
+**Situation.** The MCP layer worked for one user. Phase 5 will put several agents on it at once, and an "it works
+on my machine" security story isn't enough for a showcase.
+
+**Task.** Make the layer observable, prove each threat's mitigation with a test, and tune limits on measured
+numbers, not guesses.
+
+**Action.**
+- **Observability:** metrics per tool, audit stats from the hash chain, refused HTTP requests in the audit, and
+  token redaction in logs.
+- **A threat model** where every row (T1–T14) names its mitigation and the test that proves it:
+  - planted personal data and injection through the real build;
+  - a fairness scan of every tool of every profile;
+  - contract snapshots that fail on breaking changes.
+- **A load test with 10 concurrent clients** against the real stack.
+
+**Result.**
+- **The first load test aborted.** FastMCP's default rate limiter keys every caller to one global bucket, so ten
+  agents' handshakes refused each other. One line fixed it: a bucket per token.
+- **The second run:** 240/240 calls, but searches queued to 24 s.
+- **Gating model runs and length-sorting rerank batches** added 27% throughput and halved posts-search latency,
+  without changing a single result (the activation gate's dev questions still score 1.0).
+- **Meanwhile the real Sunday run rebuilt and gated the knowledge pack by itself:** 11 new texts embedded,
+  0 questions lost.
+
+**Trade-off I would defend.** I didn't raise the coverage floor even though the local number allowed it: CI
+measures half a point lower, and a ratchet that breaks CI on noise teaches people to ignore ratchets. Capacity is
+stated plainly (about 0.8 searches/s under contention), with the growth triggers written down, instead of buying
+hardware early.

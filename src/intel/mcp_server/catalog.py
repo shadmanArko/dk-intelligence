@@ -81,3 +81,53 @@ def render(deps: Any) -> str:
 def write(deps: Any, path: Path = CATALOG) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(deps))
+
+
+SNAPSHOTS = repo_root() / "tests" / "mcp" / "snapshots"
+
+
+async def _contract(profile: str, deps: Any) -> dict[str, Any]:
+    from fastmcp import Client
+
+    from intel.mcp_server.gateway import build_gateway
+
+    async with Client(build_gateway(profile, deps)) as c:
+        tools = await c.list_tools()
+    return {
+        t.name: {
+            "description": t.description,
+            "input_schema": t.input_schema,
+            "annotations": t.annotations.model_dump(mode="json", exclude_none=True) if t.annotations else None,
+            "meta": {k: v for k, v in (t.meta or {}).items() if k.startswith("dk/")},
+        }
+        for t in tools
+    }
+
+
+def snapshot(deps: Any) -> dict[str, dict[str, Any]]:
+    from intel.mcp_server.gateway import profiles
+
+    return {p: asyncio.run(_contract(p, deps)) for p in profiles()}
+
+
+def write_snapshots(deps: Any) -> None:
+    SNAPSHOTS.mkdir(parents=True, exist_ok=True)
+    for profile, tools in snapshot(deps).items():
+        (SNAPSHOTS / f"{profile}.json").write_text(json.dumps(tools, indent=2, sort_keys=True) + "\n")
+
+
+def breaking(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """Contract changes that break a client (architecture §7.5): a removed tool, a removed argument, an argument
+    that became required. New tools, new optional arguments and wording are additive."""
+    out = []
+    for name, spec in old.items():
+        if name not in new:
+            out.append(f"{name}: removed")
+            continue
+        before, after = spec["input_schema"], new[name]["input_schema"]
+        for arg in before.get("properties", {}):
+            if arg not in after.get("properties", {}):
+                out.append(f"{name}.{arg}: removed")
+        for arg in set(after.get("required", [])) - set(before.get("required", [])):
+            out.append(f"{name}.{arg}: now required")
+    return out

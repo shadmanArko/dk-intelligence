@@ -1,0 +1,405 @@
+{
+  "check_drafts": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: before showing or scoring any caption: checks blocked words, Kacchi and Berlin, length and\nfirst line, hashtags, emojis, German first, 'Werbung' on paid posts, prices against facts, halal, health,\nallergen, superlative and 'only in Berlin' claims, and sales wording on solemn days. Not for: engagement\n(use score_drafts).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "drafts": {
+          "items": {
+            "additionalProperties": false,
+            "description": "A social post draft, as every scoring and checking tool takes it.",
+            "properties": {
+              "caption": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "content_type": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "image",
+                      "video",
+                      "reel",
+                      "carousel",
+                      "short"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "format": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "playbook format, e.g. reel, carousel, short_video"
+              },
+              "occasion_tone": {
+                "default": "none",
+                "enum": [
+                  "festive",
+                  "solemn",
+                  "none"
+                ],
+                "type": "string"
+              },
+              "paid": {
+                "default": false,
+                "description": "a paid or gifted partnership post",
+                "type": "boolean"
+              },
+              "planned_posted_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "with a timezone, e.g. 2026-10-14T16:30:00+02:00; needed for scoring"
+              },
+              "platform": {
+                "enum": [
+                  "facebook",
+                  "instagram",
+                  "threads",
+                  "youtube",
+                  "tiktok",
+                  "linkedin",
+                  "x",
+                  "reddit"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "anyOf": [
+                  {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "your own handle for this draft, echoed back"
+              }
+            },
+            "required": [
+              "platform",
+              "caption"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "drafts"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_brand",
+      "dk/trust": "trusted"
+    }
+  },
+  "evaluate_drafts": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: judging, checking or scoring drafts or captions: one call instead of check_drafts + score_drafts.\nRuns the brand checks and, for Facebook and Instagram drafts with planned_posted_at, the content scorer, and\ngives one verdict per draft: keep, rewrite (with fixes) or blocked. Rewrite at most twice.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "drafts": {
+          "description": "the drafts to judge",
+          "items": {
+            "additionalProperties": false,
+            "description": "A social post draft, as every scoring and checking tool takes it.",
+            "properties": {
+              "caption": {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "content_type": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "image",
+                      "video",
+                      "reel",
+                      "carousel",
+                      "short"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "format": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "playbook format, e.g. reel, carousel, short_video"
+              },
+              "occasion_tone": {
+                "default": "none",
+                "enum": [
+                  "festive",
+                  "solemn",
+                  "none"
+                ],
+                "type": "string"
+              },
+              "paid": {
+                "default": false,
+                "description": "a paid or gifted partnership post",
+                "type": "boolean"
+              },
+              "planned_posted_at": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "with a timezone, e.g. 2026-10-14T16:30:00+02:00; needed for scoring"
+              },
+              "platform": {
+                "enum": [
+                  "facebook",
+                  "instagram",
+                  "threads",
+                  "youtube",
+                  "tiktok",
+                  "linkedin",
+                  "x",
+                  "reddit"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "anyOf": [
+                  {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "your own handle for this draft, echoed back"
+              }
+            },
+            "required": [
+              "platform",
+              "caption"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "drafts"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_studio",
+      "dk/trust": "trusted"
+    }
+  },
+  "get_facts": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: you need a price, order deadline, delivery fee or area, pickup place or what we may claim.\nEvery fact has a status: only 'confirmed' may be stated; 'unknown' means don't state it. Never answer\nallergen questions: use the allergen_reply.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "keys": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "menu",
+                  "ordering",
+                  "fulfilment",
+                  "claims_status"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S0",
+      "dk/server": "dk_brand",
+      "dk/trust": "trusted"
+    }
+  },
+  "get_sources": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: you need the full source behind citations like [R-7KQ2M9XA] (place, district, date, rating, text)\nor want to prove a citation exists. Missing ids are listed under missing.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "cites"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S2",
+      "dk/server": "dk_evidence",
+      "dk/trust": "untrusted"
+    }
+  },
+  "search_brand": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: you need what our brand book says (collection=brand: story, dishes, tone; public) or what our\nvoice and content rules say (collection=rules: wording, languages, platform rules; internal), with\ncitations. Not for: prices or facts (use get_facts) or checking a draft (use check_drafts).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "default": "brand",
+          "enum": [
+            "brand",
+            "rules"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "default": 4,
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "a question or phrase, German or English",
+          "maxLength": 300,
+          "minLength": 2,
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S0",
+      "dk/server": "dk_evidence",
+      "dk/trust": "trusted"
+    }
+  },
+  "verify_citations": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: before showing an answer built from search results. Checks every sentence that has a citation:\nthe cited sources exist, quoted text really appears in them, and a cited source supports the claim.\nRewrite or drop any sentence whose verdict isn't 'supported'.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "answer": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S2",
+      "dk/server": "dk_evidence",
+      "dk/trust": "untrusted"
+    }
+  }
+}

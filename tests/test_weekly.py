@@ -261,3 +261,22 @@ def test_run_message_lists_each_model():
     )
     msg = run_message(rep)
     assert "➖ content_scorer: fail" in msg and "✅ reach_scorer: pass" in msg
+
+
+def test_the_knowledge_pack_step_reaches_the_sunday_message():
+    from intel.serve.runs import RunReport, knowledge_line
+
+    live = RunReport.model_validate(
+        report(knowledge={"status": "active", "pack": "kp-1", "newly_embedded": 37, "collections": {"reviews": 1}})
+    )
+    assert "kp-1</code> is live (gate passed, 37 new texts embedded)" in run_message(live)
+    kept = RunReport.model_validate(
+        report(knowledge={"status": "kept_previous", "pack": "kp-2", "gate_lost": ["q03", "q08"]})
+    )
+    assert "refused by its gate (lost q03, q08)" in run_message(kept)
+    assert "skipped: no db" in knowledge_line(
+        RunReport.model_validate(report(knowledge={"status": "skipped", "why": "no db"})).knowledge
+    )
+    err = RunReport.model_validate(report(knowledge={"status": "error", "error": "OSError: <disk>"}))
+    assert "&lt;disk&gt;" in run_message(err)  # escaped for Telegram HTML
+    assert RunReport.model_validate(report()).knowledge is None and knowledge_line(None) is None  # older Macs

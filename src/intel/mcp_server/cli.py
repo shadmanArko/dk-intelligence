@@ -157,16 +157,36 @@ def token_revoke(jti: str) -> None:
     typer.echo(f"{jti} revoked")
 
 
+@mcp_app.command("loadtest")
+def loadtest(
+    clients: int = 10,
+    rounds: int = 3,
+    url: Annotated[str | None, typer.Option(help="default: the local listener's owner path")] = None,
+) -> None:
+    """N concurrent clients over HTTP against a running server; p50/p95 and errors per tool (Mac, by hand)."""
+    from intel.mcp_server import auth
+    from intel.mcp_server.loadtest import run
+    from intel.settings import McpSettings, required
+
+    s = McpSettings()
+    secret = required(s.intel_mcp_secret, "INTEL_MCP_SECRET")
+    tokens = [auth.issue(secret, f"loadtest-{i}", "owner", 3600, s.intel_mcp_host)[0] for i in range(clients)]
+    target = url or f"http://127.0.0.1:{s.intel_mcp_http_port}/mcp/owner/"
+    typer.echo(json.dumps(asyncio.run(run(target, tokens, clients, rounds)), indent=2))
+
+
 @mcp_app.command("catalog")
 def catalog() -> None:
-    """Regenerate docs/mcp/CATALOG.md from the code (a test fails when it is stale)."""
+    """Regenerate docs/mcp/CATALOG.md and the tool-contract snapshots from the code (tests fail when stale)."""
     from intel.mcp_server import catalog as cat
     from intel.mcp_server.deps import Deps
     from intel.mcp_server.kit.middleware import stdio_principal
     from intel.settings import McpSettings
 
-    cat.write(Deps.from_settings(McpSettings(), stdio_principal()))
-    typer.echo(f"wrote {cat.CATALOG}")
+    deps = Deps.from_settings(McpSettings(), stdio_principal())
+    cat.write(deps)
+    cat.write_snapshots(deps)
+    typer.echo(f"wrote {cat.CATALOG} and {cat.SNAPSHOTS}/*.json (review the diff: tool contracts only grow)")
 
 
 @mcp_app.command("config")
@@ -225,8 +245,8 @@ def call(
 
 
 @mcp_app.command("audit")
-def audit(action: Annotated[str, typer.Argument(help="verify | tail")] = "verify") -> None:
-    """Check the audit hash chain, or show its last entries."""
+def audit(action: Annotated[str, typer.Argument(help="verify | tail | stats")] = "verify") -> None:
+    """Check the audit hash chain, show its last entries, or per-tool stats (calls, errors, p50/p95, tokens)."""
     from intel.mcp_server.kit.audit import AuditLog
     from intel.settings import McpSettings
 
@@ -235,6 +255,16 @@ def audit(action: Annotated[str, typer.Argument(help="verify | tail")] = "verify
         result = log.verify()
         typer.echo(json.dumps(result))
         raise typer.Exit(0 if result["ok"] else 1)
+    if action == "stats":
+        from intel.mcp_server.kit.audit import stats
+
+        typer.echo(f"{'tool':<24}{'calls':>7}{'errors':>8}{'denied':>8}{'p50 ms':>9}{'p95 ms':>9}{'tokens':>8}")
+        for name, r in stats(log.entries()).items():
+            typer.echo(
+                f"{name:<24}{r['calls']:>7}{r['errors']:>8}{r['denied']:>8}{r['p50_ms']:>9}{r['p95_ms']:>9}"
+                f"{r['tokens_mean'] if r['tokens_mean'] is not None else '':>8}"
+            )
+        return
     for e in list(log.entries())[-20:]:
         typer.echo(
             f"{e['at']}  {e.get('status', ''):<7} {e.get('kind', ''):<9} {e.get('name', '')}  {e.get('ms', '')} ms"

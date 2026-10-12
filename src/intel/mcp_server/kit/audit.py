@@ -82,3 +82,29 @@ def _last_hash(fh: Any) -> str:
         if len(lines) >= 2 or back == size:
             return str(json.loads(lines[-1])["hash"]) if lines else GENESIS
         back = min(size, back * 4)
+
+
+def stats(entries: Iterator[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per tool: calls, errors, denials, p50/p95 latency (ms), mean result tokens (est.)."""
+    by: dict[str, list[dict[str, Any]]] = {}
+    for e in entries:
+        if e.get("kind") == "tool":
+            by.setdefault(str(e.get("name")), []).append(e)
+
+    def pct(values: list[float], q: float) -> float:
+        ordered = sorted(values)
+        return round(ordered[min(len(ordered) - 1, int(q * len(ordered)))], 1) if ordered else 0.0
+
+    out = {}
+    for name, rows in sorted(by.items()):
+        ms = [float(r["ms"]) for r in rows if r.get("status") == "ok" and r.get("ms") is not None]
+        tokens = [int(r["tokens"]) for r in rows if r.get("tokens") is not None]
+        out[name] = {
+            "calls": len(rows),
+            "errors": sum(r.get("status") == "error" for r in rows),
+            "denied": sum(r.get("status") == "denied" for r in rows),
+            "p50_ms": pct(ms, 0.5),
+            "p95_ms": pct(ms, 0.95),
+            "tokens_mean": round(sum(tokens) / len(tokens)) if tokens else None,
+        }
+    return out

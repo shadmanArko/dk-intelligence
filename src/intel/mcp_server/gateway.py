@@ -28,7 +28,9 @@ from intel.mcp_server.kit.middleware import (
     CopyGuard,
     NormaliseArgs,
     ProfileGate,
+    ResultCache,
     SensitivityCeiling,
+    token_principal,
 )
 from intel.mcp_server.servers.brand import build_brand_server
 from intel.mcp_server.servers.evidence import build_evidence_server
@@ -81,6 +83,9 @@ def build_gateway(profile: str, deps: Deps, only: str | None = None, auth: AuthP
         raise ValueError(f"unknown profile {profile!r}; one of: {', '.join(profiles())}")
     spec = profiles()[profile]
     chosen = {only: SERVERS[only]} if only else SERVERS
+    from intel.mcp_server.kit.log_redact import install
+
+    install()
     gw = FastMCP("dk_intel", instructions=instructions(), version=TOOLS_API, mask_error_details=True, auth=auth)
     for build in chosen.values():
         gw.mount(build(deps))
@@ -113,11 +118,25 @@ def build_gateway(profile: str, deps: Deps, only: str | None = None, auth: AuthP
     )
     gw.add_middleware(SensitivityCeiling())
     gw.add_middleware(NormaliseArgs())
-    gw.add_middleware(RateLimitingMiddleware(max_requests_per_second=10.0, burst_capacity=20))
+    # per principal (the token's subject + jti on HTTP, the process on stdio): the P4.6 load test found the default
+    # global bucket let 10 agents' handshakes starve each other
+    gw.add_middleware(
+        RateLimitingMiddleware(
+            max_requests_per_second=10.0, burst_capacity=20, get_client_id=lambda _: token_principal() or "stdio"
+        )
+    )
+    gw.add_middleware(ResultCache(lambda: _pack_id(deps)))
     gw.add_middleware(CopyGuard(lambda: _blocked_words(deps), deps.audit))
     gw.add_middleware(BudgetMiddleware(budgets(), deps.audit))
     gw.add_middleware(ResponseLimitingMiddleware(max_size=32_768))  # the last backstop (~11k tokens)
     return gw
+
+
+def _pack_id(deps: Deps) -> str | None:
+    try:
+        return deps.brand.load().pack_id
+    except ToolProblem:
+        return None
 
 
 def _blocked_words(deps: Deps) -> list[str] | None:
