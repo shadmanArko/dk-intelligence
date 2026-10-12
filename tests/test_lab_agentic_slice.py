@@ -515,7 +515,11 @@ def test_an_older_demo_run_still_shows_as_before_in_the_console(engine, monkeypa
     assert "proposals.json" in posts[0]["why"]
 
 
-def test_a_reels_engine_speaking_another_contract_stops_the_run_before_any_ai(engine, tmp_path):
+def test_a_reels_engine_speaking_another_contract_stops_the_run_before_any_ai(engine, tmp_path, monkeypatch):
+    reels = tmp_path / "reels"  # the engine checks that a reels checkout exists; CI has none
+    reels.mkdir()
+    (reels / "package.json").write_text("{}")
+    monkeypatch.setattr(engine.media, "REELS", reels)
     engine.reels_contracts = {"content_spec": 2, "manifest": 1}
     assert engine.orchestrate("instagram", "manual", publish="render") == 1
     end = _events(engine)[-1]
