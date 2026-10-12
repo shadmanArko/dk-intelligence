@@ -461,9 +461,10 @@ def check_texts(run: Run, node: str, platform: str, texts: dict[str, list[dict[s
 
 def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: dict[str, dict[str, Any]],
                briefs: dict[str, dict[str, Any]], publish: str,
-               client: handover.PublishClient) -> dict[str, Any]:  # fmt: skip
+               client: handover.PublishClient | None) -> dict[str, Any]:  # fmt: skip
     """Code, not AI. Kept captions → specs → (check) → renders → drafts at dk-publishing. Every post that doesn't make
-    it is returned with the reason (never dropped silently). publish: "dry-run" validates and creates nothing."""
+    it is returned with the reason (never dropped silently). publish: "render" stops after the renders; "dry-run"
+    validates with the publisher and creates nothing; "drafts" creates drafts."""
     node = "checker"
     run.emit(node, "start", agent="code", model="code", tools=["dk_intel_writer.evaluate_drafts", "dk_reels job",
              "dk-publishing batch"], task=f"{len(results)} captions to re-check, then make the media")  # fmt: skip
@@ -505,6 +506,7 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
                 specs.pop(jid)
 
     manifests: list[tuple[dict[str, Any], Path]] = []
+    thumbs: set[str] = set()
     if specs:
         run.emit("renderer", "start", agent="code", model="code", tools=["dk_reels job"], task=f"{len(specs)} renders")
         t1 = time.monotonic()
@@ -516,6 +518,8 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
                 if code == 0:
                     manifests.append((manifest, Path(out["manifest"]).parent))
                     ledger.record(jid, media.assets_used(manifest))
+                    if media.thumbnail(manifest, Path(out["manifest"]).parent, run.dir / f"{jid}.jpg"):
+                        thumbs.add(jid)
                 else:
                     failed_checks = ", ".join(q["check"] for q in manifest["qa"] if not q["ok"])
                     skipped.append(
@@ -530,7 +534,12 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
                  tokens_out=0, turns=0, output=rendered)  # fmt: skip
 
     proposed: list[dict[str, Any]] = []
-    if manifests:
+    if manifests and client is None:  # render only: the media is ready in the reels engine's out/jobs, nothing is sent
+        by_job = {m["job_id"]: slot_of[m["job_id"]] for m, _ in manifests}
+        proposed = [{"slot_id": by_job[m["job_id"]], "proposal_id": m["job_id"], "state": "rendered",
+                     "manifest": str(folder / "manifest.json"), "thumb": m["job_id"] in thumbs}
+                    for m, folder in manifests]  # fmt: skip
+    elif manifests and client is not None:
         run.emit("handover", "start", agent="code", model="code", tools=["dk-publishing /v1/posts/batch"],
                  task=f"{len(manifests)} posts as {'a dry run' if publish == 'dry-run' else 'drafts'}")  # fmt: skip
         t2 = time.monotonic()
@@ -541,7 +550,7 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
         done = {"submitted": report.submitted, "replayed": report.replayed, "would_submit": report.would_submit}
         by_job = {m["job_id"]: slot_of[m["job_id"]] for m, _ in manifests}
         for state, keys in done.items():
-            proposed += [{"slot_id": by_job[k], "proposal_id": k, "state": state} for k in keys]
+            proposed += [{"slot_id": by_job[k], "proposal_id": k, "state": state, "thumb": k in thumbs} for k in keys]
         skipped += [{"slot_id": by_job.get(h.job_id, h.job_id), "why": f"held: {h.reason}"} for h in report.held]
         skipped += [
             {
@@ -552,13 +561,17 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
         ]
         run.emit("handover", "end", status="done", ms_total=round((time.monotonic() - t2) * 1000), tokens_in=0,
                  tokens_out=0, turns=0, output=report.as_dict())  # fmt: skip
+    run.emit(
+        node, "outcome", proposed=proposed, skipped=skipped
+    )  # what became of each post: the console's result cards
     return {"proposed": proposed, "skipped": skipped}
 
 
 def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_inputs: Path | None = None,
                 publish: str = "demo", suffix: str = "") -> int:  # fmt: skip
     """publish: "demo" proposes captions to the toy calendar (as before); "dry-run" and "drafts" also design and render
-    the media and hand each post to dk-publishing (dry-run validates and creates nothing; drafts waits for approval)."""
+    the media and hand each post to dk-publishing (dry-run validates and creates nothing; drafts waits for approval);
+    "render" stops after the renders, needs no key and sends nothing."""
     RUNS.mkdir(exist_ok=True)
     try:
         fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -570,20 +583,25 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
     os.close(fd)
     try:
         media_mode = publish != "demo"
-        plan_text = ("fetch (code) → planner → 3 writers in parallel → re-check + propose (code)" if not media_mode else
-                     "fetch (code) → planner → 3 × (writer → designer) in parallel → re-check, check, render, "
-                     f"hand over as {publish} (code)")  # fmt: skip
+        ending = "stop after the renders" if publish == "render" else f"hand over as {publish}"
+        plan_text = "fetch (code) → planner → 3 writers in parallel → re-check + propose (code)"
+        if media_mode:
+            plan_text = "fetch (code) → planner → 3 × (writer → designer) in parallel → re-check, check, render, "
+            plan_text += f"{ending} (code)"
         run.emit("orchestrator", "start", platform=platform, trigger=trigger, inputs=str(inputs or "live"),
                  plan=plan_text, publish=publish)  # fmt: skip
         vocab: dict[str, Any] = {}
         inventory: dict[str, Any] = {}
         client: handover.PublishClient | None = None
         if media_mode:  # fail before spending a single token if the media step can't work
-            env = handover.load_env()
-            if "DK_PUBLISH_URL" not in env or "DK_PUBLISH_KEY" not in env:
-                run.emit("orchestrator", "end", status="failed", error="DK_PUBLISH_URL and DK_PUBLISH_KEY are not set")
-                return 1
-            client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
+            if publish != "render":  # render-only never talks to the publisher, so it needs no key
+                env = handover.load_env()
+                if "DK_PUBLISH_URL" not in env or "DK_PUBLISH_KEY" not in env:
+                    run.emit(
+                        "orchestrator", "end", status="failed", error="DK_PUBLISH_URL and DK_PUBLISH_KEY are not set"
+                    )
+                    return 1
+                client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
             if not (media.REELS / "package.json").exists():
                 run.emit("orchestrator", "end", status="failed", error=f"the reels engine is not at {media.REELS}")
                 return 1
@@ -632,9 +650,8 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
         if media_mode:
             for b in briefs:
                 b["job_id"] = media.job_id(platform, str(b.get("slot_id")), str(b["planned_posted_at"]), suffix)
-            assert client is not None
             # a post can't be changed under its key (and the designer would make a different one): skip what exists
-            have = {b["job_id"]: client.post(b["job_id"]) for b in briefs}
+            have = {b["job_id"]: client.post(b["job_id"]) if client else None for b in briefs}
             dropped = dropped + [
                 {"slot_id": b["slot_id"], "why": f"already handed over as {b['job_id']} (to redo a rejected one, run "
                  "with --suffix r2)"} for b in briefs if have[b["job_id"]]]  # fmt: skip
@@ -682,7 +699,6 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
         results = [r for r in results if r["slot_id"] in by_slot]
         try:
             if media_mode:
-                assert client is not None
                 lead = make_media(run, platform, results, designs, by_slot, publish, client)
             else:
                 lead = check_and_propose(run, platform, results, by_slot)
@@ -714,9 +730,10 @@ if __name__ == "__main__":
     ap.add_argument(
         "--publish",
         default="demo",
-        choices=["demo", "dry-run", "drafts"],
-        help="demo: propose captions to the toy calendar. dry-run: also design and render the media and validate "
-        "with dk-publishing, creating nothing. drafts: create drafts in the owner's Calendar",
+        choices=["demo", "render", "dry-run", "drafts"],
+        help="demo: propose captions to the toy calendar. render: also design, check and render the media, "
+        "nothing sent anywhere. dry-run: then validate with dk-publishing, creating nothing. drafts: create drafts "
+        "in the owner's Calendar",
     )
     ap.add_argument("--suffix", default="", help="redo a slot whose post was rejected: it needs a new key, e.g. r2")
     a = ap.parse_args()

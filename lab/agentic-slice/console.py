@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 LAB = Path(__file__).resolve().parent
@@ -56,6 +57,15 @@ def _summary(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+# what became of a post in media mode (the state code reports)
+MEDIA_RESULT = {
+    "rendered": "rendered and checked; nothing was sent anywhere (render mode)",
+    "would_submit": "valid at dk-publishing; a dry run, so nothing was created",
+    "submitted": "now a DRAFT in your Calendar: approve or reject it there",
+    "replayed": "already a draft in your Calendar from an earlier run",
+}
+
+
 def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
     """What the run produced, one card per planned post: the plan, the caption, its check, and what became of it."""
     ends = {e["node"]: e for e in ev if e["kind"] == "end"}
@@ -64,8 +74,12 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
     items = delegate.get("slots") or [{"node": f"helper-{i + 1}", **s} for i, s in enumerate(planned[:3])]
     lead_end = ends.get("checker") or ends.get("writer-lead")  # code since v3; an agent in older runs
     lead = (lead_end or {}).get("output") or {}
+    outcome = next((e for e in reversed(ev) if e["kind"] == "outcome"), None)  # media runs state it explicitly
+    if outcome:
+        lead = {"proposed": outcome["proposed"], "skipped": outcome["skipped"]}
     proposed = {str(x.get("slot_id")): x for x in lead.get("proposed", [])}
     skipped = {str(x.get("slot_id")): x for x in lead.get("skipped", [])}
+    media = any(e["node"] == "orchestrator" and e["kind"] == "start" and e.get("publish", "demo") != "demo" for e in ev)
     posts = []
     screened = next((e for e in ev if e["node"] == "orchestrator" and e["kind"] == "screened"), {})
     for d in screened.get("dropped", []):  # slots code ruled out before any AI: no caption can pass there
@@ -77,8 +91,15 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
         h = ends.get(it["node"])
         out = (h or {}).get("output") or {}
         sid = str(it.get("slot_id"))
+        entry = proposed.get(sid, {})
+        state = entry.get("state")
         if sid in proposed:
-            status, why = "proposed", f"proposal {proposed[sid].get('proposal_id')} waits for you in proposals.json"
+            status, why = (
+                "proposed",
+                MEDIA_RESULT.get(
+                    str(state), f"proposal {proposed[sid].get('proposal_id')} waits for you in proposals.json"
+                ),
+            )
         elif sid in skipped:
             status, why = "skipped", str(skipped[sid].get("why") or "")
         elif h is not None and h.get("status") == "failed":
@@ -89,7 +110,14 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
             status, why = "failed", "the re-check failed before proposing it"
         else:
             status, why = "checking", ""
+        design = (ends.get("designer-" + it["node"].split("-")[-1], {}).get("output") or {}) if state or media else {}
+        content = (design.get("spec") or {}).get("content") or {}
         posts.append({
+            "state": state, "job_id": proposed.get(sid, {}).get("proposal_id") if state else None,
+            "thumb": f"/api/runs/{run_id}/thumb/{entry['proposal_id']}" if entry.get("thumb") else None,
+            "design": {"kind": content.get("kind"), "hook": content.get("hook") or next(
+                (s.get("title") for s in content.get("slides", []) if s.get("title")), None), "why": design.get("why")}
+            if content else None,
             "slot_id": sid, "agent": it["node"], "day": it.get("day"), "date": it.get("date"),
             "time": it.get("time"), "format": it.get("format"), "angle": it.get("angle"),
             "sources": out.get("sources") or it.get("sources") or [], "caption": out.get("caption"),
@@ -109,6 +137,17 @@ def runs() -> list[dict[str, Any]]:
 @app.get("/api/runs/{run_id}/result")
 def result(run_id: str) -> dict[str, Any]:
     return result_of(run_id, _events(run_id))
+
+
+@app.get("/api/runs/{run_id}/thumb/{job_id}")
+def thumb(run_id: str, job_id: str) -> FileResponse:
+    """The small picture of a rendered post (made by the engine next to the run log)."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,80}", job_id) or "/" in run_id or ".." in run_id:
+        raise HTTPException(404, "no such picture")
+    path = RUNS / run_id / f"{job_id}.jpg"
+    if not path.is_file():
+        raise HTTPException(404, "no such picture")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @app.get("/api/status")

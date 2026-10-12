@@ -1,3 +1,5 @@
+> **2026-10-12: this page is older than [SESSION_HANDOFF.md](SESSION_HANDOFF.md), which is current (Phase 4 is done, M8 is built, what the owner has to do). Read that first.**
+
 # Handoff: state of dk-intelligence and what comes next
 
 Written 2026-10-09 (00:45 Berlin) at the end of the Phase 3 session, for the next Claude Code session in this folder.

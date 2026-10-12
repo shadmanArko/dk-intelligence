@@ -162,6 +162,21 @@ def reels_job(spec_path: Path, *flags: str, reels: Path | None = None) -> tuple[
         return 3, {"ok": False, "error": (p.stderr or p.stdout)[-300:] or f"exit {p.returncode}, no summary"}
 
 
+def thumbnail(manifest: dict[str, Any], folder: Path, out: Path) -> bool:
+    """A small picture of a render for the console: a frame from 40% into a video, or the first slide. Best effort."""
+    first = (manifest.get("files") or [{}])[0]
+    if not first.get("path"):
+        return False
+    src = folder / first["path"]
+    seek = ["-ss", f"{float(first['duration_s']) * 0.4:.2f}"] if first.get("duration_s") else []
+    try:
+        cmd = ["ffmpeg", "-v", "error", "-y", *seek, "-i", str(src), "-frames:v", "1", "-vf", "scale=360:-1", str(out)]
+        r = subprocess.run(cmd, capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and out.exists()
+
+
 class AssetLedger:
     """Which footage the last jobs used, so the next ones prefer something else (the resolver stays pure: the list
     travels in the spec as `avoid_assets`)."""

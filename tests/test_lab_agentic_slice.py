@@ -322,7 +322,12 @@ def media_world(engine, monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
             state["active"] -= 1
         return 0, {"ok": True, "job_id": jid, "status": "ready", "manifest": str(out / "manifest.json")}
 
+    def fake_thumbnail(manifest, folder, out):  # type: ignore[no-untyped-def]
+        out.write_bytes(b"\xff\xd8\xff fake jpeg")
+        return True
+
     monkeypatch.setattr(engine.media, "reels_job", fake_reels_job)
+    monkeypatch.setattr(engine.media, "thumbnail", fake_thumbnail)
     return engine, fake, state
 
 
@@ -448,3 +453,58 @@ def test_the_default_mode_is_unchanged_and_never_touches_the_reels_engine(engine
     monkeypatch.setattr(engine.media, "reels_job", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no render")))
     assert engine.orchestrate("instagram", "manual") == 0
     assert not any(s == "dk_reels_creative" for s, _, _ in engine.mcp_log)
+
+
+def test_render_mode_needs_no_key_and_sends_nothing_anywhere(media_world, monkeypatch):
+    engine, fake, state = media_world
+    monkeypatch.delenv("DK_PUBLISH_KEY")
+    monkeypatch.setattr(engine.handover, "load_env", lambda *a, **k: {})
+    assert engine.orchestrate("instagram", "manual", publish="render") == 0
+    ev = _events(engine)
+    assert not fake.calls and not fake.posts  # the publisher was never contacted, not even to look
+    assert len([c for c in state["calls"] if c[0] == "render"]) == 3
+    assert not any(e["node"] == "handover" for e in ev) and ev[-1]["status"] == "done" and ev[-1]["proposed"] == 3
+    assert "proposal 2026w" in (engine.RUNS / f"{_run_id(engine)}.md").read_text()  # the report names each rendered job
+
+
+def test_the_console_shows_a_media_run_with_the_picture_the_idea_and_what_became_of_each_post(media_world, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    engine, _, _ = media_world
+    console = _load("console")
+    monkeypatch.setattr(console, "RUNS", engine.RUNS)
+    monkeypatch.setenv("FAKE_HALAL_SLOT", "s2")
+    engine.orchestrate("instagram", "manual", publish="drafts")
+    c = TestClient(console.app)
+    (run,) = c.get("/api/runs").json()
+    posts = {p["slot_id"]: p for p in c.get(f"/api/runs/{run['id']}/result").json()["posts"]}
+    s1 = posts["s1"]
+    assert (s1["status"], s1["state"]) == ("proposed", "submitted") and "DRAFT" in s1["why"]
+    assert s1["design"]["hook"] == "Sealed. Then opened." and s1["design"]["why"] == "the lid coming off"
+    assert s1["job_id"].endswith("-s1")
+    thumb = c.get(s1["thumb"])
+    assert (
+        thumb.status_code == 200
+        and thumb.content.startswith(b"\xff\xd8")
+        and thumb.headers["content-type"] == "image/jpeg"
+    )
+    assert posts["s2"]["status"] == "skipped" and "brand check" in posts["s2"]["why"] and posts["s2"]["thumb"] is None
+    assert c.get(f"/api/runs/{run['id']}/thumb/..%2F..%2Fx").status_code == 404  # no path tricks
+    assert c.get(f"/api/runs/{run['id']}/thumb/2026w42-ig-nothing-s9").status_code == 404
+    page = c.get("/").text
+    assert "const MEDIA=" in page and "dk_reels_creative" in page and "designer-1" in page  # the media layout exists
+
+
+def test_an_older_demo_run_still_shows_as_before_in_the_console(engine, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    console = _load("console")
+    monkeypatch.setattr(console, "RUNS", engine.RUNS)
+    engine.orchestrate("instagram", "manual")
+    c = TestClient(console.app)
+    (run,) = c.get("/api/runs").json()
+    posts = c.get(f"/api/runs/{run['id']}/result").json()["posts"]
+    assert all(
+        p["status"] == "proposed" and p["state"] is None and p["thumb"] is None and p["design"] is None for p in posts
+    )
+    assert "proposals.json" in posts[0]["why"]

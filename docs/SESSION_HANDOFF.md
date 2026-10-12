@@ -20,6 +20,7 @@ Nothing here is secret; keys, tokens and server addresses are never written in d
 |---|---|---|---|
 | `dk-intelligence` | shadmanArko/dk-intelligence | **private** | the ML platform: 7 models, the Sunday training run, intel-api on the VPS, the **dk_intel MCP server** (read-only knowledge, RAG), the agent **lab** |
 | `dk-publishing` | shadmanArko/dk-publishing | **public** | the social publishing pipeline: Google Sheet + HTTP API → Postgres → Dagster → platform adapters; never posts twice; **dk_publish MCP endpoint** |
+| `dhaka-kacchi-reels` | local git only (no remote yet) | private (to be) | the content engine: Remotion renders reels and slides from a JSON ContentSpec on the Mac; the **`dk_reels` MCP server**; read its `HANDOFF.md`, `CLAUDE.md`, `JOBS.md` |
 | `dhaka_kacchi_ai_harness` | (public) | public | the live ordering system on the same VPS. Read only, and only when needed. **Never touch its PR #2.** |
 
 The rules that must not be broken are in each repo's `CLAUDE.md`. The most important:
@@ -32,7 +33,7 @@ The rules that must not be broken are in each repo's `CLAUDE.md`. The most impor
 
 ## 3. Where things stand (2026-10-12, evening)
 
-### dk-intelligence (`main` = `f2bed78`)
+### dk-intelligence (`main` = `f1d5cee`; branch `feat/m8-reels-handover` = M8, local only)
 - **Phases 1–4 are done.** Phase 4 (MCP + RAG): dk_intel has been live on the VPS since 2026-10-12. The full status
   line per milestone is in [HANDOFF.md](HANDOFF.md). Phase 3's H10 (GDPR) is on PR #4, unmerged by the owner's choice.
 - **The agent lab** (`lab/agentic-slice/`, PR #18 merged) is a small multi-agent system:
@@ -49,6 +50,9 @@ The rules that must not be broken are in each repo's `CLAUDE.md`. The most impor
   it to **any** agent system, and to add each measured lesson.
 - **Known finding:** the content scorer judges format and posting time, not the words of a caption. The Saturday
   12:00 carousel slot fails with any caption, which is a calendar problem.
+- **M8 (2026-10-12, branch `feat/m8-reels-handover`):** `--publish render|dry-run|drafts`; the designer agent;
+  `media.py`, `handover.py`; console cards with thumbnails. Real runs found and fixed a 3.5 GB-per-run disk leak, a
+  dry-run cache bug, loud music failing QA and a missing outcome event. Not yet run against the live publisher.
 
 ### dk-publishing (`main` = `e0297dd`)
 - Facebook, Instagram, Threads and YouTube are live. TikTok is assisted (a Telegram card to the owner). LinkedIn, X
@@ -74,24 +78,31 @@ The rules that must not be broken are in each repo's `CLAUDE.md`. The most impor
   - a performance report.
 
 ## 4. What to do next, in this order
-1. **Milestone 8: connect the lab to the real publishing system.** This is the very next task; wait for the owner's
-   "go".
-   - Replace `demo_publisher` in `lab/agentic-slice/` with dk_publish over HTTP: a draft key in `.env`, never printed.
-   - Writers and the media maker get their slice of `GET /v1/spec` in their brief, from code, so they know the exact
-     rules.
-   - The orchestrator code hands over the week with **one** `POST /v1/posts/batch` (0 AI tokens). The posts wait as
-     drafts in the Calendar.
-   - Code reads `GET /v1/overview` for what was approved, published or failed. AI never polls.
-   - Measure with `eval.py` on a frozen week: posts correct, tokens, time. Compare with v6 (21k tokens, 35 seconds).
-   - Add the lessons to AGENTIC_PLAYBOOK, write a short results note, and add a story to `docs/interview/STORIES.md`.
-2. **Phase 5: real agents.** Start only after the owner decides D5 and D9–D11 (see
-   [mcp/PHASE5_HANDOVER.md](mcp/PHASE5_HANDOVER.md)): the agent files, how proposals reach the ordering system, the
-   framework and the model. Milestone 8 already answers D9 for **posting** (proposals become Calendar drafts in
-   dk-publishing).
-3. **Proposed, not set up:** routines on the owner's Mac (a daily 08:00 brief and a Monday 09:00 plan) using the MCP
-   servers. Also a weekly lab run by cron (the line is in the lab README); the owner installs it.
-4. **Optional, needs the owner's yes:** a media check at upload in dk-publishing (`ffprobe`, about +70 MB image). It
-   would check video length and aspect ratio before scheduling.
+**Milestone 8 is built and measured, and not yet pushed or live-verified.** Results:
+[results/M8_media_pipeline.md](results/M8_media_pipeline.md); decision: ADR 0031. In short: the lab now plans, writes,
+**designs the media (a designer agent), checks, renders and hands over drafts** to dk-publishing, through the new
+`dk_reels` MCP server and `handover.py`. Two real runs on the frozen week: about 24k tokens and 58 s per finished post.
+
+**Only the owner can do these (nothing below is blocked on code):**
+1. **Create a draft key** on the VPS (`dk api key-create content-agent --right draft`) and put `DK_PUBLISH_URL` and
+   `DK_PUBLISH_KEY` in `dk-intelligence/.env` (typed with `read -rs`, never pasted in chat).
+2. **Say go to push.** `feat/m8-reels-handover` (3 commits) is local only: a push to `main` deploys. The lab
+   isn't in the production image, but CI runs. Also a private GitHub repo for `dhaka-kacchi-reels` (it was not under
+   git; media stays out: `.gitignore`).
+3. **Decide the two brand questions** in the results note: a process-claims rule ("we personally check every
+   Kacchi" passed every check) and "halal" (dk_intel blocks it without a certifier; the reels notes allow it).
+
+**Then, in order:**
+1. First live check: `run.py --publish dry-run` (validates with the real publisher, creates nothing), then `drafts` for
+   one slot, then the owner approves or rejects it in the Calendar. The bridge has only been tested against a fake.
+2. **Milestone 9: the style loop.** A template-engineer agent that writes new templates as code, in a git worktree,
+   behind gates and the owner's approval (a PR with a preview), fed by `style_request`s from the designer and by
+   `upcoming_occasions`. Needs the template registry in the reels repo first (planned in the approved plan; not built).
+3. **Phase 5: real agents.** Start only after the owner decides D5 and D9–D11 ([mcp/PHASE5_HANDOVER.md](mcp/PHASE5_HANDOVER.md)).
+   M8 already answers D9 for **posting** (proposals become Calendar drafts in dk-publishing).
+4. **Proposed, not set up:** a weekly cron (`run.py --publish drafts --trigger schedule`, the line is in the lab README;
+   the Mac must be awake; the owner installs it) and routines on the owner's Mac.
+5. **Optional, needs the owner's yes:** a media check at upload in dk-publishing (`ffprobe`, about +70 MB image).
 
 ## 5. How to start a new session
 1. Open the session in `dk-intelligence`. Read this page, then `CLAUDE.md` and [HANDOFF.md](HANDOFF.md).
