@@ -20,6 +20,15 @@ source ./metrics.sh
 # intel-mcp (ADR 0030) runs only when the owner enabled its compose profile: COMPOSE_PROFILES=mcp in deploy/.env
 MCP_ON=false
 grep -qE '^COMPOSE_PROFILES=.*\bmcp\b' .env && MCP_ON=true
+pull() {  # image: up to 3 attempts; the VPS->registry link has reset mid-pull twice (postmortem 2026-10-12)
+  local n
+  for n in 1 2 3; do
+    docker pull --quiet "$1" && return 0
+    echo "!! pull attempt $n of 3 failed"
+    [[ $n -lt 3 ]] && sleep "${INTEL_PULL_RETRY_S:-15}"
+  done
+  return 1
+}
 env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }   # read one key; values never echoed
 
 record() {  # outcome, image, note
@@ -63,7 +72,7 @@ if $LOCAL_BUILD; then
   docker build -f Dockerfile --target runtime --build-arg GIT_SHA="$SHA" --build-arg BUILD_DATE="$(date -u +%FT%TZ)" -t "$IMAGE" ..
 else
   echo "== pull $IMAGE"
-  docker pull --quiet "$IMAGE"
+  pull "$IMAGE" || { record failed "$IMAGE" "pull failed 3 times"; exit 1; }
 fi
 LABEL="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")"
 if [[ "$LABEL" != "$SHA" ]]; then
@@ -77,7 +86,7 @@ if $MCP_ON; then   # the same commit's intel-mcp image, checked the same way, be
   else
     MCP_IMAGE="${REGISTRY_IMAGE}-mcp:sha-$SHA"
     echo "== pull $MCP_IMAGE"
-    docker pull --quiet "$MCP_IMAGE"
+    pull "$MCP_IMAGE" || { record failed "$MCP_IMAGE" "pull failed 3 times"; exit 1; }
   fi
   MCP_LABEL="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$MCP_IMAGE")"
   if [[ "$MCP_LABEL" != "$SHA" ]]; then
