@@ -174,3 +174,45 @@ def test_migration_roles_touch_schema_rag_only_and_the_loader_follows_active(pg,
     assert lifecycle.sync_to_active(s)["status"] == "in_sync"
     with psycopg.connect(reader) as c:
         assert store.active_pack(c) == pid and c.execute("select count(*) from rag.chunk").fetchone()[0] == 6
+
+
+# ---------- go-live fixes (2026-10-12) ----------
+
+
+def test_present_model_files_are_used_without_network_or_writes(tmp_path, monkeypatch):
+    import huggingface_hub
+
+    from intel.rag import embed
+
+    folder = tmp_path / "org--model"
+    (folder / "onnx").mkdir(parents=True)
+    (folder / "onnx" / "model.onnx").write_bytes(b"x")
+    folder.chmod(0o555)  # read-only, like the VPS volume
+    monkeypatch.setattr(embed, "model_dir", lambda repo: str(tmp_path / repo.replace("/", "--")))
+
+    def no_download(*a, **k):  # type: ignore[no-untyped-def]
+        raise AssertionError("must not download or write")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", no_download)
+    try:
+        assert embed.model_file("org/model", "onnx/model.onnx") == str(folder / "onnx" / "model.onnx")
+    finally:
+        folder.chmod(0o755)
+
+
+def test_a_failed_model_load_is_retried_not_given_up(monkeypatch):
+    from intel.adapters import pg_index
+
+    calls = {"n": 0}
+
+    def flaky():  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("read-only file system")
+        return lambda pairs: [0.5 for _ in pairs]
+
+    idx = pg_index.PgEvidenceIndex("postgresql://unused", None, flaky)
+    assert idx.support([("a", "b")]) is None  # first load fails: evidence unscored
+    assert idx.support([("a", "b")]) is None  # not retried before RETRY_S
+    monkeypatch.setattr(pg_index, "RETRY_S", 0.0)
+    assert idx.support([("a", "b")]) == [0.5] and calls["n"] == 2

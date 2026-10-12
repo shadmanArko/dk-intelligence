@@ -151,6 +151,18 @@ def model_dir(repo: str) -> str:
 
 
 def _hf_file(repo: str, filename: str) -> str:
+    return model_file(repo, filename)
+
+
+def model_file(repo: str, filename: str) -> str:
+    """A serving model file. Present locally: used as is, with no network and no writes, because on the VPS the
+    folder is a read-only volume and the download helper writes lock files even when nothing needs downloading
+    (go-live, 2026-10-12). Missing: downloaded once into the model folder (the Mac)."""
+    from pathlib import Path
+
+    local = Path(model_dir(repo)) / filename
+    if local.is_file():
+        return str(local)
     from huggingface_hub import hf_hub_download
 
     return str(hf_hub_download(repo, filename, local_dir=model_dir(repo)))

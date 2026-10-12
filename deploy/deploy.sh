@@ -147,13 +147,16 @@ smoke() {  # expected commit
 }
 
 echo "== start ${SHA:0:12}"
+if $MCP_ON; then   # before intel-mcp starts, so its loader can log in on its first try (go-live, 2026-10-12)
+  mcp_roles || echo "!! could not set the intel-mcp database role passwords"
+fi
 start "$IMAGE"
 sleep "${INTEL_DEPLOY_SETTLE_S:-5}"
 if smoke "$SHA"; then
   docker tag "$IMAGE" dk-intelligence:current
   record deployed "$IMAGE" "${EXPECT_MODELS:-}"
   if $MCP_ON; then   # intel-api is proven; intel-mcp is checked on its own and never rolls intel-api back
-    mcp_roles || echo "!! could not set the intel-mcp database role passwords"
+    mcp_roles || echo "!! could not set the intel-mcp database role passwords"   # again: a fresh database
     if mcp_smoke; then
       docker tag "$MCP_IMAGE" dk-intelligence-mcp:current
       record mcp_deployed "$MCP_IMAGE" "healthz ok"
