@@ -89,9 +89,18 @@ Milestones S0 → S1 → S2 → S3 run in order; S4 and S5 run in parallel after
 - done: brand rules have one owner (ADR 0032): `UNVERIFIED_CLAIM` and `PORTION_CLAIM` are in dk_intel, the designer
   prompt holds no rule list, and reels price slides show only confirmed prices filled by code;
 - done: milestone 8 is merged;
-- **left:** the first live check, which needs the owner's draft key in `.env` (`DK_PUBLISH_URL`, `DK_PUBLISH_KEY`):
-  `run.py --publish dry-run`, then `drafts` for one slot, then the owner rejects or approves it in the Calendar.
-  After that, S0 is done.
+- done (2026-10-12): the first live check, with the owner's draft key in `.env`.
+  - A full `--publish dry-run` ran on live data: planner, 2 writers, 2 designers, every word checked, 2 reels rendered
+    (23 s and 33 s).
+  - It exposed three bugs, all fixed with tests:
+    1. 18–20 MB uploads timed out on the owner's line (measured 224 KB/s); uploads now stream in 256 KB chunks;
+    2. a failed handover dropped its posts from the report; every affected post is now named;
+    3. a publisher that was down at start crashed the run; it is now checked before any AI is spent.
+  - Then the two renders were handed over: the dry run validated both against the real publisher, and **one real
+    draft (`2026w42-ig-tue1700-s1`) waits for the owner's approval in the Calendar**.
+  - s2 was not sent: its caption says "smoky lamb kacchi is back", but `facts.yaml` lists the lamb box's
+    availability as unknown, and no rule checks availability claims yet (an S2 item: a facts-driven "item not
+    confirmed available" rule).
 
 **S1 (contracts), status 2026-10-12: done** (ADR 0033).
 - `contracts/registry.yaml` lists every cross-project link, with pinned copies in `contracts/pinned/`.

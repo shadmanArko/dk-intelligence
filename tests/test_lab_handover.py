@@ -420,3 +420,24 @@ def test_env_is_read_without_printing_or_reading_other_keys(tmp_path, monkeypatc
     env = tmp_path / ".env"
     env.write_text("OTHER_SECRET=nope\nDK_PUBLISH_URL=https://p.test\nDK_PUBLISH_KEY='k123'\n")
     assert H.load_env(env) == {"DK_PUBLISH_URL": "https://p.test", "DK_PUBLISH_KEY": "k123"}
+
+
+def test_an_upload_is_streamed_and_a_retry_sends_the_whole_file_again(tmp_path):
+    """A slow home line (224 KB/s measured) can't send a reel in one 60 s write; the upload streams it in chunks, and
+    a retry after a temporary error re-reads the file from the start."""
+    big = tmp_path / "reel.mp4"
+    big.write_bytes(b"x" * (H.UPLOAD_CHUNK * 3 + 17))
+    seen: list[tuple[int, str | None]] = []
+    answers = [503, 201]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read()
+        seen.append((len(body), request.headers.get("Content-Length")))
+        status = answers.pop(0)
+        return httpx.Response(status, json={"media_id": "m-1"} if status == 201 else {"title": "busy"})
+
+    client = H.PublishClient("https://publish.example.test", KEY, transport=httpx.MockTransport(handler),
+                             sleep=lambda _: None)  # fmt: skip
+    assert client.upload(big) == "m-1"
+    size = big.stat().st_size
+    assert seen == [(size, str(size)), (size, str(size))]  # both attempts sent the complete file
