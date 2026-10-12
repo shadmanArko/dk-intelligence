@@ -74,8 +74,11 @@ def source_db():
 
 
 def _backup(container: str, dest: Path, stamp: str) -> Path:
-    """Exactly what deploy/backup.sh does: plain pg_dump of intel, gzipped."""
-    dump = _sh("docker", "exec", container, "pg_dump", "-U", "intel", "--no-owner", "intel").stdout
+    """Exactly what deploy/backup.sh does: pg_dump of intel without privileges and without rag's data, gzipped."""
+    dump = _sh(
+        "docker", "exec", container, "pg_dump", "-U", "intel", "--no-owner", "--no-privileges",
+        "--exclude-table-data=rag.*", "intel",
+    ).stdout  # fmt: skip
     out = dest / f"intel_{stamp}.sql.gz"
     out.write_bytes(gzip.compress(dump.encode()))
     return out

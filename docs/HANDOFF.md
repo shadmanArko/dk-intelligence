@@ -28,8 +28,11 @@ re-check them before acting.
 >    (`docs/mcp/CLIENTS.md`). **P4.6 done 2026-10-12** ([results](results/P4_6_hardening.md)): metrics, audit stats,
 >    cache, per-principal rate limits, security tests (threat model T1–T14), load test, contract snapshots, retrieval
 >    ratchet, the knowledge line in the Sunday report (the first live Sunday pack step passed on 10-11). Runbook:
->    `docs/runbooks/mcp.md`; Phase 5 decisions: `docs/mcp/PHASE5_HANDOVER.md`. **Next: P4.7** (dk_intel on the VPS:
->    RAM measurement first, then copy-paste steps for the owner).
+>    `docs/runbooks/mcp.md`; Phase 5 decisions: `docs/mcp/PHASE5_HANDOVER.md`. **P4.7 code done 2026-10-12**
+>    ([results](results/P4_7_vps.md), ADR 0030): `intel-mcp` container (opt-in compose profile), packs and models
+>    through the inbox, migration 0007, alerts. **Owner to-do:** the 9 go-live steps in `docs/runbooks/mcp.md`
+>    ("On the VPS"); then Claude tests over the tailnet and records the VPS numbers. **Next: Phase 5** (agents;
+>    decisions D5, D9–D11 in `docs/mcp/PHASE5_HANDOVER.md` first).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).

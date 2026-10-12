@@ -1,5 +1,6 @@
 # dk-intelligence on the VPS. Separate project, network and database from the harness stack: nothing here touches
-# the ordering database or the shared Postgres image. Total memory limit: 896 MB.
+# the ordering database or the shared Postgres image. Memory limits: 1,024 MB without intel-mcp; intel-mcp (an opt-in
+# compose profile, ADR 0030) adds 2,560 MB: enable it with COMPOSE_PROFILES=mcp in deploy/.env.
 name: dk-intelligence
 
 services:
@@ -13,7 +14,7 @@ services:
     command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=20", "-c", "listen_addresses=*"]
     volumes:
       - intel_db:/var/lib/postgresql/data
-    mem_limit: 384m
+    mem_limit: 512m           # 384m before ADR 0030: + the knowledge base (schema rag, two packs, ~200 MB on disk)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U intel -d intel"]
       interval: 10s
@@ -35,6 +36,7 @@ services:
     volumes:
       - /opt/dhaka-kacchi/intel-data/inbox:/inbox:ro     # written only by the upload-only inbox user
       - intel_store:/store
+      - intel_knowledge:/knowledge   # knowledge packs + serving models from the inbox; intel-mcp reads it read-only
     ports:
       - "127.0.0.1:8710:8000"   # loopback only; `tailscale serve` publishes it to the tailnet
     mem_limit: 512m
@@ -42,6 +44,35 @@ services:
       intel-db:
         condition: service_healthy
     networks: [intel, harness]   # harness: read-only warehouse access + the production predictor (M6)
+
+  intel-mcp:
+    # The MCP server for AI clients (ADR 0029, 0030): read-only, JWT per call, its own image (target `mcp`, scanned).
+    # Opt-in: runs only with COMPOSE_PROFILES=mcp in deploy/.env. No Telegram token, no intel-api DSN, no inbox, no
+    # write access to anything but its own audit volume; in intel-db only the two rag-only roles.
+    image: ${INTEL_MCP_IMAGE:-dk-intelligence-mcp:current}
+    profiles: ["mcp"]
+    restart: unless-stopped
+    environment:
+      INTEL_API_URL: http://intel-api:8000                 # the same allowlisted read routes as from the Mac
+      INTEL_RAG_DSN: postgresql://intel_mcp_reader:${INTEL_MCP_READER_PASSWORD:-}@intel-db:5432/intel
+      INTEL_RAG_ADMIN_DSN: postgresql://intel_mcp_loader:${INTEL_MCP_LOADER_PASSWORD:-}@intel-db:5432/intel
+      INTEL_MCP_SECRET: ${INTEL_MCP_SECRET_VPS:-}   # intel-mcp refuses to start without it
+      INTEL_MCP_ALLOWED_HOSTS: ${INTEL_MCP_ALLOWED_HOSTS:-}
+      INTEL_MCP_OWNER_LOGINS: ${INTEL_MCP_OWNER_LOGINS:-}
+      INTEL_MCP_REVOKED_FILE: /config/revoked.txt
+    volumes:
+      - intel_knowledge:/knowledge:ro
+      - intel_mcp_data:/data                               # audit chain + scoring locks
+      - ./mcp-revoked.txt:/config/revoked.txt:ro           # one revoked token id per line; re-read every minute
+    ports:
+      - "127.0.0.1:8711:8767"   # the tailnet listener only, on loopback; `tailscale serve` publishes it
+    mem_limit: 2560m            # measured: 1.7 GB warm, 2.2 GB peak (docs/results/P4_7_vps.md)
+    depends_on:
+      intel-db:
+        condition: service_healthy
+      intel-api:
+        condition: service_started
+    networks: [intel]           # never the harness network
 
 networks:
   intel: {}
@@ -52,3 +83,5 @@ networks:
 volumes:
   intel_db:
   intel_store:
+  intel_knowledge:
+  intel_mcp_data:

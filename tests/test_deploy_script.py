@@ -26,6 +26,7 @@ case "$args" in
   "inspect --format {{.Image}} cid-old") echo "sha256:oldimage" ;;
   "image inspect --format"*dk-intelligence:previous) echo "${FAKE_PREV_LABEL:-}" ;;
   "image inspect --format"*) echo "${FAKE_LABEL:-}" ;;
+  *"intel-mcp python -c"*) [[ -n "${FAKE_MCP_FAIL:-}" ]] && exit 1; exit 0 ;;
   *"python -c"*) echo '{"content_scorer": "cs-1"}' ;;
   *"python -"*)
     cat > /dev/null
@@ -70,6 +71,8 @@ def vps(tmp_path):
             "INTEL_DEPLOY_HISTORY": str(history),
             "INTEL_DEPLOY_SETTLE_S": "0",
             "INTEL_METRICS_DIR": str(metrics_dir),
+            "INTEL_MCP_SMOKE_TRIES": "2",
+            "INTEL_MCP_SMOKE_SLEEP_S": "0",
             **fake,
         }
         if request is not None:
@@ -84,7 +87,14 @@ def vps(tmp_path):
     def outcomes() -> list[str]:
         return [line.split("\t")[2] for line in history.read_text().splitlines()] if history.exists() else []
 
-    return {"run": run, "calls": calls, "outcomes": outcomes, "head": head, "first": first, "metrics": metrics_dir}
+    def enable_mcp() -> None:  # the owner's switch (D8): the compose profile plus the role passwords
+        env = repo / "deploy" / ".env"
+        env.write_text(
+            env.read_text() + "COMPOSE_PROFILES=mcp\nINTEL_MCP_READER_PASSWORD=r\nINTEL_MCP_LOADER_PASSWORD=l\n"
+        )
+
+    return {"run": run, "calls": calls, "outcomes": outcomes, "head": head, "first": first, "metrics": metrics_dir,
+            "enable_mcp": enable_mcp}  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -267,3 +277,34 @@ def test_smoke_fails_on_wrong_version_or_a_lost_model(live_api):
 def test_smoke_fails_when_nothing_answers():
     r = _smoke("http://127.0.0.1:9", EXPECT_SHA="c" * 40)
     assert r.returncode == 1 and "did not answer" in r.stdout
+
+
+def test_without_the_profile_nothing_about_intel_mcp_happens(vps):
+    head = vps["head"]
+    assert vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1").returncode == 0
+    assert not any("-mcp" in c or "intel-mcp" in c or "intel_mcp" in c for c in vps["calls"]())
+
+
+def test_with_the_profile_intel_mcp_ships_with_the_same_commit(vps):
+    head = vps["head"]
+    vps["enable_mcp"]()
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = vps["calls"]()
+    mcp = f"ghcr.io/shadmanarko/dk-intelligence-mcp:sha-{head}"
+    assert f"docker pull --quiet {mcp} | INTEL_IMAGE=" in calls
+    assert any("exec -T -e INTEL_MCP_READER_PASSWORD -e INTEL_MCP_LOADER_PASSWORD intel-db psql" in c for c in calls)
+    assert not any("=r " in c or "=l " in c for c in calls)  # passwords pass by environment, never in arguments
+    assert f"docker tag {mcp} dk-intelligence-mcp:current | INTEL_IMAGE=" in calls
+    assert vps["outcomes"]() == ["deployed", "mcp_deployed"]
+
+
+def test_a_sick_intel_mcp_is_stopped_but_never_rolls_back_intel_api(vps):
+    head = vps["head"]
+    vps["enable_mcp"]()
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_MCP_FAIL="1")
+    assert r.returncode == 1 and "intel-mcp failed its health check" in r.stdout
+    calls = vps["calls"]()
+    assert "docker compose stop intel-mcp | INTEL_IMAGE=" in calls
+    assert f"docker tag ghcr.io/shadmanarko/dk-intelligence@{DIGEST} dk-intelligence:current | INTEL_IMAGE=" in calls
+    assert vps["outcomes"]() == ["deployed", "mcp_failed"]

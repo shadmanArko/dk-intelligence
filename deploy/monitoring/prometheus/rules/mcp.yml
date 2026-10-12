@@ -1,0 +1,25 @@
+# intel-mcp (ADR 0030): the MCP server for AI clients. It is opt-in (a compose profile), so "down" alerts only once it
+# has been up at some point in the last 7 days: an intel-mcp that was never enabled never pages.
+groups:
+  - name: intel-mcp
+    rules:
+      - alert: IntelMcpDown
+        expr: up{job="intel-mcp"} == 0 and max_over_time(up{job="intel-mcp"}[7d]) == 1
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "intel-mcp has not answered a scrape for 5 minutes"
+          action: "`docker compose ps intel-mcp`, `docker compose logs --tail 100 intel-mcp` in /opt/dhaka-kacchi/dk-intelligence/deploy. Ordering and intel-api are unaffected; stopping it is always safe."
+      - alert: IntelMcpMemoryHigh
+        expr: process_resident_memory_bytes{job="intel-mcp"} > 0.9 * 2560 * 1024 * 1024
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "intel-mcp uses {{ $value | humanize1024 }}B, over 90% of its 2.5 GiB limit"
+          action: "Usually many parallel searches. If it persists: `docker compose restart intel-mcp`; if the VPS is short of memory, `docker compose stop intel-mcp` (runbook)."
+      - alert: IntelMcpAuthFailures
+        expr: increase(intel_mcp_auth_failures_total[15m]) > 20
+        labels: {severity: ticket}
+        annotations:
+          summary: "{{ $value | humanize }} refused requests to intel-mcp in 15 minutes ({{ $labels.reason }})"
+          action: "A client with an expired or revoked token, or someone probing the tailnet. Check the audit (`kind: http`) and revoke or re-issue tokens."

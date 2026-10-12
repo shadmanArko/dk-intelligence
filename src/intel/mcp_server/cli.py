@@ -66,23 +66,41 @@ def init(
     rotate: Annotated[
         bool, typer.Option(help="replace an existing secret: every token issued so far stops working")
     ] = False,
+    host: Annotated[str, typer.Option(help="mac (this Mac's server) or vps (a separate secret for the VPS)")] = "mac",
 ) -> None:
-    """Create this host's signing secret for HTTP tokens. Prints the key name only."""
+    """Create a host's signing secret for HTTP tokens (one per host). Prints the key name only."""
     import secrets
-
-    from intel.settings import McpSettings
 
     if not write_env:
         raise typer.BadParameter("pass --write-env (the secret is only ever written to .env, never printed)")
-    if McpSettings().intel_mcp_secret and not rotate:
-        typer.echo("INTEL_MCP_SECRET already exists in .env (use --rotate to replace it)")
+    key = "INTEL_MCP_SECRET" if host == "mac" else "INTEL_MCP_SECRET_VPS"
+    if _secret_for(host) and not rotate:
+        typer.echo(f"{key} already exists in .env (use --rotate to replace it)")
         return
-    _write_env("INTEL_MCP_SECRET", secrets.token_urlsafe(48))
-    typer.echo("INTEL_MCP_SECRET written to .env (value not shown)")
+    _write_env(key, secrets.token_urlsafe(48))
+    typer.echo(f"{key} written to .env (value not shown)")
+    if host == "vps":
+        typer.echo(
+            "Type it once into the VPS's deploy/.env with `read -rsp` (docs/runbooks/mcp.md); never paste it here"
+        )
 
 
 token_app = typer.Typer(no_args_is_help=True, help="HTTP tokens: issue into .env, mint for a headers helper, revoke")
 mcp_app.add_typer(token_app, name="token")
+
+
+def _secret_for(host: str) -> str | None:
+    """Each host signs with its own secret (a Mac token never works on the VPS, nor the reverse)."""
+    from dotenv import dotenv_values
+
+    from intel.settings import McpSettings, repo_root
+
+    if host not in ("mac", "vps"):
+        raise typer.BadParameter("--host mac or vps")
+    if host == "mac":
+        return McpSettings().intel_mcp_secret
+    value = dotenv_values(repo_root() / ".env").get("INTEL_MCP_SECRET_VPS")
+    return str(value) if value else None
 
 
 def _ttl(value: str) -> int:
@@ -104,20 +122,19 @@ def token_issue(
     max_sensitivity: Annotated[
         str, typer.Option(help="S1 keeps review and creator text (S2) away from this client")
     ] = "S2",
+    host: Annotated[str, typer.Option(help="mac or vps: which server the token is for")] = "mac",
 ) -> None:
     """Issue a token straight into .env (never printed). Prints its id, which is what you'd revoke."""
     from intel.mcp_server import auth
     from intel.mcp_server.gateway import profiles
-    from intel.settings import McpSettings, required
+    from intel.settings import required
 
     if profile not in profiles():
         raise typer.BadParameter(f"unknown profile {profile!r}")
     if not write_env.startswith("INTEL_MCP_TOKEN_"):
         raise typer.BadParameter("the key must start with INTEL_MCP_TOKEN_")
-    s = McpSettings()
-    token, jti = auth.issue(
-        required(s.intel_mcp_secret, "INTEL_MCP_SECRET"), client, profile, _ttl(ttl), s.intel_mcp_host, max_sensitivity
-    )
+    key = "INTEL_MCP_SECRET" if host == "mac" else "INTEL_MCP_SECRET_VPS"
+    token, jti = auth.issue(required(_secret_for(host), key), client, profile, _ttl(ttl), host, max_sensitivity)
     _write_env(write_env, token)
     typer.echo(f"{write_env} written to .env ({profile}, {ttl}, ceiling {max_sensitivity}); jti {jti}")
 
@@ -331,6 +348,75 @@ def pack_load(
     typer.secho(f"{pid} is active{' (gate skipped)' if skip_gate else ' (gate passed)'}", fg="green")
 
 
+def _upload(tgz: Any) -> None:
+    """Door 2: the upload-only inbox, archive first and checksum last, then a checksum dry run (intel.package)."""
+    from intel.package import upload
+    from intel.settings import get_settings, required
+
+    s = get_settings()
+    upload(tgz, required(s.dk_inbox_ssh, "DK_INBOX_SSH"), required(s.dk_inbox_ssh_key, "DK_INBOX_SSH_KEY"))
+
+
+@pack_app.command("ship")
+def pack_ship(
+    pack_id: Annotated[str | None, typer.Argument(help="default: the active pack")] = None,
+    models: Annotated[bool, typer.Option("--models", help="also send the serving models (once; ~1.2 GB)")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="build the packages, don't upload")] = False,
+) -> None:
+    """Send a gated knowledge pack (and, once, the serving models) to the VPS through the upload-only inbox (door 2).
+    intel-api verifies it and intel-mcp loads it within ~5 minutes (ADR 0030)."""
+    from intel.rag import pack as kp
+    from intel.rag import ship
+    from intel.rag.embed import OnnxEmbedder
+    from intel.rag.rerank import ONNX as RERANKERS
+    from intel.settings import McpSettings
+
+    s = McpSettings()
+    pid = pack_id or kp.active_id(s.pack_dir)
+    if pid is None:
+        raise typer.BadParameter("no active pack")
+    out = s.data_dir / "packages" / "knowledge"
+    tgzs = []
+    if models:
+        repos = [
+            OnnxEmbedder.ONNX[str(s.intel_rag_embedder).removeprefix("onnx:")][0],
+            RERANKERS[str(s.intel_rag_reranker).removeprefix("onnx:")][0],
+        ]
+        tgzs.append(ship.models_package(s.model_dir, repos, out))
+    try:
+        tgzs.append(ship.pack_package(s.pack_dir, pid, out))
+    except ship.ShipError as e:
+        raise typer.BadParameter(str(e)) from e
+    for tgz in tgzs:
+        size = tgz.stat().st_size / 1e6
+        if dry_run:
+            typer.echo(f"built {tgz.name} ({size:.0f} MB)")
+            continue
+        _upload(tgz)
+        typer.echo(f"uploaded {tgz.name} ({size:.0f} MB); intel-mcp loads it within ~5 minutes")
+
+
+@pack_app.command("rollback")
+def pack_rollback(
+    pack_id: Annotated[str, typer.Argument(help="the earlier pack to make active again")],
+    vps: Annotated[bool, typer.Option("--vps", help="on the VPS (a small marker through door 2)")] = False,
+) -> None:
+    """Make an earlier pack active again: here (files; the database follows on `pack load`), or on the VPS, where the
+    pack's bytes are already present and a tiny marker through the inbox switches it."""
+    from intel.rag import pack as kp
+    from intel.rag import ship
+    from intel.settings import McpSettings
+
+    s = McpSettings()
+    if not vps:
+        kp.activate(s.pack_dir, pack_id)
+        typer.echo(f"{pack_id} is active on this Mac; run `uv run intel pack load {pack_id}` for the database")
+        return
+    tgz = ship.activate_package(pack_id, s.data_dir / "packages" / "knowledge")
+    _upload(tgz)
+    typer.echo(f"rollback marker for {pack_id} uploaded; the VPS switches within ~5 minutes (Telegram confirms)")
+
+
 @pack_app.command("init")
 def pack_init(
     start: Annotated[bool, typer.Option("--start", help="only (re)start an existing container")] = False,
@@ -403,3 +489,7 @@ def pack_activate(pack_id: str) -> None:
 
     kp.activate(McpSettings().pack_dir, pack_id)
     typer.echo(f"{pack_id} is active")
+
+
+if __name__ == "__main__":  # the intel-mcp container's entry point: only the MCP commands, no training imports
+    mcp_app()

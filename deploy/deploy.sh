@@ -17,6 +17,10 @@ HISTORY="${INTEL_DEPLOY_HISTORY:-/opt/dhaka-kacchi/logs/intel-deploys.log}"
 [[ -f .env ]] || { echo "deploy/.env missing: run the first-time setup in deploy/README.md"; exit 2; }
 # shellcheck source=SCRIPTDIR/metrics.sh
 source ./metrics.sh
+# intel-mcp (ADR 0030) runs only when the owner enabled its compose profile: COMPOSE_PROFILES=mcp in deploy/.env
+MCP_ON=false
+grep -qE '^COMPOSE_PROFILES=.*\bmcp\b' .env && MCP_ON=true
+env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }   # read one key; values never echoed
 
 record() {  # outcome, image, note
   mkdir -p "$(dirname "$HISTORY")"
@@ -56,7 +60,7 @@ fi
 # ---------- 2. get and verify the image ----------
 if $LOCAL_BUILD; then
   echo "== EMERGENCY local build of $SHA (not scanned, not from the registry)"
-  docker build -f Dockerfile --build-arg GIT_SHA="$SHA" --build-arg BUILD_DATE="$(date -u +%FT%TZ)" -t "$IMAGE" ..
+  docker build -f Dockerfile --target runtime --build-arg GIT_SHA="$SHA" --build-arg BUILD_DATE="$(date -u +%FT%TZ)" -t "$IMAGE" ..
 else
   echo "== pull $IMAGE"
   docker pull --quiet "$IMAGE"
@@ -64,6 +68,23 @@ fi
 LABEL="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")"
 if [[ "$LABEL" != "$SHA" ]]; then
   echo "!! image was built from ${LABEL:-unknown}, expected $SHA"; record refused "$IMAGE" "label $LABEL"; exit 2
+fi
+MCP_IMAGE=""
+if $MCP_ON; then   # the same commit's intel-mcp image, checked the same way, before anything is switched
+  if $LOCAL_BUILD; then
+    MCP_IMAGE="dk-intelligence-mcp:local"
+    docker build -f Dockerfile --target mcp --build-arg GIT_SHA="$SHA" -t "$MCP_IMAGE" ..
+  else
+    MCP_IMAGE="${REGISTRY_IMAGE}-mcp:sha-$SHA"
+    echo "== pull $MCP_IMAGE"
+    docker pull --quiet "$MCP_IMAGE"
+  fi
+  MCP_LABEL="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$MCP_IMAGE")"
+  if [[ "$MCP_LABEL" != "$SHA" ]]; then
+    echo "!! intel-mcp image was built from ${MCP_LABEL:-unknown}, expected $SHA"
+    record refused "$MCP_IMAGE" "mcp label $MCP_LABEL"; exit 2
+  fi
+  touch mcp-revoked.txt   # the revocation file is mounted read-only into intel-mcp; it must exist
 fi
 
 # ---------- 3. remember what runs now ----------
@@ -79,7 +100,38 @@ echo "== active models before: ${EXPECT_MODELS:-unknown (old container not answe
 
 # ---------- 4. switch + smoke test ----------
 start() {  # image
-  INTEL_IMAGE="$1" docker compose up -d --no-build --remove-orphans
+  INTEL_IMAGE="$1" INTEL_MCP_IMAGE="${MCP_IMAGE:-dk-intelligence-mcp:current}" \
+    docker compose up -d --no-build --remove-orphans
+}
+mcp_roles() {  # the migration creates the rag-only roles without passwords; set them from deploy/.env (never echoed)
+  INTEL_MCP_READER_PASSWORD="$(env_value INTEL_MCP_READER_PASSWORD)"
+  INTEL_MCP_LOADER_PASSWORD="$(env_value INTEL_MCP_LOADER_PASSWORD)"
+  export INTEL_MCP_READER_PASSWORD INTEL_MCP_LOADER_PASSWORD
+  [[ -n "$INTEL_MCP_READER_PASSWORD" && -n "$INTEL_MCP_LOADER_PASSWORD" ]] || return 0
+  docker compose exec -T -e INTEL_MCP_READER_PASSWORD -e INTEL_MCP_LOADER_PASSWORD intel-db \
+    psql -q -v ON_ERROR_STOP=1 -U intel -d intel <<'SQL'
+\getenv rp INTEL_MCP_READER_PASSWORD
+\getenv lp INTEL_MCP_LOADER_PASSWORD
+do $$ begin
+  if not exists (select from pg_roles where rolname = 'intel_mcp_reader') then create role intel_mcp_reader login; end if;
+  if not exists (select from pg_roles where rolname = 'intel_mcp_loader') then create role intel_mcp_loader login; end if;
+end $$;
+grant usage on schema rag to intel_mcp_reader, intel_mcp_loader;
+grant select on rag.pack, rag.chunk to intel_mcp_reader;
+grant select, insert, update, delete on rag.pack, rag.chunk to intel_mcp_loader;
+alter role intel_mcp_reader set default_transaction_read_only = on;
+alter role intel_mcp_reader password :'rp';
+alter role intel_mcp_loader password :'lp';
+SQL
+}
+mcp_smoke() {  # intel-mcp answers /healthz within 3 minutes (it warms its models at start)
+  for _ in $(seq 1 "${INTEL_MCP_SMOKE_TRIES:-36}"); do
+    if docker compose exec -T intel-mcp python -c \
+      "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8766/healthz', timeout=5).status==200 else 1)" \
+      >/dev/null 2>&1; then return 0; fi
+    sleep "${INTEL_MCP_SMOKE_SLEEP_S:-5}"
+  done
+  return 1
 }
 smoke() {  # expected commit
   docker compose exec -T -e EXPECT_SHA="$1" -e EXPECT_MODELS="$EXPECT_MODELS" -e WAIT_S=90 intel-api python - < smoke.py
@@ -91,6 +143,20 @@ sleep "${INTEL_DEPLOY_SETTLE_S:-5}"
 if smoke "$SHA"; then
   docker tag "$IMAGE" dk-intelligence:current
   record deployed "$IMAGE" "${EXPECT_MODELS:-}"
+  if $MCP_ON; then   # intel-api is proven; intel-mcp is checked on its own and never rolls intel-api back
+    mcp_roles || echo "!! could not set the intel-mcp database role passwords"
+    if mcp_smoke; then
+      docker tag "$MCP_IMAGE" dk-intelligence-mcp:current
+      record mcp_deployed "$MCP_IMAGE" "healthz ok"
+      echo "== intel-mcp ${SHA:0:12} healthy"
+    else
+      echo "!! intel-mcp failed its health check: stopped (intel-api keeps running the new version)"
+      docker compose logs --tail 60 intel-mcp || true
+      docker compose stop intel-mcp || true
+      record mcp_failed "$MCP_IMAGE" "healthz"
+      exit 1
+    fi
+  fi
   docker image prune -f >/dev/null
   echo "== deployed ${SHA:0:12}"
   if [[ -f monitoring/.env ]]; then   # keep the monitoring stack in step with this commit's config (never fatal)

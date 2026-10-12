@@ -147,7 +147,7 @@ def model_dir(repo: str) -> str:
     not as cache symlinks: onnxruntime refuses external weights whose resolved path leaves the model folder."""
     from intel.settings import McpSettings
 
-    return str(McpSettings().data_dir / "models" / repo.replace("/", "--"))
+    return str(McpSettings().model_dir / repo.replace("/", "--"))
 
 
 def _hf_file(repo: str, filename: str) -> str:

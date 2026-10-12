@@ -116,3 +116,20 @@ guardrail has the evidence it rolls back by itself (ADR 0020). To keep the curre
 
 ## ModelMonitoringStale
 🟠 No monitoring result for 3 h while models are active: the measure worker is probably stalled (IntelWorkerStalled).
+
+## IntelMcpDown
+🟠 intel-mcp (the MCP server for AI clients, ADR 0030) stopped answering. Ordering and intel-api are unaffected.
+1. `docker compose ps intel-mcp` and `docker compose logs --tail 100 intel-mcp`, in /opt/dhaka-kacchi/dk-intelligence/deploy.
+2. Out of memory? `docker inspect --format '{{.State.OOMKilled}}' $(docker compose ps -q intel-mcp)`. If so, see
+   IntelMcpMemoryHigh.
+3. `docker compose up -d intel-mcp` is safe. To keep it off: `docker compose stop intel-mcp` ([mcp.md](mcp.md#on-the-vps-adr-0030)).
+
+## IntelMcpMemoryHigh
+🟠 intel-mcp is above 90% of its 2.5 GiB limit for 10 minutes, usually many searches at once.
+`docker compose restart intel-mcp` frees it (models reload in ~1 minute). If the host is short of memory too
+(HostMemoryLow), stop it: `docker compose stop intel-mcp`. The ordering system always comes first.
+
+## IntelMcpAuthFailures
+🟠 More than 20 refused requests to intel-mcp in 15 minutes. Either a client's token expired or was revoked (re-issue
+it on the Mac with `intel mcp token issue … --host vps`), or someone on the tailnet is probing. The audit chain lists
+each refusal (`kind: http`, reason, listener; never the token).

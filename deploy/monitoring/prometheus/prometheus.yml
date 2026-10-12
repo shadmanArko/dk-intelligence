@@ -13,6 +13,10 @@ scrape_configs:
   - job_name: intel-api
     static_configs: [{targets: ["intel-api:8000"]}]
 
+  # intel-mcp (ADR 0030), opt-in: while it isn't enabled this target is simply down, and no alert fires (rules/mcp.yml)
+  - job_name: intel-mcp
+    static_configs: [{targets: ["intel-mcp:8766"]}]
+
   - job_name: node
     static_configs: [{targets: ["node-exporter:9100"]}]
 

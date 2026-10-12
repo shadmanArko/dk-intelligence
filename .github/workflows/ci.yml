@@ -119,6 +119,7 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
+          target: runtime        # intel-api; the same Dockerfile's `mcp` target is built below
           platforms: ${{ env.PLATFORM }}
           build-args: |
             GIT_SHA=${{ github.sha }}
@@ -145,6 +146,33 @@ jobs:
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image --quiet --scanners vuln \
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format table "$REF"
+      # intel-mcp (ADR 0030): the same commit, its own image (only the mcp + rag groups), the same scan gate. deploy.sh
+      # pulls it by this tag and checks its commit label; door 3's request is unchanged.
+      - id: build_mcp
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: mcp
+          platforms: ${{ env.PLATFORM }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.date.outputs.now }}
+          tags: ${{ env.IMAGE }}-mcp:sha-${{ github.sha }}
+          push: ${{ env.PUSH == 'true' }}
+          load: ${{ env.PUSH != 'true' }}
+          provenance: ${{ env.PUSH == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ env.PUSH == 'true' }}
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,mode=max,scope=mcp
+      - name: Vulnerability scan, intel-mcp (gate)
+        env:
+          DIGEST: ${{ steps.build_mcp.outputs.digest }}
+        run: |
+          if [ "$PUSH" = "true" ]; then ref="$IMAGE-mcp@$DIGEST"; docker pull --quiet "$ref"; else ref="$IMAGE-mcp:sha-$GITHUB_SHA"; fi
+          echo "\`$ref\`" >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image --quiet --scanners vuln \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --format table "$ref"
       - name: Full report and SBOM
         if: always()
         env:

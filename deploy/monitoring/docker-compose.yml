@@ -64,7 +64,7 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports: ["127.0.0.1:${GRAFANA_PORT:-3330}:3000"]   # 3000 is taken on the VPS; override in .env
-    mem_limit: 256m
+    mem_limit: 384m   # 256m until 2026-10-12: it ran at 250.7 of 256 MiB
     networks: [mon]
 
   node-exporter:

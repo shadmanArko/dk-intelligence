@@ -6,7 +6,7 @@ approves on Telegram → serve and measure on the VPS.** Built and run like a pr
 interview showcase (ML-engineering leadership).
 
 **Start every session by reading [docs/HANDOFF.md](docs/HANDOFF.md)**: current state, open items, decisions waiting
-for the owner, and the next task (Phase 4: MCP + RAG). Then the [architecture](docs/ARCHITECTURE.md) and the
+for the owner, and the next task (Phase 5: agents). Then the [architecture](docs/ARCHITECTURE.md) and the
 [decision records](docs/adr/README.md) as needed.
 
 ## Phases
@@ -15,8 +15,8 @@ for the owner, and the next task (Phase 4: MCP + RAG). Then the [architecture](d
 | 1 (M0–M8) | walking skeleton: pull → train → judge → package → approve → serve → ledger | done |
 | 2 (2.1–2.6) | models that help sell: reach, weakness miner, community map, occasions, funnel, creators | done |
 | 3 (H0–H11) | MLOps hardening ([plan](docs/PHASE3_MLOPS_PLAN.md)) | done, except **H10 (GDPR) on PR #4, unmerged by the owner's choice** |
-| **4** | **MCP + RAG**: not started; no plan yet | next |
-| 5 | agents | later |
+| 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; the VPS go-live is the owner's runbook steps |
+| **5** | **agents**: decisions D5, D9–D11 first ([hand-over](docs/mcp/PHASE5_HANDOVER.md)) | next |
 
 Older docs (PHASE1_PLAN.md, PHASE2_PLAN.md) say "MCP is Phase 3". That was renumbered on 2026-10-08: Phase 3 became
 MLOps hardening.
@@ -62,7 +62,7 @@ and `tests/test_restore_drill.py`. Monitoring as code: `bash deploy/monitoring/c
     origin or citizenship data anywhere else without asking.
 11. **€0 running cost, no paid AI APIs** (ADR 0012), unless the owner decides otherwise for Phase 4; ask.
 12. **Migrations are additive** (ADR 0015, `tests/test_migration_policy.py`). Accepted ADRs are never edited; a
-    changed decision gets a new ADR. Next free ADR number: **0030** (0024 is on the H10 branch).
+    changed decision gets a new ADR. Next free ADR number: **0031** (0024 is on the H10 branch).
 13. **Ratchets only move one way** (ADR 0010): the strict-mypy module list only grows; the coverage floor
     (`fail_under = 80`, precision 2) only rises; 0 fixable HIGH/CRITICAL vulnerabilities.
 14. **Never touch harness PR #2** ("RAG System…", by another contributor): the owner said "DO not accept the rag
@@ -114,7 +114,11 @@ postmortem (`docs/postmortems/`). Plans are written as a doc for the owner's app
   - `models/<7 models>/` (sealed);
   - `serve/` (intel-api on the VPS: app, registry, measure, monitor, guardrail, lifecycle, telegram, views,
     `migrations/`);
-  - `control.py` (Mac Control Room).
+  - `control.py` (Mac Control Room);
+  - Phase 4: `capabilities/` (plain-Python tool logic), `adapters/` (intel-api, packs, pgvector), `rag/` (knowledge
+    packs: clean, chunk, embed, rerank, store, gate, ship), `mcp_server/` (the dk_intel gateway, servers, kit,
+    prompts, profiles, budgets, HTTP + tokens). Docs: `docs/mcp/` (catalog, clients, threat model, Phase 5 hand-over),
+    `docs/runbooks/mcp.md`.
 - `deploy/`: Dockerfile, compose (intel-api, intel-db), deploy.sh, smoke.py, backup.sh, restore_drill.sh,
   `monitoring/` (Prometheus, Alertmanager, Grafana, rules and their tests).
 - `infra/`: Ansible pull-mode playbook for the VPS host (ADR 0022).

@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from intel.models.content_scorer.predict import predict as cs_predict
 from intel.serve.db import connect, kv_get, kv_set, log_event, migrate
 from intel.serve.guardrail import run_guardrail
+from intel.serve.knowledge import knowledge_message, scan_knowledge
 from intel.serve.lifecycle import audit_verify, stage
 from intel.serve.measure import Measurer, live_summary, log_api_prediction
 from intel.serve.monitor import run_monitor, scan_references
@@ -213,6 +214,10 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
                     state.telegram.send(run_message(rep))
             if scan_references(state.dsn, s.intel_inbox_dir):  # new reference profile (ADR 0018): judge again now
                 state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
+            for k in scan_knowledge(state.dsn, s.intel_inbox_dir, s.intel_knowledge_dir):
+                text = knowledge_message(k)
+                if text and state.telegram:
+                    state.telegram.send(html.escape(text))
             intakes = state.registry.scan_inbox()
             notify_intake(state.telegram, state.registry, s.intel_public_url, intakes)
             for row in state.registry.expire_due():

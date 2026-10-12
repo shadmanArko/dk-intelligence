@@ -19,27 +19,14 @@ def load_and_gate(
 ) -> dict[str, Any]:
     """Load pack `pid` as staged; unless skipped, gate it; activate it (database and files) only if it passes.
     Returns {pack, chunks, gate (or None), active (bool)}."""
-    import numpy as np
-    import pandas as pd
     import psycopg
 
     if not s.intel_rag_admin_dsn:
         raise kp.PackError("INTEL_RAG_ADMIN_DSN is not set (run `intel pack init`)")
-    manifest = kp.verify(s.pack_dir / pid)
-    if manifest.get("kind") != "full":
-        raise kp.PackError(f"{pid} has no search index; build with --index")
-    rows = pd.read_parquet(s.pack_dir / pid / "index" / "chunks.parquet")
-    rows = rows.astype(object).where(rows.notna(), None)  # parquet NaN/NaT -> SQL NULL
-    records = rows.to_dict("records")
-    for r in records:
-        r["aspects"] = list(r["aspects"]) if r.get("aspects") is not None else []
-    vectors = np.load(s.pack_dir / pid / "index" / "vectors.npy")
     out: dict[str, Any] = {"pack": pid, "gate": None, "active": False}
     with psycopg.connect(s.intel_rag_admin_dsn, autocommit=True) as conn:
         store.ensure_schema(conn)
-        out["chunks"] = store.load_pack(
-            conn, pid, manifest, [{str(k): v for k, v in r.items()} for r in records], vectors
-        )
+        manifest, out["chunks"] = load_rows(conn, s.pack_dir, pid)
         echo(f"{pid}: {out['chunks']} chunks loaded (staged)")
         if not activate:
             return out
@@ -55,6 +42,49 @@ def load_and_gate(
     kp.activate(s.pack_dir, pid)  # the brand and trends side reads the same pack as search
     out["active"] = True
     return out
+
+
+def load_rows(conn: Any, pack_root: Path, pid: str) -> tuple[dict[str, Any], int]:
+    """Verify pack `pid` and load its index into the database as staged. Returns (manifest, chunks)."""
+    import numpy as np
+    import pandas as pd
+
+    manifest = kp.verify(pack_root / pid)
+    if manifest.get("kind") != "full":
+        raise kp.PackError(f"{pid} has no search index; build with --index")
+    rows = pd.read_parquet(pack_root / pid / "index" / "chunks.parquet")
+    rows = rows.astype(object).where(rows.notna(), None)  # parquet NaN/NaT -> SQL NULL
+    records = rows.to_dict("records")
+    for r in records:
+        r["aspects"] = list(r["aspects"]) if r.get("aspects") is not None else []
+    vectors = np.load(pack_root / pid / "index" / "vectors.npy")
+    n = store.load_pack(conn, pid, manifest, [{str(k): v for k, v in r.items()} for r in records], vectors)
+    return manifest, n
+
+
+def sync_to_active(s: McpSettings, keep: int = 2) -> dict[str, Any]:
+    """The VPS loader (ADR 0030): make the database serve the pack that `packs/ACTIVE` names. The Mac gated it and
+    intel-api verified it on intake, so no gate runs here (the golden set isn't on the VPS); the pack's checksums are
+    verified again before loading. Keeps the active and the previous pack, deletes older ones."""
+    import psycopg
+
+    want = kp.active_id(s.pack_dir)
+    if want is None or not s.intel_rag_admin_dsn:
+        return {"status": "nothing_to_do"}
+    with psycopg.connect(s.intel_rag_admin_dsn, autocommit=True) as conn:
+        if store.active_pack(conn) == want:
+            return {"status": "in_sync", "pack": want}
+        loaded = conn.execute("select 1 from rag.pack where pack_id = %s", (want,)).fetchone() is not None
+        chunks = None
+        if not loaded:  # a rollback to an earlier pack re-activates its rows; a new pack is loaded first
+            _, chunks = load_rows(conn, s.pack_dir, want)
+        store.activate(conn, want)
+        conn.execute(
+            "delete from rag.pack where pack_id not in "
+            "(select pack_id from rag.pack order by (status = 'active') desc, loaded_at desc limit %s)",
+            (keep,),
+        )
+    return {"status": "activated", "pack": want, "chunks": chunks}
 
 
 def run_gate(conn: Any, pid: str, manifest: dict[str, Any], s: McpSettings) -> gate.GateResult:
@@ -104,8 +134,23 @@ def weekly_refresh(pull: Path | None, log: Callable[[str], None] = print) -> dic
     pid = kp.build_brand_pack(s.path(s.mip_dir), s.data_dir / "market", s.pack_dir, indexer=indexer)
     manifest = kp.verify(s.pack_dir / pid)
     out = load_and_gate(s, pid, echo=log)
+    shipped = None
+    if out["active"] and s.intel_ship_knowledge:  # door 2; a failed upload never fails the step (next Sunday retries)
+        try:
+            from intel.package import upload
+            from intel.rag import ship
+            from intel.settings import get_settings, required
+
+            g = get_settings()
+            tgz = ship.pack_package(s.pack_dir, pid, s.data_dir / "packages" / "knowledge")
+            upload(tgz, required(g.dk_inbox_ssh, "DK_INBOX_SSH"), required(g.dk_inbox_ssh_key, "DK_INBOX_SSH_KEY"))
+            shipped = True
+        except Exception as e:  # noqa: BLE001 - reported, not raised
+            log(f"knowledge pack not shipped: {type(e).__name__}: {e}")
+            shipped = False
     return {
         "status": "active" if out["active"] else "kept_previous",
+        "shipped": shipped,
         "pack": pid,
         "chunks": out.get("chunks"),
         "collections": manifest.get("collections"),

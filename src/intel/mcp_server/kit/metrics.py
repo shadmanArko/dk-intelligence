@@ -6,9 +6,10 @@ intel_mcp_result_tokens_est{tool}, intel_mcp_auth_failures_total{reason}, intel_
 
 from __future__ import annotations
 
-from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
+from prometheus_client import CollectorRegistry, Counter, Histogram, ProcessCollector, generate_latest
 
 REGISTRY = CollectorRegistry()
+ProcessCollector(registry=REGISTRY)  # process_resident_memory_bytes: the memory alert near mem_limit
 CALLS = Counter("intel_mcp_tool_calls", "Tool calls", ["tool", "profile", "status"], registry=REGISTRY)
 LATENCY = Histogram(
     "intel_mcp_tool_latency_seconds",

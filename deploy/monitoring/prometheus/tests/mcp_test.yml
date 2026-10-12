@@ -1,0 +1,51 @@
+# promtool unit tests for the intel-mcp alerts.
+rule_files: [../rules/mcp.yml]
+evaluation_interval: 30s
+
+tests:
+  - name: an intel-mcp that was never enabled never alerts
+    interval: 1m
+    input_series:
+      - {series: 'up{job="intel-mcp",instance="intel-mcp:8766"}', values: '0x30'}
+    alert_rule_test:
+      - {eval_time: 20m, alertname: IntelMcpDown, exp_alerts: []}
+
+  - name: an enabled intel-mcp that stops answering alerts after 5 minutes
+    interval: 1m
+    input_series:
+      - {series: 'up{job="intel-mcp",instance="intel-mcp:8766"}', values: '1x10 0x20'}
+    alert_rule_test:
+      - {eval_time: 13m, alertname: IntelMcpDown, exp_alerts: []}
+      - eval_time: 17m
+        alertname: IntelMcpDown
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: intel-mcp, instance: "intel-mcp:8766"}
+            exp_annotations:
+              summary: "intel-mcp has not answered a scrape for 5 minutes"
+              action: "`docker compose ps intel-mcp`, `docker compose logs --tail 100 intel-mcp` in /opt/dhaka-kacchi/dk-intelligence/deploy. Ordering and intel-api are unaffected; stopping it is always safe."
+
+  - name: memory near the limit for 10 minutes
+    interval: 1m
+    input_series:
+      - {series: 'process_resident_memory_bytes{job="intel-mcp",instance="intel-mcp:8766"}', values: '2500000000x20'}
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: IntelMcpMemoryHigh
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: intel-mcp, instance: "intel-mcp:8766"}
+            exp_annotations:
+              summary: "intel-mcp uses 2.328GiB, over 90% of its 2.5 GiB limit"
+              action: "Usually many parallel searches. If it persists: `docker compose restart intel-mcp`; if the VPS is short of memory, `docker compose stop intel-mcp` (runbook)."
+
+  - name: a burst of refused requests
+    interval: 1m
+    input_series:
+      - {series: 'intel_mcp_auth_failures_total{job="intel-mcp",reason="invalid_token"}', values: '0+3x20'}
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: IntelMcpAuthFailures
+        exp_alerts:
+          - exp_labels: {severity: ticket, job: intel-mcp, reason: invalid_token}
+            exp_annotations:
+              summary: "45 refused requests to intel-mcp in 15 minutes (invalid_token)"
+              action: "A client with an expired or revoked token, or someone probing the tailnet. Check the audit (`kind: http`) and revoke or re-issue tokens."
