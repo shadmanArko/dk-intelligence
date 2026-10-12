@@ -39,6 +39,18 @@ class PgEvidenceIndex(EvidenceIndex):
         self._embedder_failed = False
         self._reranker_failed = False
         self._lock = threading.Lock()
+        # at most 2 model runs at once: onnxruntime already uses every core per run, so 10 parallel searches
+        # oversubscribed the CPU (P4.6 load test); queueing is faster than thrashing
+        self._models = threading.BoundedSemaphore(2)
+
+    def warm(self) -> None:
+        """Load the embedder and reranker now (they otherwise load on the first search, 5-20 s on a cold CPU).
+        Used by the shared HTTP process; stdio processes stay lazy, one per editor session."""
+        emb, rr = self._emb(), self._rr()
+        if emb is not None:
+            emb.query("warm up")
+        if rr is not None:
+            rr([("warm up", "warm up")])
 
     def _connect(self) -> psycopg.Connection[Any]:
         try:
@@ -84,9 +96,10 @@ class PgEvidenceIndex(EvidenceIndex):
         )  # fmt: skip
         with self._connect() as conn:
             pack_id = self._pack(conn)
-            qvec = emb.query(q.query) if emb is not None else None
+            with self._models:
+                qvec = emb.query(q.query) if emb is not None else None
             mode = self.mode if qvec is not None else "lexical"
-            reranker = (lambda query, docs: rr([(query, d) for d in docs])) if rr is not None else None
+            reranker = (lambda query, docs: self._gated(rr, [(query, d) for d in docs])) if rr is not None else None
             hits = store.search(
                 conn,
                 pack_id,
@@ -122,6 +135,10 @@ class PgEvidenceIndex(EvidenceIndex):
                     (pack_id, aspects),
                 ).fetchall()
 
+    def _gated(self, rr: Rerank, pairs: list[tuple[str, str]]) -> list[float]:
+        with self._models:
+            return rr(pairs)
+
     def support(self, pairs: list[tuple[str, str]]) -> list[float] | None:
         rr = self._rr()
-        return None if rr is None else rr(pairs)
+        return None if rr is None else self._gated(rr, pairs)

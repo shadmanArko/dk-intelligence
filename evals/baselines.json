@@ -1,0 +1,17 @@
+{
+  "ci_synthetic": {"hit_at_5": 1.0, "mrr": 1.0, "precision_at_3": 1.0},
+  "milestones": {
+    "rag_reviews": {"date": "2026-10-10", "source": "docs/results/P4_2_rag_reviews.md",
+                    "stack": "onnx:harrier-0.6b dense + onnx:bge-reranker-v2-m3 top 20",
+                    "ndcg_at_10": {"dev": 0.84, "test": 0.84}},
+    "rag_posts": {"date": "2026-10-12", "source": "docs/results/P4_3_posts_trends_gate.md",
+                  "note": "distinct captions; owner spot-check labels applied",
+                  "ndcg_at_10": {"dev": 0.72, "test": 0.61}},
+    "owner_spot_check": {"date": "2026-10-12", "source": "docs/results/P4_3_posts_trends_gate.md",
+                         "label_agreement": 0.84, "answers_trusted": 1.0},
+    "tool_use_eval": {"date": "2026-10-11", "source": "docs/results/P4_4_studio_prompts.md", "model": "gpt-oss:20b",
+                      "success": {"dev": 1.0, "held_out": 1.0}, "tokens_per_task": 7706},
+    "content_plan": {"date": "2026-10-11", "source": "docs/results/P4_4_instagram_plan_2026-10-11.md",
+                     "kept_pass_checks": 1.0, "mean_score": {"before": 0.565, "after": 0.589}}
+  }
+}

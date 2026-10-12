@@ -6,6 +6,7 @@ required for the owner on the tailnet listener), the sensitivity ceiling, and on
 """
 
 import asyncio
+import json
 import socket
 import threading
 import time
@@ -192,3 +193,18 @@ def test_the_catalog_is_current(deps):  # noqa: F811
     from intel.mcp_server import catalog
 
     assert catalog.CATALOG.read_text() == catalog.render(deps), "run `uv run intel mcp catalog` and commit it"
+
+
+def test_metrics_only_locally_and_refusals_are_audited(servers, deps):  # noqa: F811
+    asyncio.run(_names(f"{servers['local']}/mcp/writer/", _tok("writer")))
+    m = httpx.get(f"{servers['local']}/metrics", timeout=10)
+    assert m.status_code == 200 and "intel_mcp_auth_failures" in m.text
+    assert httpx.get(f"{servers['tailnet']}/metrics", timeout=10).status_code == 404  # never over tailscale serve
+    hdr = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+    assert httpx.post(f"{servers['local']}/mcp/writer/", json=body, headers=hdr, timeout=10).status_code == 401
+    owner = {**hdr, "Authorization": f"Bearer {_tok('owner')}"}
+    assert httpx.post(f"{servers['tailnet']}/mcp/owner/", json=body, headers=owner, timeout=10).status_code == 403
+    denied = [e for e in deps.audit.entries() if e.get("kind") == "http"]
+    assert {(e["reason"], e["listener"]) for e in denied} >= {("invalid_token", "local"), ("forbidden", "tailnet")}
+    assert all("Bearer" not in json.dumps(e) for e in denied) and deps.audit.verify()["ok"]

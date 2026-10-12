@@ -69,8 +69,11 @@ class AuditMiddleware(Middleware):
     ) -> Any:
         t0 = time.perf_counter()
         status = "ok"
+        tokens: int | None = None
         try:
             result = await call_next(context)
+            data = getattr(result, "structured_content", None)
+            tokens = est_tokens(data) if data is not None else None
         except ToolError as e:
             status = "denied" if "NOT_ALLOWED_FOR_PROFILE" in str(e) else "error"
             raise
@@ -78,6 +81,7 @@ class AuditMiddleware(Middleware):
             status = "error"
             raise
         finally:
+            ms = round((time.perf_counter() - t0) * 1000, 1)
             self.log.append(
                 request_id=REQUEST_ID.get(),
                 principal=token_principal() or self.principal,
@@ -86,8 +90,13 @@ class AuditMiddleware(Middleware):
                 name=name,
                 args=args_hash(arguments),
                 status=status,
-                ms=round((time.perf_counter() - t0) * 1000, 1),
+                ms=ms,
+                tokens=tokens,
             )
+            if kind == "tool":
+                from intel.mcp_server.kit import metrics
+
+                metrics.observe(name, self.profile, status, ms / 1000, tokens)
         return result
 
     async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
@@ -317,3 +326,45 @@ class SensitivityCeiling(Middleware):
 def _sensitivity(tool: Any) -> str:
     value = (getattr(tool, "meta", None) or {}).get("dk/sensitivity", "S3")  # unlabelled fails closed
     return str(value) if value in ("S0", "S1", "S2", "S3") else "S3"
+
+
+CACHEABLE = frozenset(
+    {"upcoming_occasions", "competitor_complaints", "community_areas", "funnel_status", "find_creators",
+     "brand_rules", "get_facts", "trend_signals", "grounding_pack"}
+)  # fmt: skip
+
+
+class ResultCache(Middleware):
+    """Slow, weekly-changing answers (insights over the tailnet, brand facts, trends, the grounding pack) are kept for
+    `ttl_s`. Key: tool + arguments + the token's ceiling + the active knowledge pack, so a new pack or a narrower
+    token never gets a stale or wider answer. Errors, searches and model status are never cached. It sits inside
+    the profile gate: a cached answer is still only served to a profile that may call the tool."""
+
+    def __init__(self, pack_id: Callable[[], str | None], ttl_s: float = 300.0, max_entries: int = 256) -> None:
+        self.pack_id, self.ttl_s, self.max_entries = pack_id, ttl_s, max_entries
+        self._store: dict[str, tuple[float, Any]] = {}
+
+    async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        from intel.mcp_server.auth import ceiling_of
+
+        name = context.message.name
+        if name not in CACHEABLE:
+            return await call_next(context)
+        key = json.dumps(
+            [name, context.message.arguments or {}, ceiling_of(token_claims()), self.pack_id()],
+            sort_keys=True,
+            default=str,
+        )
+        now = time.monotonic()
+        hit = self._store.get(key)
+        if hit is not None and now - hit[0] < self.ttl_s:
+            from intel.mcp_server.kit import metrics
+
+            metrics.CACHE_HITS.labels(name).inc()
+            return hit[1]
+        result = await call_next(context)
+        if not getattr(result, "is_error", False):
+            if len(self._store) >= self.max_entries:
+                self._store.pop(next(iter(self._store)))
+            self._store[key] = (now, result)
+        return result

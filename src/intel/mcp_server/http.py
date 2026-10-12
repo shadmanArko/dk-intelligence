@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -56,6 +56,38 @@ async def healthz(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+async def metrics_route(_: Request) -> Response:
+    from intel.mcp_server.kit.metrics import exposition
+
+    return Response(exposition(), media_type="text/plain; version=0.0.4")
+
+
+class RefusalAudit:
+    """Refused requests (401/403/421) never reach the MCP middleware, so they're recorded here: in the audit chain
+    (status denied, the reason, never the token) and in intel_mcp_auth_failures_total."""
+
+    def __init__(self, app: ASGIApp, audit: Any, listener: Listener) -> None:
+        self.app, self.audit, self.listener = app, audit, listener
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith("/mcp/"):
+            await self.app(scope, receive, send)
+            return
+
+        async def watch(message: Any) -> None:
+            if message["type"] == "http.response.start" and message["status"] in (401, 403, 421):
+                from intel.mcp_server.kit.metrics import AUTH_FAILURES
+
+                reason = {401: "invalid_token", 403: "forbidden", 421: "bad_host"}[message["status"]]
+                AUTH_FAILURES.labels(reason).inc()
+                self.audit.append(
+                    kind="http", name=scope["path"], status="denied", reason=reason, listener=self.listener
+                )
+            await send(message)
+
+        await self.app(scope, receive, watch)
+
+
 def build_http_app(
     settings: McpSettings, deps: Deps, listener: Listener = "local", only: list[str] | None = None
 ) -> ASGIApp:
@@ -83,10 +115,15 @@ def build_http_app(
             yield
 
     root = Starlette(
-        routes=[Route("/healthz", healthz), *(Mount(f"/mcp/{p}", app=a) for p, a in apps.items())],
+        routes=[
+            Route("/healthz", healthz),
+            *([Route("/metrics", metrics_route)] if listener == "local" else []),  # never via tailscale serve
+            *(Mount(f"/mcp/{p}", app=a) for p, a in apps.items()),
+        ],
         lifespan=lifespan,
     )
-    return TailnetIdentity(root, listener, settings.owner_logins)
+    # the audit is outermost, so the tailnet owner refusal is recorded too
+    return RefusalAudit(TailnetIdentity(root, listener, settings.owner_logins), deps.audit, listener)
 
 
 def serve(settings: McpSettings, deps: Deps, listeners: list[Listener]) -> None:
@@ -104,6 +141,12 @@ def serve(settings: McpSettings, deps: Deps, listeners: list[Listener]) -> None:
         )
         for listener in listeners
     ]
+
+    warm = getattr(deps.evidence, "warm", None)
+    if warm is not None:  # one shared process: pay the model load once, at start, off the request path
+        import threading
+
+        threading.Thread(target=warm, name="warm-models", daemon=True).start()
 
     async def run() -> None:
         await asyncio.gather(*(s.serve() for s in servers))

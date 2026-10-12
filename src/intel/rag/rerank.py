@@ -93,9 +93,13 @@ def _onnx_cross_encoder(key: str, batch_size: int = 16, max_tokens: int = 512) -
     tok.enable_padding()
 
     def score(pairs: list[tuple[str, str]]) -> list[float]:
-        out: list[float] = []
-        for i in range(0, len(pairs), batch_size):
-            enc = tok.encode_batch(pairs[i : i + batch_size])
+        # batches of similar length: a batch is padded to its longest pair, so mixing a 1,700-character caption with
+        # short ones made every pair cost the long one (P4.6 load test). Scores are unchanged; the order is restored.
+        order = sorted(range(len(pairs)), key=lambda j: len(pairs[j][0]) + len(pairs[j][1]))
+        ranked = [pairs[j] for j in order]
+        sorted_out: list[float] = []
+        for i in range(0, len(ranked), batch_size):
+            enc = tok.encode_batch(ranked[i : i + batch_size])
             feed = {
                 "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
                 "attention_mask": np.array([e.attention_mask for e in enc], dtype=np.int64),
@@ -103,7 +107,10 @@ def _onnx_cross_encoder(key: str, batch_size: int = 16, max_tokens: int = 512) -
             if "token_type_ids" in names:
                 feed["token_type_ids"] = np.zeros_like(feed["input_ids"])
             logits = np.asarray(session.run(None, feed)[0], dtype=np.float64).reshape(len(enc), -1)[:, 0]
-            out.extend((1 / (1 + np.exp(-logits))).tolist())
+            sorted_out.extend((1 / (1 + np.exp(-logits))).tolist())
+        out = [0.0] * len(pairs)
+        for j, s in zip(order, sorted_out, strict=True):
+            out[j] = s
         return out
 
     return score

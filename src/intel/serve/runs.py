@@ -64,6 +64,34 @@ class Skew(BaseModel):
     examples: list[str] = Field(default_factory=list, max_length=3)
 
 
+class KnowledgePack(BaseModel):
+    """The Sunday knowledge-pack step (P4.4/P4.6, ADR 0027): a soft step, its result never fails the run."""
+
+    model_config = ConfigDict(extra="ignore")
+    status: Literal["active", "kept_previous", "skipped", "error"]
+    pack: str | None = Field(default=None, max_length=60)
+    chunks: int | None = None
+    newly_embedded: int | None = None
+    gate_passed: bool | None = None
+    gate_lost: list[str] | None = Field(default=None, max_length=50)
+    why: str | None = Field(default=None, max_length=200)
+    error: str | None = Field(default=None, max_length=300)
+
+
+def knowledge_line(k: KnowledgePack | None) -> str | None:
+    if k is None:
+        return None
+    if k.status == "active":
+        new = f", {k.newly_embedded:,} new texts embedded" if k.newly_embedded else ""
+        return f"📚 Knowledge pack <code>{H(k.pack or '?')}</code> is live (gate passed{new})"
+    if k.status == "kept_previous":
+        lost = ", ".join(k.gate_lost or []) or "?"
+        return f"📚 Knowledge pack refused by its gate (lost {H(lost)}): last week's stays live"
+    if k.status == "skipped":
+        return f"📚 Knowledge pack skipped: {H(k.why or '?')}"
+    return f"⚠️ Knowledge pack step failed: <code>{H((k.error or '')[:150])}</code> (last week's stays live)"
+
+
 class RunReport(BaseModel):
     model_config = ConfigDict(extra="ignore")
     kind: Literal["weekly_run"]
@@ -88,6 +116,7 @@ class RunReport(BaseModel):
     data_quality: dict[Literal["warehouse", "market"], DataQuality] = Field(default_factory=dict)
     skew: Skew | None = None
     references: list[str] = Field(default_factory=list, max_length=10)
+    knowledge: KnowledgePack | None = None
 
 
 def scan_run_reports(dsn: str, inbox: Path) -> list[RunReport]:
@@ -151,6 +180,8 @@ def run_message(r: RunReport) -> str:
     warns = [w for q in r.data_quality.values() for w in q.warnings]
     if warns:
         extra += f"\n🧪 Data checks: {len(warns)} warning(s), e.g. {H(warns[0][:150])}"
+    if (kline := knowledge_line(r.knowledge)) is not None:
+        extra += "\n" + kline
     live = f"\nLive check: {H(r.live)}" if r.live else ""
     if r.models:
         sc += "\n" + "\n".join(
@@ -208,11 +239,22 @@ def weekly_report(dsn: str, public_url: str | None) -> str:
         )
     else:
         lines.append("• No Sunday training received yet")
+    if last and (kline := knowledge_line(_knowledge_of(last))) is not None:
+        lines.append("• " + kline)
     if week["pending"]:
         lines.append(f"• ⏳ {week['pending']} model(s) waiting for your decision")
     if public_url:
         lines.append(f'\n<a href="{H(public_url)}/posts">See every post</a>')
     return "\n".join(lines)
+
+
+def _knowledge_of(row: dict[str, Any]) -> KnowledgePack | None:
+    report = row.get("report")
+    data = json.loads(report) if isinstance(report, str) else report
+    try:
+        return RunReport.model_validate(data).knowledge if data else None
+    except ValidationError:
+        return None
 
 
 def reminder_due(dsn: str, now: dt.datetime) -> bool:
