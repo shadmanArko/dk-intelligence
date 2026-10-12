@@ -31,6 +31,22 @@ def stdio_principal() -> str:
         return "stdio:unknown"
 
 
+def token_claims() -> dict[str, Any] | None:
+    """The verified JWT's claims on HTTP; None on stdio and in memory."""
+    from fastmcp.server.dependencies import get_access_token
+
+    try:
+        token = get_access_token()
+    except RuntimeError:
+        return None
+    return None if token is None else dict(token.claims)
+
+
+def token_principal() -> str | None:
+    claims = token_claims()
+    return None if claims is None else f"jwt:{claims.get('sub')}:{str(claims.get('jti', ''))[:8]}"
+
+
 class ContextMiddleware(Middleware):
     """A request id per call (forwarded to intel-api as X-Request-ID)."""
 
@@ -64,7 +80,7 @@ class AuditMiddleware(Middleware):
         finally:
             self.log.append(
                 request_id=REQUEST_ID.get(),
-                principal=self.principal,
+                principal=token_principal() or self.principal,
                 profile=self.profile,
                 kind=kind,
                 name=name,
@@ -273,3 +289,31 @@ class NormaliseArgs(Middleware):
         if isinstance(args, dict):
             context.message.arguments = _lower_enums(args)
         return await call_next(context)
+
+
+class SensitivityCeiling(Middleware):
+    """A token may carry `dk_max_sensitivity` (e.g. S1 keeps review and creator text, S2, away from a client whose
+    model provider should not see it). Tools labelled above the ceiling are hidden and refused, like the profile gate.
+    No token (stdio, in memory) means the default ceiling."""
+
+    async def on_list_tools(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        from intel.mcp_server.auth import SENSITIVITY, ceiling_of
+
+        top = SENSITIVITY.index(ceiling_of(token_claims()))
+        tools = await call_next(context)
+        return [t for t in tools if SENSITIVITY.index(_sensitivity(t)) <= top]
+
+    async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        from intel.mcp_server.auth import SENSITIVITY, ceiling_of
+
+        ceiling = ceiling_of(token_claims())
+        server = context.fastmcp_context.fastmcp if context.fastmcp_context else None
+        tool = await server.get_tool(context.message.name) if server is not None else None
+        if tool is None or SENSITIVITY.index(_sensitivity(tool)) > SENSITIVITY.index(ceiling):
+            raise ToolError(f"[NOT_ALLOWED_FOR_PROFILE] {context.message.name} is above this token's {ceiling} ceiling")
+        return await call_next(context)
+
+
+def _sensitivity(tool: Any) -> str:
+    value = (getattr(tool, "meta", None) or {}).get("dk/sensitivity", "S3")  # unlabelled fails closed
+    return str(value) if value in ("S0", "S1", "S2", "S3") else "S3"

@@ -22,7 +22,10 @@ re-check them before acting.
 >    and the tool-use eval (`python -m intel.mcp_server.tool_eval`, Ollama gpt-oss:20b). Finding: the content scorer
 >    ranks format and time, not caption text. Owner checks done 2026-10-12: RAG spot check 84% label
 >    agreement, 10/10 answers trusted (labels updated; posts test nDCG 0.61); idea sets rated 4/5 each.
->    **Next: P4.5** (Streamable HTTP + JWT, LangChain contract test, example clients).
+>    **P4.5 done 2026-10-12** ([results](results/P4_5_connect_anywhere.md), ADR 0029): HTTP at `/mcp/<profile>/` with
+>    per-profile JWTs (`intel mcp init|token|config|catalog`), LangChain + Agents SDK examples on Ollama, the contract
+>    test over stdio/HTTP/LangChain. Owner to-do: `uv run intel mcp init --write-env`, then tailnet reach
+>    (`docs/mcp/CLIENTS.md`). **Next: P4.6** (hardening: metrics, limits, adversarial evals, threat model, runbook).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.
 > 5. At the end of each task, update this file (or replace its status with the Phase 4 plan's status line).
