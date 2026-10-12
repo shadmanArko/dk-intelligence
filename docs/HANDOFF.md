@@ -20,8 +20,8 @@ re-check them before acting.
 >    **P4.4 done 2026-10-11** ([results](results/P4_4_studio_prompts.md), ADR 0028): `dk_studio` (`grounding_pack`,
 >    `evaluate_drafts`), 8 versioned prompts with a CI lint, token budgets, the Sunday `knowledge` step (soft, gated),
 >    and the tool-use eval (`python -m intel.mcp_server.tool_eval`, Ollama gpt-oss:20b). Finding: the content scorer
->    ranks format and time, not caption text. Owner to-do: the 10-answer RAG spot check
->    (`data/rag_bench/spotcheck.html`) and rating 10 idea sets (`data/evals/idea_sets.html`), both local pages.
+>    ranks format and time, not caption text. Owner checks done 2026-10-12: RAG spot check 84% label
+>    agreement, 10/10 answers trusted (labels updated; posts test nDCG 0.61); idea sets rated 4/5 each.
 >    **Next: P4.5** (Streamable HTTP + JWT, LangChain contract test, example clients).
 > 3. H10 / PR #4: **the owner merges it themselves.** Don't touch it unless asked; if asked, see §3.
 > 4. Never: touch harness PR #2, run VPS commands yourself, delete the owner's data without consent.

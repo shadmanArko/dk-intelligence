@@ -63,7 +63,9 @@ tokens per conversation for the owner profile (18 tools); the role profiles see 
 ### Ideas for the owner to rate
 10 idea sets (4 caption, 3 photo, 3 video) are in `data/evals/idea_sets.html` (local). All 12 caption ideas pass
 `evaluate_drafts`; 5 needed a rewrite (TikTok hashtags pushed the first line over 60 characters; two Banglish
-community captions now open with a German line). **Owner's ratings: pending.**
+community captions now open with a German line). **The owner's rating (2026-10-12): 4 of 5 for all 10 sets** (mean
+4.0; no set below 4, none at 5; no notes). Good enough to use, not yet "I'd post this as is": the next round should aim
+at 5s with the owner's own words and photos.
 
 ## Tests
 `tests/test_mcp_studio.py`:

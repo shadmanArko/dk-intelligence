@@ -492,6 +492,8 @@ index updates safe enough to run unattended on Sundays.
 **Trade-off I would defend.** On the test split, dense search alone was 0.04 ahead of the reranked stack. I kept the
 reranker: dev decides (5 questions can't separate them), and the reranker's score is what lets the system say "not
 found". The weak spot ("Mela" isn't linked to "festival") is written down with a measurable fix, not hidden.
+The owner's spot check later agreed with 84% of the blind labels, and every disagreement showed the labels had been
+too strict. With the owner's labels the reranked stack also wins on test (0.61 vs 0.55).
 
 ## P4.4 · Workflow tools, measured tokens, and the finding that the scorer doesn't read captions
 

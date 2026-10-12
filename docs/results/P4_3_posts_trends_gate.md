@@ -61,6 +61,20 @@ n = 5 per split: one question moves a mean by 0.2, so these intervals are wide.
 - **Reviews are unchanged:** same chunks, same cites, same vectors (all from the cache: `newly_embedded` was 2,673
   for the first posts build, then 0).
 
+## The owner's spot check (2026-10-12)
+10 answers (6 review questions, 4 post questions), top 5 hits each with Claude's blind label, judged by the owner.
+- **Agreement: 38 of 45 labels (84%).** **Trust: 10 of 10 answers** ("would you trust an answer built from these hits":
+  yes for all).
+- **All 7 disagreements were Claude being stricter than the owner**; the owner never marked a hit Claude called
+  relevant as irrelevant:
+  - two "partly" hits fully answer the question: a wait of more than an hour, and "quantity was really less";
+  - two dry-biryani reviews count for "too little meat";
+  - "creators trying biryani" is read more broadly, as creators trying Berlin restaurants (3 hits).
+- The owner's labels replace Claude's in `evals/rag/qrels.jsonl` (marked `owner-spotcheck`). Consequence: the
+  published scores were conservative. **Posts, serving stack, test nDCG@10: 0.45 → 0.61**, now ahead of dense alone
+  (0.55) on test as well as dev. The review numbers weren't re-run (the benchmark packs were throwaway); the four
+  relabelled review hits sit in the serving stack's top 5.
+
 ## The gate, measured
 | Run | Result |
 |---|---|
