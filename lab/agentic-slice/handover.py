@@ -44,6 +44,7 @@ SUPPORTED_SPEC = "publishing-spec/v1"  # contracts/registry.yaml publishing.spec
 SUPPORTED_MANIFEST = 1  # contracts/registry.yaml reels.manifest
 MEDIA_FRESH_DAYS = 5  # the server keeps an upload a week after its posts are done; re-upload after 5 days to be safe
 RETRY_STATUS = {429, 502, 503, 504}
+UPLOAD_CHUNK = 256 * 1024  # files are streamed: the write timeout applies per chunk, so any size works on a slow line
 GONE_MEDIA = {"media_expired", "unknown_media"}  # the server no longer has a file we uploaded: upload it again
 BACKOFF = (0.5, 1.5, 4.0)
 
@@ -154,9 +155,10 @@ class PublishClient:
     def _call(self, method: str, url: str, **kw: Any) -> httpx.Response:
         headers = {"Authorization": f"Bearer {self._key}", **kw.pop("headers", {})}
         last: Exception | None = None
+        body = kw.pop("content_factory", None)  # a fresh body per attempt: a retry never re-sends a spent stream
         for wait in (*BACKOFF, None):
             try:
-                r = self._http.request(method, url, headers=headers, **kw)
+                r = self._http.request(method, url, headers=headers, **({"content": body()} if body else {}), **kw)
             except httpx.TransportError as e:  # connection trouble: nothing reached the server's logic, safe to repeat
                 last = PublishError(0, self._scrub(f"could not reach the publishing API ({type(e).__name__})"))
             else:
@@ -181,8 +183,9 @@ class PublishClient:
         title = body.get("title") or body.get("detail") or r.reason_phrase
         return PublishError(r.status_code, self._scrub(str(title)), body.get("problems"))
 
-    def spec(self, cache: Path | None = None) -> dict[str, Any]:
-        """GET /v1/spec, cached by its version (ETag) so an unchanged contract costs one 304."""
+    def spec(self, cache: Path | None = None, fresh: bool = False) -> dict[str, Any]:
+        """GET /v1/spec, cached by its version (ETag) so an unchanged contract costs one 304. `fresh`: the publisher
+        must answer now (a run-start check); otherwise an outage falls back to the cached contract."""
         headers: dict[str, str] = {}
         cached: dict[str, Any] | None = None
         if cache and cache.exists():
@@ -191,7 +194,7 @@ class PublishClient:
         try:
             r = self._call("GET", "/v1/spec", headers=headers)
         except PublishError:
-            if cached:  # offline or unavailable: the last contract is still the best we know
+            if cached and not fresh:  # offline or unavailable: the last contract is still the best we know
                 return cached
             raise
         if r.status_code == 304 and cached:
@@ -208,12 +211,20 @@ class PublishClient:
         return doc
 
     def upload(self, path: Path) -> str:
+        """Streamed in chunks (measured 2026-10-12: a home line sends about 224 KB/s, so an 18 MB reel takes 80 s; sent
+        as one write it hit the 60 s write timeout and every retry started over)."""
+
+        def chunks() -> Any:
+            with path.open("rb") as f:
+                while block := f.read(UPLOAD_CHUNK):
+                    yield block
+
         r = self._call(
             "POST",
             "/v1/media",
             params={"filename": path.name},
-            content=path.read_bytes(),
-            headers={"Content-Type": "application/octet-stream"},
+            content_factory=chunks,
+            headers={"Content-Type": "application/octet-stream", "Content-Length": str(path.stat().st_size)},
         )
         media_id = r.json().get("media_id")
         if not media_id:

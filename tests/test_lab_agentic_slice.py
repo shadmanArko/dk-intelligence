@@ -7,6 +7,7 @@ import json
 import time
 from pathlib import Path
 
+import httpx
 import pytest
 
 LAB = Path(__file__).resolve().parents[1] / "lab" / "agentic-slice"
@@ -525,3 +526,28 @@ def test_a_reels_engine_speaking_another_contract_stops_the_run_before_any_ai(en
     end = _events(engine)[-1]
     assert end["status"] == "failed" and "intel contracts sync" in end["error"]
     assert not (tmp_path / "args.jsonl").exists()  # no agent ran
+
+
+def test_a_publisher_that_is_down_stops_the_run_before_any_ai(media_world, tmp_path):
+    engine, fake, state = media_world
+    fake.fail_next = [503] * 200
+    assert engine.orchestrate("instagram", "manual", publish="drafts") == 1
+    end = _events(engine)[-1]
+    assert end["status"] == "failed" and "publisher is not usable" in end["error"]
+    assert not (tmp_path / "args.jsonl").exists() and not state["calls"]  # no agent, no render
+
+
+def test_a_failed_handover_names_every_post_it_affected_and_keeps_the_renders(media_world):
+    engine, fake, state = media_world
+    serve = fake.handler
+
+    def uploads_fail(request):  # type: ignore[no-untyped-def]
+        return httpx.Response(503, json={"title": "busy"}) if request.url.path == "/v1/media" else serve(request)
+
+    fake.handler = uploads_fail
+    engine.orchestrate("instagram", "manual", publish="drafts")
+    outcome = next(e for e in _events(engine) if e["kind"] == "outcome")
+    assert outcome["proposed"] == []
+    failed = {s["slot_id"]: s["why"] for s in outcome["skipped"] if "the handover failed" in s["why"]}
+    assert set(failed) == {"s1", "s2", "s3"} and all("rerun the same command" in w for w in failed.values())
+    assert len([c for c in state["calls"] if c[0] == "render"]) == 3  # rendered once; a rerun reuses the cache

@@ -555,12 +555,20 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
         run.emit("handover", "start", agent="code", model="code", tools=["dk-publishing /v1/posts/batch"],
                  task=f"{len(manifests)} posts as {'a dry run' if publish == 'dry-run' else 'drafts'}")  # fmt: skip
         t2 = time.monotonic()
-        contract = client.spec(cache=REPO / "data" / "lab" / "publish-spec.json")
-        report = handover.submit(client, manifests, contract, handover.load_config(),
-                                 handover.MediaLedger(REPO / "data" / "lab" / "media-ledger.json"),
-                                 dry_run=publish == "dry-run")  # fmt: skip
-        done = {"submitted": report.submitted, "replayed": report.replayed, "would_submit": report.would_submit}
         by_job = {m["job_id"]: slot_of[m["job_id"]] for m, _ in manifests}
+        try:
+            contract = client.spec(cache=REPO / "data" / "lab" / "publish-spec.json")
+            report = handover.submit(client, manifests, contract, handover.load_config(),
+                                     handover.MediaLedger(REPO / "data" / "lab" / "media-ledger.json"),
+                                     dry_run=publish == "dry-run")  # fmt: skip
+        except handover.PublishError as ex:  # every post it affected is named, never dropped silently
+            why = f"the handover failed: {_short(str(ex), 200)}; the renders are kept, rerun the same command"
+            skipped += [{"slot_id": by_job[m["job_id"]], "why": why} for m, _ in manifests]
+            run.emit("handover", "end", status="failed", error=_short(str(ex), 300),
+                     ms_total=round((time.monotonic() - t2) * 1000))  # fmt: skip
+            run.emit(node, "outcome", proposed=proposed, skipped=skipped)
+            return {"proposed": proposed, "skipped": skipped}
+        done = {"submitted": report.submitted, "replayed": report.replayed, "would_submit": report.would_submit}
         for state, keys in done.items():
             proposed += [{"slot_id": by_job[k], "proposal_id": k, "state": state, "thumb": k in thumbs} for k in keys]
         skipped += [{"slot_id": by_job.get(h.job_id, h.job_id), "why": f"held: {h.reason}"} for h in report.held]
@@ -614,6 +622,12 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
                     )
                     return 1
                 client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
+                try:  # reachable and speaking our contract? Asked now, before any AI is spent
+                    client.spec(cache=REPO / "data" / "lab" / "publish-spec.json", fresh=True)
+                except handover.PublishError as ex:
+                    run.emit("orchestrator", "end", status="failed",
+                             error=f"the publisher is not usable: {_short(str(ex), 200)}")  # fmt: skip
+                    return 1
             if not (media.REELS / "package.json").exists():
                 run.emit("orchestrator", "end", status="failed", error=f"the reels engine is not at {media.REELS}")
                 return 1
@@ -666,7 +680,12 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
             for b in briefs:
                 b["job_id"] = media.job_id(platform, str(b.get("slot_id")), str(b["planned_posted_at"]), suffix)
             # a post can't be changed under its key (and the designer would make a different one): skip what exists
-            have = {b["job_id"]: client.post(b["job_id"]) if client else None for b in briefs}
+            try:
+                have = {b["job_id"]: client.post(b["job_id"]) if client else None for b in briefs}
+            except handover.PublishError as ex:
+                run.emit("orchestrator", "end", status="failed",
+                         error=f"could not ask the publisher which posts exist: {_short(str(ex), 200)}")  # fmt: skip
+                return 1
             dropped = dropped + [
                 {"slot_id": b["slot_id"], "why": f"already handed over as {b['job_id']} (to redo a rejected one, run "
                  "with --suffix r2)"} for b in briefs if have[b["job_id"]]]  # fmt: skip
