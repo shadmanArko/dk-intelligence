@@ -59,7 +59,7 @@ RULES: dict[str, Rule] = {
 
 GERMAN = re.compile(
     r"[äöüß]|\b(und|der|die|das|den|dem|ein|eine|ist|sind|nicht|mit|für|auf|bei|jetzt|bestell\w*|samstag|frisch|"
-    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt)\b",
+    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt|aus|von|vom|zum|zur|im|unser|unsere|dein|deine|dich|dir|schmeckt)\b",
     re.I,
 )
 PRICE = re.compile(r"(?:€\s?(\d{1,3}(?:[.,]\d{1,2})?))|(?:(\d{1,3}(?:[.,]\d{1,2})?)\s?(?:€|eur\b|euro\b))", re.I)

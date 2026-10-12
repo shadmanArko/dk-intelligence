@@ -27,9 +27,163 @@ def _gateway(profile: str, server: str | None = None) -> Any:
 def serve(
     profile: Profile = "owner",
     server: Annotated[str | None, typer.Option(help="run one server alone: models or brand")] = None,
+    transport: Annotated[
+        str, typer.Option(help="stdio (one client) or http (every profile at /mcp/<profile>)")
+    ] = "stdio",
+    listener: Annotated[str, typer.Option(help="http only: local, tailnet or both")] = "local",
 ) -> None:
-    """Serve over stdio (what Claude Code and Claude Desktop start). Prints nothing to stdout itself."""
-    _gateway(profile, server).run(transport="stdio", show_banner=False)
+    """Serve over stdio (what Claude Code and Claude Desktop start; prints nothing to stdout itself) or over
+    Streamable HTTP on 127.0.0.1 with a JWT per call (ADR 0029)."""
+    if transport == "stdio":
+        _gateway(profile, server).run(transport="stdio", show_banner=False)
+        return
+    if transport != "http" or listener not in ("local", "tailnet", "both"):
+        raise typer.BadParameter("--transport stdio|http, --listener local|tailnet|both")
+    from intel.mcp_server.deps import Deps
+    from intel.mcp_server.http import serve as serve_http
+    from intel.settings import McpSettings
+
+    s = McpSettings()
+    chosen: list[Any] = ["local", "tailnet"] if listener == "both" else [listener]
+    ports = {"local": s.intel_mcp_http_port, "tailnet": s.intel_mcp_tailnet_port}
+    typer.echo(", ".join(f"{name} http://127.0.0.1:{ports[name]}/mcp/<profile>" for name in chosen), err=True)
+    serve_http(s, Deps.from_settings(s, f"http:{s.intel_mcp_host}"), chosen)
+
+
+def _write_env(key: str, value: str) -> None:
+    """Set KEY=value in the repo's .env (mode 600); the value is never printed."""
+    from intel.settings import repo_root
+
+    env = repo_root() / ".env"
+    lines = [ln for ln in (env.read_text().splitlines() if env.exists() else []) if not ln.startswith(f"{key}=")]
+    env.write_text("\n".join([*lines, f"{key}={value}"]) + "\n")
+    env.chmod(0o600)
+
+
+@mcp_app.command("init")
+def init(
+    write_env: Annotated[bool, typer.Option("--write-env", help="write INTEL_MCP_SECRET into .env")] = False,
+    rotate: Annotated[
+        bool, typer.Option(help="replace an existing secret: every token issued so far stops working")
+    ] = False,
+) -> None:
+    """Create this host's signing secret for HTTP tokens. Prints the key name only."""
+    import secrets
+
+    from intel.settings import McpSettings
+
+    if not write_env:
+        raise typer.BadParameter("pass --write-env (the secret is only ever written to .env, never printed)")
+    if McpSettings().intel_mcp_secret and not rotate:
+        typer.echo("INTEL_MCP_SECRET already exists in .env (use --rotate to replace it)")
+        return
+    _write_env("INTEL_MCP_SECRET", secrets.token_urlsafe(48))
+    typer.echo("INTEL_MCP_SECRET written to .env (value not shown)")
+
+
+token_app = typer.Typer(no_args_is_help=True, help="HTTP tokens: issue into .env, mint for a headers helper, revoke")
+mcp_app.add_typer(token_app, name="token")
+
+
+def _ttl(value: str) -> int:
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    try:
+        return int(value[:-1]) * units[value[-1]] if value[-1] in units else int(value)
+    except (ValueError, IndexError) as e:
+        raise typer.BadParameter("ttl like 300, 30m, 12h or 30d") from e
+
+
+@token_app.command("issue")
+def token_issue(
+    client: Annotated[str, typer.Option(help="who holds it, e.g. langchain or writer-agent")],
+    profile: Profile,
+    write_env: Annotated[
+        str, typer.Option("--write-env", help="the .env key to store it in, e.g. INTEL_MCP_TOKEN_LANGCHAIN")
+    ],
+    ttl: Annotated[str, typer.Option(help="lifetime: 300, 30m, 12h, 30d (max 90d)")] = "30d",
+    max_sensitivity: Annotated[
+        str, typer.Option(help="S1 keeps review and creator text (S2) away from this client")
+    ] = "S2",
+) -> None:
+    """Issue a token straight into .env (never printed). Prints its id, which is what you'd revoke."""
+    from intel.mcp_server import auth
+    from intel.mcp_server.gateway import profiles
+    from intel.settings import McpSettings, required
+
+    if profile not in profiles():
+        raise typer.BadParameter(f"unknown profile {profile!r}")
+    if not write_env.startswith("INTEL_MCP_TOKEN_"):
+        raise typer.BadParameter("the key must start with INTEL_MCP_TOKEN_")
+    s = McpSettings()
+    token, jti = auth.issue(
+        required(s.intel_mcp_secret, "INTEL_MCP_SECRET"), client, profile, _ttl(ttl), s.intel_mcp_host, max_sensitivity
+    )
+    _write_env(write_env, token)
+    typer.echo(f"{write_env} written to .env ({profile}, {ttl}, ceiling {max_sensitivity}); jti {jti}")
+
+
+@token_app.command("header")
+def token_header(profile: Profile = "owner", ttl: int = 300) -> None:
+    """For Claude Code's headersHelper only: prints {"Authorization": "Bearer ..."} with a short-lived token.
+    Refuses to print to a terminal and outside the helper (CLAUDE_CODE_MCP_SERVER_NAME), so a token never lands
+    in a shell history or a transcript."""
+    import os
+    import sys
+
+    from intel.mcp_server import auth
+    from intel.settings import McpSettings, required
+
+    if sys.stdout.isatty() or not os.environ.get("CLAUDE_CODE_MCP_SERVER_NAME"):
+        typer.echo("refused: only Claude Code's headersHelper may call this", err=True)
+        raise typer.Exit(2)
+    if not 30 <= ttl <= 3600:
+        raise typer.BadParameter("ttl must be 30 to 3600 seconds")
+    s = McpSettings()
+    token, _ = auth.issue(
+        required(s.intel_mcp_secret, "INTEL_MCP_SECRET"), "claude-code", profile, ttl, s.intel_mcp_host
+    )
+    sys.stdout.write(json.dumps({"Authorization": f"Bearer {token}"}))
+
+
+@token_app.command("revoke")
+def token_revoke(jti: str) -> None:
+    """Revoke one token by its id; servers notice within a minute (no restart)."""
+    from intel.mcp_server.auth import Revocations
+    from intel.settings import McpSettings
+
+    if not jti.isalnum():
+        raise typer.BadParameter("a jti is the hex id printed when the token was issued")
+    Revocations(McpSettings().revoked_file).add(jti)
+    typer.echo(f"{jti} revoked")
+
+
+@mcp_app.command("catalog")
+def catalog() -> None:
+    """Regenerate docs/mcp/CATALOG.md from the code (a test fails when it is stale)."""
+    from intel.mcp_server import catalog as cat
+    from intel.mcp_server.deps import Deps
+    from intel.mcp_server.kit.middleware import stdio_principal
+    from intel.settings import McpSettings
+
+    cat.write(Deps.from_settings(McpSettings(), stdio_principal()))
+    typer.echo(f"wrote {cat.CATALOG}")
+
+
+@mcp_app.command("config")
+def config(
+    client: Annotated[
+        str, typer.Option(help="claude-code, claude-desktop, langchain or openai-agents")
+    ] = "claude-code",
+    profile: Profile = "owner",
+    transport: Annotated[str, typer.Option(help="stdio or http")] = "stdio",
+) -> None:
+    """Print a ready client config. It names .env keys, never values."""
+    from intel.mcp_server.clients import client_config
+
+    try:
+        typer.echo(client_config(client, profile, transport))
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
 
 
 @mcp_app.command("tools")

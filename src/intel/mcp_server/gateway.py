@@ -13,6 +13,7 @@ from typing import Any
 
 import yaml
 from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
 from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 from fastmcp.server.transforms import ToolTransform
@@ -27,6 +28,7 @@ from intel.mcp_server.kit.middleware import (
     CopyGuard,
     NormaliseArgs,
     ProfileGate,
+    SensitivityCeiling,
 )
 from intel.mcp_server.servers.brand import build_brand_server
 from intel.mcp_server.servers.evidence import build_evidence_server
@@ -72,13 +74,14 @@ async def check_unique_names(servers: list[FastMCP]) -> None:
             seen[name] = str(s.name)
 
 
-def build_gateway(profile: str, deps: Deps, only: str | None = None) -> FastMCP:
-    """The gateway for one profile; `only` runs a single server alone (same kit)."""
+def build_gateway(profile: str, deps: Deps, only: str | None = None, auth: AuthProvider | None = None) -> FastMCP:
+    """The gateway for one profile; `only` runs a single server alone (same kit). `auth` (HTTP only) is the
+    profile's token verifier: without a valid token for this profile nothing reaches the gateway."""
     if profile not in profiles():
         raise ValueError(f"unknown profile {profile!r}; one of: {', '.join(profiles())}")
     spec = profiles()[profile]
     chosen = {only: SERVERS[only]} if only else SERVERS
-    gw = FastMCP("dk_intel", instructions=instructions(), version=TOOLS_API, mask_error_details=True)
+    gw = FastMCP("dk_intel", instructions=instructions(), version=TOOLS_API, mask_error_details=True, auth=auth)
     for build in chosen.values():
         gw.mount(build(deps))
     forced = spec.get("forced") or {}
@@ -108,6 +111,7 @@ def build_gateway(profile: str, deps: Deps, only: str | None = None) -> FastMCP:
             disabled=deps.disabled_tools,
         )
     )
+    gw.add_middleware(SensitivityCeiling())
     gw.add_middleware(NormaliseArgs())
     gw.add_middleware(RateLimitingMiddleware(max_requests_per_second=10.0, burst_capacity=20))
     gw.add_middleware(CopyGuard(lambda: _blocked_words(deps), deps.audit))

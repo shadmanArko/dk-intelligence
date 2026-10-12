@@ -49,6 +49,11 @@ rag = [              # the serving side of RAG: ONNX runtime, no torch
 mcp = [
     "fastmcp==4.0.11",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
 ]
+clients = [
+    "langchain-ollama==1.1.0",
+    "langchain[mcp]==1.4.3",
+    "openai-agents==0.23.1",
+]
 
 [tool.uv]
 default-groups = ["dev", "train", "mcp", "rag"]

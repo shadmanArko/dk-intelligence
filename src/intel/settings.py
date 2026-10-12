@@ -81,6 +81,15 @@ class McpSettings(BaseSettings):
     mip_dir: Path = Path("../MarketIntelligence Data Platform")
     intel_mcp_audit_dir: Path | None = None  # default: <data>/mcp/audit
     intel_mcp_disabled_tools: str = ""  # kill switch: comma-separated tool names
+    # HTTP (ADR 0029): the signing secret (written by `intel mcp init --write-env`), two loopback listeners (local
+    # clients; the only target of `tailscale serve`), Host allowlist, owner logins trusted on the tailnet listener only
+    intel_mcp_secret: str | None = None
+    intel_mcp_host: str = "mac"  # the token audience is dk_intel@<host>
+    intel_mcp_http_port: int = 8766
+    intel_mcp_tailnet_port: int = 8767
+    intel_mcp_allowed_hosts: str = ""  # extra Host names, e.g. this Mac's tailnet name (127.0.0.1, localhost always)
+    intel_mcp_owner_logins: str = ""  # comma-separated Tailscale logins allowed to use the owner profile remotely
+    intel_mcp_revoked_file: Path | None = None  # default: <data>/mcp/revoked.txt
     intel_pack_dir: Path | None = None  # default: <data>/knowledge
     intel_rag_dsn: str | None = None  # read-only role on the knowledge database (rag_reader)
     intel_rag_admin_dsn: str | None = None  # the builder role: loads packs (`intel pack load`), never the server
@@ -114,6 +123,23 @@ class McpSettings(BaseSettings):
     @property
     def limits_dir(self) -> Path:
         return self.data_dir / "mcp" / "limits"
+
+    @property
+    def revoked_file(self) -> Path:
+        return (
+            self.path(self.intel_mcp_revoked_file)
+            if self.intel_mcp_revoked_file
+            else self.data_dir / "mcp" / "revoked.txt"
+        )
+
+    @property
+    def allowed_hosts(self) -> list[str]:
+        extra = [h.strip() for h in self.intel_mcp_allowed_hosts.split(",") if h.strip()]
+        return ["127.0.0.1", "localhost", *extra]
+
+    @property
+    def owner_logins(self) -> frozenset[str]:
+        return frozenset(x.strip().lower() for x in self.intel_mcp_owner_logins.split(",") if x.strip())
 
     @property
     def disabled_tools(self) -> frozenset[str]:

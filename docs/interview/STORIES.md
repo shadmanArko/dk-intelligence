@@ -525,3 +525,33 @@ plan and a model-agnostic eval.
 results say the rewrite loop can't optimise wording with this scorer, keep the loop capped at 2 rounds, and hand
 the question "should captions carry weight?" to the next model retrain and its judge, instead of tuning anything
 against a test set.
+
+## P4.5 · One contract, three transports, no secrets on screen
+
+**Situation.** The MCP server worked for Claude Code over stdio. The plan also needed LangChain, the OpenAI Agents
+SDK and future role agents, some running as separate processes or on other devices, without opening anything to
+the internet or putting long-lived secrets in config files.
+
+**Task.** Add a networked transport where the token, not a command-line flag, decides what a client sees, and prove
+the same contract holds over every transport.
+
+**Action.**
+- **Spiked the unknowns first:** FastMCP's JWT verifier with a shared key and per-path scopes, mounting several
+  profile gateways, and LangChain's new adapter. Pinned LangChain to the newest release older than 7 days.
+- **One path per profile, and a token whose signed scope must match it:**
+  - short-lived (5 minutes for the editor's helper, which refuses to print to a terminal);
+  - revocable by id; written to `.env`, never printed;
+  - an optional sensitivity ceiling that hides third-party text from a given client.
+- **Two loopback listeners,** so the tailnet identity header is only trusted where `tailscale serve` sets it.
+- **A contract test that runs a real server:** 401s, scopes, revocation, Host checks, header forging, and the same
+  tool list in memory, over HTTP and through LangChain with no LLM.
+
+**Result.**
+- 8 HTTP tests green in CI.
+- A writer agent on a free local model connected over HTTP and used the tools.
+- Its captions still needed a rewrite. That showed the server's checks working, and a model-quality gap that
+  depends on the client.
+
+**Trade-off I would defend.** HS256 with one key per host instead of OAuth 2.1. Inside a single-user tailnet, an
+authorization server is cost without benefit. The ADR says exactly when that changes: the day anything becomes
+public.
