@@ -9,7 +9,8 @@ interview showcase (ML-engineering leadership).
 and apply it (applied practices by default; the "not yet" list where its trigger is met); add what each measured
 change teaches.
 
-**Start every session by reading [docs/HANDOFF.md](docs/HANDOFF.md)**: current state, open items, decisions waiting
+**New session, new account or new chat? Read [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) first** (both repos,
+where we stopped, what comes next). **Then read [docs/HANDOFF.md](docs/HANDOFF.md)**: current state, open items, decisions waiting
 for the owner, and the next task (Phase 5: agents). Then the [architecture](docs/ARCHITECTURE.md) and the
 [decision records](docs/adr/README.md) as needed.
 

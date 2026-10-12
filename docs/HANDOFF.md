@@ -5,7 +5,8 @@ That session's notes are not available to you: they live in another project's me
 here, in [CLAUDE.md](../CLAUDE.md) and in the docs this page links.** Facts marked *(as of 2026-10-09)* can drift:
 re-check them before acting.
 
-> **Start here**
+> **Start here: [SESSION_HANDOFF.md](SESSION_HANDOFF.md) has the latest state of this repo and dk-publishing (2026-10-12) and the next task.**
+>
 > 1. Run the git checks in CLAUDE.md (parallel sessions share this folder).
 > 2. **Phase 4 is APPROVED (2026-10-09)** and in progress: build from [PHASE4_MCP_ARCHITECTURE.md](PHASE4_MCP_ARCHITECTURE.md)
 >    (it wins over [PHASE4_PLAN.md](PHASE4_PLAN.md)), milestone by milestone (P4.0 → P4.7, §8). Visual summary:
