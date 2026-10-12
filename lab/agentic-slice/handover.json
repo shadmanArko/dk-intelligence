@@ -1,0 +1,7 @@
+{
+  "reviewed_languages": [],
+  "defaults": {
+    "tiktok": {"privacy_level": "only_me"},
+    "youtube": {"made_for_kids": "no"}
+  }
+}
