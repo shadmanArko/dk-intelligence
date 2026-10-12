@@ -216,6 +216,15 @@ class PublishClient:
     def batch(self, posts: list[dict[str, Any]], dry_run: bool) -> dict[str, Any]:
         return self._call("POST", "/v1/posts/batch", json={"dry_run": dry_run, "posts": posts}).json()
 
+    def post(self, post_key: str) -> dict[str, Any] | None:
+        """GET /v1/posts/{post_key}: the post, or None when there is none (so a slot isn't made twice)."""
+        try:
+            return self._call("GET", f"/v1/posts/{post_key}").json()
+        except PublishError as e:
+            if e.status == 404:
+                return None
+            raise
+
     def overview(self, days_back: int = 7, days_ahead: int = 14) -> dict[str, Any]:
         return self._call("GET", "/v1/overview", params={"days_back": days_back, "days_ahead": days_ahead}).json()
 

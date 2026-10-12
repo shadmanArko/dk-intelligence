@@ -48,6 +48,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 LAB = Path(__file__).resolve().parent
+sys.path.insert(0, str(LAB))  # handover.py and media.py sit next to this file (tests load run.py by path)
+import handover  # noqa: E402
+import media  # noqa: E402
+
 REPO = LAB.parents[1]
 RUNS = LAB / "runs"
 AGENTS = LAB / ".claude" / "agents"
@@ -63,6 +67,8 @@ SERVERS: dict[str, dict[str, Any]] = {
                                                    "--profile", "planner"]},
     "dk_intel_writer": {"command": "uv", "args": ["run", "--quiet", "--directory", str(REPO), "intel", "mcp", "serve",
                                                   "--profile", "writer"]},
+    "dk_reels_creative": {"command": "npm", "args": ["--prefix", str(media.REELS), "run", "-s", "mcp", "--",
+                                                     "--profile", "creative", "--root", str(media.REELS)]},
     "demo_publisher": {"command": "uv", "args": ["run", "--quiet", "--directory", str(REPO), "python",
                                                  str(LAB / "demo_publisher" / "server.py")]},
 }  # fmt: skip
@@ -382,6 +388,25 @@ def screen(run: Run, platform: str, pack: dict[str, Any], slots: Rows,
     return examples[:EXAMPLES], open_, dropped
 
 
+def recheck_captions(
+    run: Run, node: str, platform: str, results: Rows, briefs: dict[str, dict[str, Any]]
+) -> tuple[Rows, Rows]:
+    """Code, one dk_intel call: re-check every "keep" caption (trust, but verify). Returns (still keep, skipped)."""
+    skipped = [{"slot_id": r.get("slot_id"), "why": f"the writer's best was '{r.get('verdict')}' "
+                f"(score {r.get('score')})"} for r in results if r.get("verdict") != "keep"]  # fmt: skip
+    keep = [r for r in results if r.get("verdict") == "keep"]
+    if not keep:
+        return [], skipped
+    drafts = [{"ref": str(r["slot_id"]), "platform": platform, "caption": r["caption"],
+               "content_type": briefs[r["slot_id"]]["content_type"],
+               "planned_posted_at": briefs[r["slot_id"]]["planned_posted_at"]} for r in keep]  # fmt: skip
+    (res,) = code_calls(run, node, "dk_intel_writer", [("evaluate_drafts", {"drafts": drafts})])
+    verdicts = {r.get("ref"): r for r in res.get("results", [])}
+    still = [r for r in keep if verdicts.get(str(r["slot_id"]), {}).get("verdict") == "keep"]
+    skipped += [{"slot_id": r["slot_id"], "why": "the re-check did not confirm 'keep'"} for r in keep if r not in still]
+    return still, skipped
+
+
 def check_and_propose(run: Run, platform: str, results: list[dict[str, Any]],
                       briefs: dict[str, dict[str, Any]]) -> dict[str, Any]:  # fmt: skip
     """Code, not AI: re-check every "keep" caption with dk_intel (trust, but verify), propose those still "keep"."""
@@ -389,36 +414,151 @@ def check_and_propose(run: Run, platform: str, results: list[dict[str, Any]],
     run.emit(node, "start", agent="code", model="code", tools=["dk_intel_writer.evaluate_drafts",
              "demo_publisher.propose_post"], task=f"{len(results)} captions to re-check")  # fmt: skip
     t0 = time.monotonic()
-    skipped = [{"slot_id": r.get("slot_id"), "why": f"the writer's best was '{r.get('verdict')}' "
-                f"(score {r.get('score')})"} for r in results if r.get("verdict") != "keep"]  # fmt: skip
-    keep = [r for r in results if r.get("verdict") == "keep"]
+    still, skipped = recheck_captions(run, node, platform, results, briefs)
     proposed: list[dict[str, Any]] = []
-    if keep:
-        drafts = [{"ref": str(r["slot_id"]), "platform": platform, "caption": r["caption"],
-                   "content_type": briefs[r["slot_id"]]["content_type"],
-                   "planned_posted_at": briefs[r["slot_id"]]["planned_posted_at"]} for r in keep]  # fmt: skip
-        (res,) = code_calls(run, node, "dk_intel_writer", [("evaluate_drafts", {"drafts": drafts})])
-        verdicts = {r.get("ref"): r for r in res.get("results", [])}
-        still = [r for r in keep if verdicts.get(str(r["slot_id"]), {}).get("verdict") == "keep"]
-        skipped += [
-            {"slot_id": r["slot_id"], "why": "the re-check did not confirm 'keep'"} for r in keep if r not in still
-        ]
-        if still:
-            calls = [("propose_post", {"slot_id": r["slot_id"], "caption": r["caption"], "verdict": "keep",
-                                       "sources": r.get("sources", [])[:10], "proposed_by": "checker"})
-                     for r in still]  # fmt: skip
-            for r, out in zip(still, code_calls(run, node, "demo_publisher", calls), strict=True):
-                if "error" in out:
-                    skipped.append({"slot_id": r["slot_id"], "why": f"the calendar refused it: {out['error'][:120]}"})
-                else:
-                    proposed.append({"slot_id": r["slot_id"], "proposal_id": out.get("proposal_id")})
+    if still:
+        calls = [("propose_post", {"slot_id": r["slot_id"], "caption": r["caption"], "verdict": "keep",
+                                   "sources": r.get("sources", [])[:10], "proposed_by": "checker"})
+                 for r in still]  # fmt: skip
+        for r, out in zip(still, code_calls(run, node, "demo_publisher", calls), strict=True):
+            if "error" in out:
+                skipped.append({"slot_id": r["slot_id"], "why": f"the calendar refused it: {out['error'][:120]}"})
+            else:
+                proposed.append({"slot_id": r["slot_id"], "proposal_id": out.get("proposal_id")})
     answer = {"proposed": proposed, "skipped": skipped}
     run.emit(node, "end", status="done", ms_total=round((time.monotonic() - t0) * 1000), tokens_in=0, tokens_out=0,
              turns=0, output=answer)  # fmt: skip
     return answer
 
 
-def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_inputs: Path | None = None) -> int:
+def _problem_codes(errors: Any) -> list[str]:
+    return [str(e.get("code") or e.get("rule") or e) if isinstance(e, dict) else str(e) for e in errors or []]
+
+
+def check_texts(run: Run, node: str, platform: str, texts: dict[str, list[dict[str, str]]]) -> dict[str, list[str]]:
+    """Code, dk_intel: every word a viewer reads on screen goes through the same brand and claims rules as a caption.
+    Only blocking errors count here (a short line isn't a caption, so caption-style warnings are noise).
+    Returns job_id → the problems found (empty when clean). The renderer holds no brand rules: dk_intel does."""
+    drafts: list[dict[str, str]] = []
+    owner: dict[str, tuple[str, str]] = {}
+    for jid, items in texts.items():
+        for t in items:
+            ref = f"t{len(drafts)}"
+            owner[ref] = (jid, t["where"])
+            drafts.append({"ref": ref, "platform": platform, "caption": t["text"]})
+    problems: dict[str, list[str]] = {jid: [] for jid in texts}
+    for i in range(0, len(drafts), 20):
+        (res,) = code_calls(run, node, "dk_intel_writer", [("evaluate_drafts", {"drafts": drafts[i : i + 20]})])
+        if "error" in res:
+            raise RuntimeError(res["error"])
+        for r in res.get("results", []):
+            codes = _problem_codes(r.get("errors"))
+            if codes or r.get("verdict") == "blocked":
+                jid, where = owner[r["ref"]]
+                problems[jid].append(f"{where}: {', '.join(codes) or 'blocked'}")
+    return problems
+
+
+def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: dict[str, dict[str, Any]],
+               briefs: dict[str, dict[str, Any]], publish: str,
+               client: handover.PublishClient) -> dict[str, Any]:  # fmt: skip
+    """Code, not AI. Kept captions → specs → (check) → renders → drafts at dk-publishing. Every post that doesn't make
+    it is returned with the reason (never dropped silently). publish: "dry-run" validates and creates nothing."""
+    node = "checker"
+    run.emit(node, "start", agent="code", model="code", tools=["dk_intel_writer.evaluate_drafts", "dk_reels job",
+             "dk-publishing batch"], task=f"{len(results)} captions to re-check, then make the media")  # fmt: skip
+    t0 = time.monotonic()
+    still, skipped = recheck_captions(run, node, platform, results, briefs)
+    ledger = media.AssetLedger()
+    avoid = ledger.recent()  # grows as this run's own specs are planned, so the week's posts don't share footage
+    specs: dict[str, tuple[dict[str, Any], Path]] = {}  # job_id → (spec, spec file)
+    texts: dict[str, list[dict[str, str]]] = {}
+    slot_of: dict[str, str] = {}
+    for r in still:
+        sid, b = str(r["slot_id"]), briefs[str(r["slot_id"])]
+        spec, why = media.finalize_spec(designs.get(sid), jid=b["job_id"], platform=platform, slot_format=b["format"],
+                                        planned_posted_at=b["planned_posted_at"], caption=r["caption"], avoid=avoid,
+                                        week_label=b["job_id"].split("-")[0])  # fmt: skip
+        if spec is None:
+            skipped.append({"slot_id": sid, "why": why})
+            continue
+        path = run.dir / f"{b['job_id']}.spec.json"
+        path.write_text(json.dumps(spec, ensure_ascii=False, indent=1))
+        code, out = media.reels_job(path, "--dry-run")
+        if code != 0:
+            problems = "; ".join(f"{i['path']}: {i['message']}" for i in out.get("issues", [])[:3]) or out.get("error")
+            skipped.append({"slot_id": sid, "why": f"the designer's spec was refused: {_short(str(problems), 200)}"})
+            continue
+        specs[b["job_id"]] = (spec, path)
+        avoid = avoid + [a for a in media.assets_used({"plan": out.get("plan")}) if a not in avoid]
+        slot_of[b["job_id"]] = sid
+        texts[b["job_id"]] = [t for t in out.get("texts", []) if not t["where"].startswith("captions.")]
+    run.emit(node, "end", status="done", ms_total=round((time.monotonic() - t0) * 1000), tokens_in=0, tokens_out=0,
+             turns=0, output={"specs": list(specs), "skipped": skipped})  # fmt: skip
+
+    if specs:
+        bad = check_texts(run, node, platform, texts)
+        for jid, problems in bad.items():
+            if problems:
+                skipped.append({"slot_id": slot_of[jid], "why": "on-screen text failed the brand check: "
+                                + "; ".join(problems[:3])})  # fmt: skip
+                specs.pop(jid)
+
+    manifests: list[tuple[dict[str, Any], Path]] = []
+    if specs:
+        run.emit("renderer", "start", agent="code", model="code", tools=["dk_reels job"], task=f"{len(specs)} renders")
+        t1 = time.monotonic()
+        rendered: dict[str, Any] = {}
+        for jid, (_, path) in specs.items():  # one at a time: a render uses every core
+            code, out = media.reels_job(path)
+            if out.get("manifest") and code in (0, 4):
+                manifest = json.loads(Path(out["manifest"]).read_text())
+                if code == 0:
+                    manifests.append((manifest, Path(out["manifest"]).parent))
+                    ledger.record(jid, media.assets_used(manifest))
+                else:
+                    failed_checks = ", ".join(q["check"] for q in manifest["qa"] if not q["ok"])
+                    skipped.append(
+                        {"slot_id": slot_of[jid], "why": f"the render failed its quality checks: {failed_checks}"}
+                    )
+            else:
+                skipped.append(
+                    {"slot_id": slot_of[jid], "why": f"the render failed: {_short(str(out.get('error')), 160)}"}
+                )
+            rendered[jid] = {"code": code, "status": out.get("status"), "timing_ms": out.get("timing_ms")}
+        run.emit("renderer", "end", status="done", ms_total=round((time.monotonic() - t1) * 1000), tokens_in=0,
+                 tokens_out=0, turns=0, output=rendered)  # fmt: skip
+
+    proposed: list[dict[str, Any]] = []
+    if manifests:
+        run.emit("handover", "start", agent="code", model="code", tools=["dk-publishing /v1/posts/batch"],
+                 task=f"{len(manifests)} posts as {'a dry run' if publish == 'dry-run' else 'drafts'}")  # fmt: skip
+        t2 = time.monotonic()
+        contract = client.spec(cache=REPO / "data" / "lab" / "publish-spec.json")
+        report = handover.submit(client, manifests, contract, handover.load_config(),
+                                 handover.MediaLedger(REPO / "data" / "lab" / "media-ledger.json"),
+                                 dry_run=publish == "dry-run")  # fmt: skip
+        done = {"submitted": report.submitted, "replayed": report.replayed, "would_submit": report.would_submit}
+        by_job = {m["job_id"]: slot_of[m["job_id"]] for m, _ in manifests}
+        for state, keys in done.items():
+            proposed += [{"slot_id": by_job[k], "proposal_id": k, "state": state} for k in keys]
+        skipped += [{"slot_id": by_job.get(h.job_id, h.job_id), "why": f"held: {h.reason}"} for h in report.held]
+        skipped += [
+            {
+                "slot_id": by_job.get(f["post_key"], f["post_key"]),
+                "why": "the publisher refused it: " + _short(json.dumps(f["problems"]), 200),
+            }
+            for f in report.failed
+        ]
+        run.emit("handover", "end", status="done", ms_total=round((time.monotonic() - t2) * 1000), tokens_in=0,
+                 tokens_out=0, turns=0, output=report.as_dict())  # fmt: skip
+    return {"proposed": proposed, "skipped": skipped}
+
+
+def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_inputs: Path | None = None,
+                publish: str = "demo", suffix: str = "") -> int:  # fmt: skip
+    """publish: "demo" proposes captions to the toy calendar (as before); "dry-run" and "drafts" also design and render
+    the media and hand each post to dk-publishing (dry-run validates and creates nothing; drafts waits for approval)."""
     RUNS.mkdir(exist_ok=True)
     try:
         fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -429,8 +569,31 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
     os.write(fd, run.id.encode())
     os.close(fd)
     try:
+        media_mode = publish != "demo"
+        plan_text = ("fetch (code) → planner → 3 writers in parallel → re-check + propose (code)" if not media_mode else
+                     "fetch (code) → planner → 3 × (writer → designer) in parallel → re-check, check, render, "
+                     f"hand over as {publish} (code)")  # fmt: skip
         run.emit("orchestrator", "start", platform=platform, trigger=trigger, inputs=str(inputs or "live"),
-                 plan="fetch (code) → planner → 3 writers in parallel → re-check + propose (code)")  # fmt: skip
+                 plan=plan_text, publish=publish)  # fmt: skip
+        vocab: dict[str, Any] = {}
+        inventory: dict[str, Any] = {}
+        client: handover.PublishClient | None = None
+        if media_mode:  # fail before spending a single token if the media step can't work
+            env = handover.load_env()
+            if "DK_PUBLISH_URL" not in env or "DK_PUBLISH_KEY" not in env:
+                run.emit("orchestrator", "end", status="failed", error="DK_PUBLISH_URL and DK_PUBLISH_KEY are not set")
+                return 1
+            client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
+            if not (media.REELS / "package.json").exists():
+                run.emit("orchestrator", "end", status="failed", error=f"the reels engine is not at {media.REELS}")
+                return 1
+            try:
+                vocab, inv = code_calls(run, "orchestrator", "dk_reels_creative",
+                                        [("list_templates", {}), ("inventory", {})])  # fmt: skip
+            except Exception as ex:  # noqa: BLE001
+                run.emit("orchestrator", "end", status="failed", error=f"dk_reels is unavailable: {_short(str(ex))}")
+                return 1
+            inventory = media.compact_inventory(inv)
         try:
             data = json.loads(inputs.read_text()) if inputs else fetch_inputs(run, platform)
         except Exception as ex:  # noqa: BLE001 - no inputs, no run: end it with the reason
@@ -466,6 +629,20 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
         cites = _cites(pack)
         reminders = [str(x) for x in pack.get("brand_reminders", [])]
         briefs = [_brief(platform, s, dates, cites, examples, reminders) for s in plan["slots"][:HELPERS]]
+        if media_mode:
+            for b in briefs:
+                b["job_id"] = media.job_id(platform, str(b.get("slot_id")), str(b["planned_posted_at"]), suffix)
+            assert client is not None
+            # a post can't be changed under its key (and the designer would make a different one): skip what exists
+            have = {b["job_id"]: client.post(b["job_id"]) for b in briefs}
+            dropped = dropped + [
+                {"slot_id": b["slot_id"], "why": f"already handed over as {b['job_id']} (to redo a rejected one, run "
+                 "with --suffix r2)"} for b in briefs if have[b["job_id"]]]  # fmt: skip
+            briefs = [b for b in briefs if not have[b["job_id"]]]
+            if not briefs:
+                run.emit("orchestrator", "end", status="done", proposed=0, skipped=len(dropped), helpers_failed=0,
+                         note="every planned slot already has a post: nothing to make")  # fmt: skip
+                return 0
         lean = [{k: v for k, v in b.items() if k not in ("examples", "brand")} for b in briefs]
         run.emit("orchestrator", "delegate", to=[f"helper-{i + 1}" for i in range(len(briefs))],
                  note=f"{len(briefs)} writer helpers start at the same time; each gets its evidence and "
@@ -473,14 +650,29 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
                  slots=[{"node": f"helper-{i + 1}", **b} for i, b in enumerate(lean)])  # fmt: skip
 
         results: list[dict[str, Any]] = []
+        designs: dict[str, dict[str, Any]] = {}
+
+        def work(i: int, b: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+            """A writer, then (only for a caption that passed, and only in media mode) its designer."""
+            r = call_agent(run, f"helper-{i + 1}", "writer", json.dumps(b, ensure_ascii=False))
+            if not media_mode or r is None or r.get("verdict") != "keep":
+                return r, None
+            task = media.designer_task(
+                jid=b["job_id"], platform=platform, slot_format=str(b.get("format")),
+                planned_posted_at=b["planned_posted_at"], angle=str(b.get("angle", "")),
+                caption=str(r.get("caption", "")), evidence=b["evidence"], brand=reminders, vocab=vocab,
+                inventory=inventory,
+            )  # fmt: skip
+            return r, call_agent(run, f"designer-{i + 1}", "designer", json.dumps(task, ensure_ascii=False))
+
         with ThreadPoolExecutor(max_workers=HELPERS) as pool:
-            futures = {
-                pool.submit(call_agent, run, f"helper-{i + 1}", "writer", json.dumps(b, ensure_ascii=False)): i
-                for i, b in enumerate(briefs)
-            }
+            futures = {pool.submit(work, i, b): i for i, b in enumerate(briefs)}
             for f in as_completed(futures):
-                if (r := f.result()) is not None:
+                r, d = f.result()
+                if r is not None:
                     results.append(r)
+                    if d is not None:
+                        designs[str(r.get("slot_id") or "")] = d
         run.emit("orchestrator", "gathered", ok=len(results), failed=len(briefs) - len(results))
 
         by_slot = {str(b.get("slot_id")): b for b in briefs}
@@ -489,7 +681,11 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
         unmatched = [r for r in results if r["slot_id"] not in by_slot]
         results = [r for r in results if r["slot_id"] in by_slot]
         try:
-            lead = check_and_propose(run, platform, results, by_slot)
+            if media_mode:
+                assert client is not None
+                lead = make_media(run, platform, results, designs, by_slot, publish, client)
+            else:
+                lead = check_and_propose(run, platform, results, by_slot)
         except Exception as ex:  # noqa: BLE001 - the check failing must never propose anything
             run.emit("checker", "end", status="failed", error=_short(str(ex)))
             lead = None
@@ -515,5 +711,13 @@ if __name__ == "__main__":
     ap.add_argument("--trigger", default="manual", choices=["manual", "button", "schedule", "eval"])
     ap.add_argument("--inputs", type=Path, help="replay frozen inputs (slots + grounding pack) instead of fetching")
     ap.add_argument("--save-inputs", type=Path, help="freeze this run's inputs to a file")
+    ap.add_argument(
+        "--publish",
+        default="demo",
+        choices=["demo", "dry-run", "drafts"],
+        help="demo: propose captions to the toy calendar. dry-run: also design and render the media and validate "
+        "with dk-publishing, creating nothing. drafts: create drafts in the owner's Calendar",
+    )
+    ap.add_argument("--suffix", default="", help="redo a slot whose post was rejected: it needs a new key, e.g. r2")
     a = ap.parse_args()
-    sys.exit(orchestrate(a.platform, a.trigger, a.inputs, a.save_inputs))
+    sys.exit(orchestrate(a.platform, a.trigger, a.inputs, a.save_inputs, a.publish, a.suffix))

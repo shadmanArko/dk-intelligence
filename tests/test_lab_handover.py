@@ -118,6 +118,13 @@ class FakePublisher:
                 200,
                 json={"dry_run": body["dry_run"], "results": [self._one(p, body["dry_run"]) for p in body["posts"]]},
             )
+        if path.startswith("/v1/posts/") and request.method == "GET":
+            key = path.rsplit("/", 1)[1]
+            return (
+                httpx.Response(200, json={"post_key": key, "state": "awaiting_approval"})
+                if key in self.posts
+                else httpx.Response(404, json={"title": "no such post"})
+            )
         if path == "/v1/overview":
             return httpx.Response(
                 200,
