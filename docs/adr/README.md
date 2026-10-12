@@ -36,5 +36,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0030](0030-dk-intel-on-the-vps.md) | Run dk_intel on the VPS as a separate, opt-in container, fed through the existing doors | Accepted |
 | [0031](0031-agents-design-code-renders-publisher-gets-drafts.md) | Agents design the picture as a spec; code renders it; the publisher receives drafts | Accepted |
 | [0032](0032-brand-rules-and-prices-have-one-owner.md) | Brand rules and prices have one owner: dk_intel; prompts and renderers hold none | Accepted |
+| [0033](0033-contracts-between-projects.md) | Contracts between the projects: owner-defined, consumer-pinned, tested, checked at run time | Accepted |
 
 Template: [0000-template.md](0000-template.md).

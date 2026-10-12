@@ -1,0 +1,39 @@
+# Every link between the Dhaka Kacchi projects (Phase 5 plan §6, ADR 0033). The OWNER defines the contract; each
+# consumer keeps a reviewed copy in contracts/pinned/ and tests against it (tests/test_contracts.py).
+#   uv run intel contracts sync --check   -> exit 1 when an owner's contract changed (nothing written)
+#   uv run intel contracts sync           -> refresh the pinned copies; then run the tests and read the diff
+# Rule for owners: fields may be ADDED; renaming or removing one needs a new version (and a consumer change).
+contracts:
+  reels.content_spec:
+    owner: dhaka-kacchi-reels
+    what: the render request (ContentSpec) the lab's finalize_spec writes and the designer fills
+    source: {repo: reels, file: index/content-spec.schema.json}
+    pinned: contracts/pinned/reels.content-spec.schema.json
+    version: 1                      # spec_version in every spec; reported by dk_reels list_templates.contracts
+    consumers: [lab/agentic-slice/media.py finalize_spec, .claude/agents/designer.md]
+  reels.manifest:
+    owner: dhaka-kacchi-reels
+    what: the render report the handover reads (files, status, on-screen text)
+    source: {repo: reels, file: index/manifest.schema.json}
+    pinned: contracts/pinned/reels.manifest.schema.json
+    version: 1                      # manifest_version
+    consumers: [lab/agentic-slice/handover.py plan_post, lab/agentic-slice/run.py make_media]
+  publishing.api:
+    owner: dk-publishing
+    what: the HTTP API the handover calls (media upload, batch, posts, overview)
+    source: {url: /openapi.json}    # public, no key; base from DK_PUBLISH_URL
+    pinned: contracts/pinned/publishing.openapi.json
+    version: "1.0"                  # info.version
+    consumers: [lab/agentic-slice/handover.py PublishClient]
+  publishing.spec:
+    owner: dk-publishing
+    what: the publishing contract (every platform rule); checked at run time, cached by spec_version
+    source: {runtime: GET /v1/spec}
+    version: publishing-spec/v1     # the document's `spec` field; the handover refuses any other
+    consumers: [lab/agentic-slice/handover.py]
+  dk_intel.tools:
+    owner: dk-intelligence
+    what: the dk_intel MCP tools every agent calls
+    source: {snapshots: tests/mcp/snapshots}
+    version: catalog snapshots      # tests/test_mcp_security.py: additive only, reviewed
+    consumers: [lab agents, Claude Code, LangChain and Agents SDK clients]

@@ -40,6 +40,8 @@ LAB = Path(__file__).resolve().parent
 REPO = LAB.parents[1]
 CONFIG = LAB / "handover.json"
 BATCH_MAX = 20  # the contract: up to 20 posts per batch
+SUPPORTED_SPEC = "publishing-spec/v1"  # contracts/registry.yaml publishing.spec
+SUPPORTED_MANIFEST = 1  # contracts/registry.yaml reels.manifest
 MEDIA_FRESH_DAYS = 5  # the server keeps an upload a week after its posts are done; re-upload after 5 days to be safe
 RETRY_STATUS = {429, 502, 503, 504}
 GONE_MEDIA = {"media_expired", "unknown_media"}  # the server no longer has a file we uploaded: upload it again
@@ -195,6 +197,11 @@ class PublishClient:
         if r.status_code == 304 and cached:
             return cached
         doc: dict[str, Any] = r.json()
+        if doc.get("spec") != SUPPORTED_SPEC:  # a contract this code doesn't speak: stop, never guess
+            raise PublishError(
+                0, f"the publisher speaks {doc.get('spec')!r}, this handover {SUPPORTED_SPEC!r}: "
+                "run `uv run intel contracts sync`, then update the handover",
+            )  # fmt: skip
         if cache:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(doc))
@@ -310,6 +317,10 @@ def plan_post(
     def hold(platform: str | None, code: str, reason: str) -> None:
         held.append(Held(job, platform, code, reason))
 
+    if manifest.get("manifest_version") != SUPPORTED_MANIFEST:
+        hold(None, "contract", f"manifest_version {manifest.get('manifest_version')!r}, this handover reads "
+             f"{SUPPORTED_MANIFEST}: run `uv run intel contracts sync`")  # fmt: skip
+        return None, held
     if manifest["status"] == "qa_failed":
         hold(
             None,

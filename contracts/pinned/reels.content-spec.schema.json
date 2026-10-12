@@ -1,0 +1,417 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "avoid_assets": {
+      "description": "Asset or clip ids used recently; auto-picks prefer anything else (soft: falls back if nothing else fits)",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "campaign": {
+      "type": "string"
+    },
+    "captions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Post captions per platform, passed through to the manifest",
+      "propertyNames": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "content": {
+      "oneOf": [
+        {
+          "properties": {
+            "formats": {
+              "default": [
+                "9:16"
+              ],
+              "items": {
+                "enum": [
+                  "9:16",
+                  "4:5"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "hook": {
+              "description": "First words on screen; the first 2 seconds decide retention",
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            "hook_sub": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "const": "video",
+              "type": "string"
+            },
+            "look": {
+              "default": "none",
+              "enum": [
+                "none",
+                "soft",
+                "warm"
+              ],
+              "type": "string"
+            },
+            "music": {
+              "default": {
+                "mood": [],
+                "pre_drop_beats": 8,
+                "track": "auto",
+                "volume": 1
+              },
+              "properties": {
+                "culture": {
+                  "enum": [
+                    "desi",
+                    "arabic",
+                    "turkish",
+                    "balkan",
+                    "ukrainian",
+                    "celtic"
+                  ],
+                  "type": "string"
+                },
+                "mood": {
+                  "default": [],
+                  "description": "Mood tags to match, e.g. [\"tension\",\"build-up\"], [\"happy\",\"playful\"]",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "pre_drop_beats": {
+                  "default": 8,
+                  "description": "Beats of build-up before the drop (the hook time)",
+                  "maximum": 32,
+                  "minimum": 2,
+                  "type": "integer"
+                },
+                "track": {
+                  "default": "auto",
+                  "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                  "type": "string"
+                },
+                "volume": {
+                  "default": 1,
+                  "maximum": 1.5,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "shots": {
+              "items": {
+                "properties": {
+                  "asset": {
+                    "default": "auto",
+                    "description": "Asset id from search_assets, or \"auto\" to pick by category",
+                    "type": "string"
+                  },
+                  "beats": {
+                    "description": "Shot length in beats; omit to let the resolver decide",
+                    "maximum": 32,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "caption": {
+                    "maxLength": 80,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "caption_top": {
+                    "description": "Caption position, % from the top",
+                    "maximum": 80,
+                    "minimum": 5,
+                    "type": "number"
+                  },
+                  "category": {
+                    "description": "Footage category when asset is \"auto\", e.g. \"Pot opening\", \"Eating\", \"Saffron\"",
+                    "type": "string"
+                  },
+                  "min_rating": {
+                    "default": 0,
+                    "description": "0 any, 1 = ★ best takes, 2 = ★★ key moments only",
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "on": {
+                    "description": "\"drop\" = this shot starts exactly on the music drop (max one shot)",
+                    "enum": [
+                      "drop"
+                    ],
+                    "type": "string"
+                  },
+                  "slow": {
+                    "default": "auto",
+                    "description": "Slow motion: auto uses what the clip allows, none = real time",
+                    "enum": [
+                      "auto",
+                      "none",
+                      "max"
+                    ],
+                    "type": "string"
+                  },
+                  "speed": {
+                    "default": "ramp",
+                    "description": "flow = steady, rise = speeds into the next cut, ramp = whoosh into every bass hit",
+                    "enum": [
+                      "flow",
+                      "rise",
+                      "ramp"
+                    ],
+                    "type": "string"
+                  },
+                  "style": {
+                    "default": "caption",
+                    "enum": [
+                      "caption",
+                      "slam"
+                    ],
+                    "type": "string"
+                  },
+                  "sub": {
+                    "description": "Smaller second-language line under the caption",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "maxItems": 14,
+              "minItems": 2,
+              "type": "array"
+            },
+            "template": {
+              "const": "beat-reel",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "template",
+            "hook",
+            "shots"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "slides",
+              "type": "string"
+            },
+            "size": {
+              "description": "carousel 3:4 · album 4:5 (FB, LinkedIn, Threads, X) · story 9:16",
+              "enum": [
+                "carousel",
+                "album",
+                "story"
+              ],
+              "type": "string"
+            },
+            "slides": {
+              "items": {
+                "properties": {
+                  "asset": {
+                    "default": "auto",
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "items": {
+                      "properties": {
+                        "detail": {
+                          "maxLength": 80,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 40,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "price": {
+                          "maxLength": 12,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "price"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 4,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "kicker": {
+                    "maxLength": 60,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "left": {
+                    "properties": {
+                      "lines": {
+                        "items": {
+                          "maxLength": 60,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 5,
+                        "type": "array"
+                      },
+                      "title": {
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "lines"
+                    ],
+                    "type": "object"
+                  },
+                  "right": {
+                    "properties": {
+                      "lines": {
+                        "items": {
+                          "maxLength": 60,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 5,
+                        "type": "array"
+                      },
+                      "title": {
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "lines"
+                    ],
+                    "type": "object"
+                  },
+                  "sub": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "template": {
+                    "enum": [
+                      "photo",
+                      "card",
+                      "price",
+                      "compare"
+                    ],
+                    "type": "string"
+                  },
+                  "text_at": {
+                    "enum": [
+                      "top",
+                      "bottom"
+                    ],
+                    "type": "string"
+                  },
+                  "title": {
+                    "maxLength": 90,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "title_size": {
+                    "maximum": 160,
+                    "minimum": 50,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "template"
+                ],
+                "type": "object"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "size",
+            "slides"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "job_id": {
+      "description": "Unique, also the output folder name",
+      "pattern": "^[a-z0-9][a-z0-9_-]{2,80}$",
+      "type": "string"
+    },
+    "language": {
+      "default": [
+        "en"
+      ],
+      "description": "BCP-47 codes of the on-screen text, e.g. ['ur','en']",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "publish": {
+      "additionalProperties": {},
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "platforms": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "spec_version": {
+      "const": 1,
+      "type": "number"
+    }
+  },
+  "required": [
+    "spec_version",
+    "job_id",
+    "content"
+  ],
+  "type": "object"
+}

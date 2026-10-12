@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {},
+  "properties": {
+    "campaign": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "captions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "additionalProperties": {},
+        "properties": {
+          "bytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "format": {
+            "type": "string"
+          },
+          "has_audio": {
+            "type": "boolean"
+          },
+          "height": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "video",
+              "image"
+            ],
+            "type": "string"
+          },
+          "lufs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "size": {
+            "type": "string"
+          },
+          "width": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "width",
+          "height",
+          "bytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "job_id": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "video",
+        "slides"
+      ],
+      "type": "string"
+    },
+    "language": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "manifest_version": {
+      "const": 1,
+      "type": "number"
+    },
+    "on_screen_text": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "where": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "where",
+          "text"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "publish": {
+      "anyOf": [
+        {
+          "additionalProperties": {},
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "platforms": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "platforms"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "qa": {
+      "items": {
+        "additionalProperties": {},
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "check",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "review": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "spec_hash": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "needs_review",
+        "qa_failed"
+      ],
+      "type": "string"
+    },
+    "template": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "manifest_version",
+    "job_id",
+    "campaign",
+    "spec_hash",
+    "created_at",
+    "status",
+    "kind",
+    "template",
+    "language",
+    "files",
+    "on_screen_text",
+    "review",
+    "qa",
+    "captions",
+    "publish"
+  ],
+  "type": "object"
+}

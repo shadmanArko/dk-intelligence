@@ -93,8 +93,26 @@ Milestones S0 → S1 → S2 → S3 run in order; S4 and S5 run in parallel after
   `run.py --publish dry-run`, then `drafts` for one slot, then the owner rejects or approves it in the Calendar.
   After that, S0 is done.
 
-**Then S1:** the contract registry (`docs/contracts/`), schemas with consumer tests in 3 repos, `intel contracts sync`,
-and the content plan, platform mix, routes and budgets as data files. See the plan, §6 and §7.
+**S1 (contracts), status 2026-10-12: done** (ADR 0033).
+- `contracts/registry.yaml` lists every cross-project link, with pinned copies in `contracts/pinned/`.
+- `uv run intel contracts sync [--check]` compares the pins with the owners' current versions.
+- `tests/test_contracts.py` checks that every lab spec, handover batch and manifest fixture matches the pins, and that
+  the versions agree.
+- Every run checks versions first: dk_reels `list_templates.contracts`, and the publisher's `spec`. A mismatch stops
+  the run before any AI.
+- reels: the manifest is a zod schema checked before every write, and both schemas are exported; the reels
+  `CLAUDE.md` records the owner rules.
+- dk-publishing: the change map records that `/openapi.json` and `/v1/spec` are pinned by consumers.
+
+The settings-as-data part (content plan, platform mix, routes, budgets) moved to **S2**, because the lab becomes a
+package there.
+
+**Next, S2: the studio at full scale.**
+- The lab becomes `src/intel/studio/`, with ports for the runner, renderer and publisher.
+- The settings become data files.
+- 10 days × 3 ideas × 5 platforms (idea → 5 native variants).
+- Chunking everywhere (the limit of 20), budgets, a resumable render queue, and the Run button for the full pipeline.
+- Measured on a frozen 10-day run. See the plan, §7.
 
 **Still open for the owner:**
 - confirm the mutton box price and availability in `facts.yaml` (until then a price slide can show only Borhani);

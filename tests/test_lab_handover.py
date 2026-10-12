@@ -41,6 +41,7 @@ def _fmt(lo: int, hi: int, caption: int | None = 2200, options: dict[str, Any] |
 
 
 SPEC: dict[str, Any] = {
+    "spec": "publishing-spec/v1",
     "spec_version": "abc123",
     "post": {
         "post_key_pattern": r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$",
@@ -166,17 +167,24 @@ def world(tmp_path):
     return fake, client, ledger, tmp_path
 
 
+ENVELOPE = {"manifest_version": 1, "campaign": "wk42", "spec_hash": "h", "created_at": "2026-10-12T18:00:00Z",
+            "review": []}  # fmt: skip
+FILE = {"width": 1080, "height": 1920, "bytes": 1, "sha256": "a" * 64}
+
+
 def reel(tmp_path: Path, job: str = "wk42-reel-1", **over: Any) -> tuple[dict[str, Any], Path]:
     folder = tmp_path / job
     folder.mkdir(exist_ok=True)
     (folder / f"{job}_9x16.mp4").write_bytes(b"video-" + job.encode())
     m: dict[str, Any] = {
+        **ENVELOPE,  # the fields every real manifest has (the pinned contract, tests/test_contracts.py)
         "job_id": job,
         "status": "ready",
         "kind": "video",
+        "template": "beat-reel",
         "language": ["en"],
         "qa": [],
-        "files": [{"path": f"{job}_9x16.mp4", "kind": "video", "format": "9:16"}],
+        "files": [{"path": f"{job}_9x16.mp4", "kind": "video", "format": "9:16", **FILE}],
         "on_screen_text": [{"where": "hook", "text": "Seal broken, kacchi inside"}],
         "captions": {
             "instagram": "Kacchi biryani, Berlin.",
@@ -203,12 +211,15 @@ def slides(
     for x in names:
         (folder / x).write_bytes(b"img-" + x.encode())
     m = {
+        **ENVELOPE,
         "job_id": job,
         "status": "ready",
         "kind": "slides",
+        "template": f"slides:{size}",
         "language": ["en"],
         "qa": [],
-        "files": [{"path": x, "kind": "image", "size": size} for x in names],
+        "on_screen_text": [],
+        "files": [{"path": x, "kind": "image", "size": size, **FILE} for x in names],
         "captions": {"instagram": "Swipe.", "facebook": "Swipe.", "threads": "Swipe."},
         "publish": {"platforms": list(platforms), "at": SLOT},
     }

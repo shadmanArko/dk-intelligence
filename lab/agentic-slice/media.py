@@ -27,11 +27,22 @@ REELS = Path(
 )  # a sibling folder; the path has spaces
 LEDGER = REPO / "data" / "lab" / "asset-ledger.json"
 SHORT = {"instagram": "ig", "facebook": "fb", "tiktok": "tt", "youtube": "yt", "threads": "th"}
+CONTENT_SPEC_VERSION = 1  # contracts/registry.yaml reels.content_spec
+MANIFEST_VERSION = 1  # contracts/registry.yaml reels.manifest
 RECENT_JOBS = 12  # footage used in the last 12 jobs is avoided when something else fits
 RENDER_TIMEOUT_S = 1200
 
 # what the designer is told it may make, by the planner's slot format
 KINDS = {"reel": "video", "video": "video", "short": "video", "carousel": "carousel", "image": "image"}
+
+
+def contract_problem(templates: dict[str, Any]) -> str | None:
+    """The reels engine reports the contracts it speaks (dk_reels list_templates); a mismatch stops the run."""
+    got = templates.get("contracts") or {}
+    want = {"content_spec": CONTENT_SPEC_VERSION, "manifest": MANIFEST_VERSION}
+    if got != want:
+        return f"reels speaks {got}, this lab {want}: run `uv run intel contracts sync`, then update the lab"
+    return None
 
 
 def kind_for(slot_format: Any) -> str:
@@ -165,7 +176,7 @@ def finalize_spec(
             content = {**content, "size": "album", "slides": slides[:1]}
     language = answer["spec"].get("language")
     spec: dict[str, Any] = {
-        "spec_version": 1,
+        "spec_version": CONTENT_SPEC_VERSION,
         "job_id": jid,
         "campaign": week_label,
         "language": language

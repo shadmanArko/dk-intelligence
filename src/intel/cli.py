@@ -393,6 +393,26 @@ def loadtest_cmd(
         )
 
 
+contracts_app = typer.Typer(no_args_is_help=True, help="The contracts between the projects (contracts/registry.yaml)")
+app.add_typer(contracts_app, name="contracts")
+
+
+@contracts_app.command("sync")
+def contracts_sync(
+    check: bool = typer.Option(False, "--check", help="only report drift (exit 1 if an owner changed a contract)"),
+) -> None:
+    """Compare the pinned contracts with their owners' current ones (reels files, dk-publishing's /openapi.json)."""
+    from intel.contracts import sync
+
+    report = sync(check=check)
+    for d in report:
+        typer.echo(f"{d.status:12} {d.name}  {d.detail}".rstrip())
+    drift = [d for d in report if d.status in ("changed", "new")]
+    if check and drift:
+        typer.echo(f"{len(drift)} contract(s) changed: run `intel contracts sync`, review the diff, run the tests")
+        raise typer.Exit(1)
+
+
 @app.command("weekly-status")
 def weekly_status() -> None:
     """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""
