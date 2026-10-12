@@ -623,6 +623,9 @@ def orchestrate(platform: str, trigger: str, inputs: Path | None = None, save_in
             except Exception as ex:  # noqa: BLE001
                 run.emit("orchestrator", "end", status="failed", error=f"dk_reels is unavailable: {_short(str(ex))}")
                 return 1
+            if why := media.contract_problem(vocab):
+                run.emit("orchestrator", "end", status="failed", error=why)
+                return 1
             inventory = media.compact_inventory(inv)
         try:
             data = json.loads(inputs.read_text()) if inputs else fetch_inputs(run, platform)

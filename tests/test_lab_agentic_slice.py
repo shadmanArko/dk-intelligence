@@ -48,6 +48,7 @@ def engine(tmp_path, monkeypatch):
     monkeypatch.setattr(run, "CLAUDE", str(LAB / "testing" / "fake_claude.py"))
     monkeypatch.setattr(run, "_OFFERED", {})
     run.mcp_log = []
+    run.reels_contracts = {"content_spec": 1, "manifest": 1}
     run.slot_fails = set()  # slots whose probe the fake scorer puts below the bar
 
     def fake_session(server, calls):  # type: ignore[no-untyped-def]
@@ -75,7 +76,8 @@ def engine(tmp_path, monkeypatch):
                 out.append({"proposal_id": "p-" + args["slot_id"]})
             elif tool == "list_templates":
                 out.append({"video_categories": ["Eating"], "music_cultures": ["desi"], "music_moods": ["hip-hop"],
-                            "templates": {"slides": {"photo": "x"}}})  # fmt: skip
+                            "templates": {"slides": {"photo": "x"}},
+                            "contracts": run.reels_contracts})  # what dk_reels reports  # fmt: skip
             elif tool == "inventory":
                 out.append({"video": {"Pot opening": {"n": 3, "star1": 1, "star2": 1}},
                             "photo": {"Eating": {"n": 2, "star1": 0, "star2": 0}}})  # fmt: skip
@@ -310,9 +312,12 @@ def media_world(engine, monkeypatch, tmp_path):  # type: ignore[no-untyped-def]
         out = tmp_path / "reels-out" / jid
         out.mkdir(parents=True, exist_ok=True)
         (out / f"{jid}_9x16.mp4").write_bytes(b"video-" + jid.encode())
-        manifest = {
+        manifest = {  # a complete manifest: tests/test_contracts.py checks this shape against the pinned contract
+            "manifest_version": 1, "campaign": spec.get("campaign"), "spec_hash": "h", "created_at": "t",
+            "template": "beat-reel", "review": [],
             "job_id": jid, "status": "ready", "kind": "video", "language": spec["language"], "qa": [],
-            "files": [{"path": f"{jid}_9x16.mp4", "kind": "video", "format": "9:16"}], "plan": plan,
+            "files": [{"path": f"{jid}_9x16.mp4", "kind": "video", "format": "9:16", "width": 1080, "height": 1920,
+                       "bytes": 1, "sha256": "a" * 64}], "plan": plan,
             "on_screen_text": texts, "captions": spec["captions"], "publish": spec["publish"],
         }  # fmt: skip
         (out / "manifest.json").write_text(json.dumps(manifest))
@@ -508,3 +513,15 @@ def test_an_older_demo_run_still_shows_as_before_in_the_console(engine, monkeypa
         p["status"] == "proposed" and p["state"] is None and p["thumb"] is None and p["design"] is None for p in posts
     )
     assert "proposals.json" in posts[0]["why"]
+
+
+def test_a_reels_engine_speaking_another_contract_stops_the_run_before_any_ai(engine, tmp_path, monkeypatch):
+    reels = tmp_path / "reels"  # the engine checks that a reels checkout exists; CI has none
+    reels.mkdir()
+    (reels / "package.json").write_text("{}")
+    monkeypatch.setattr(engine.media, "REELS", reels)
+    engine.reels_contracts = {"content_spec": 2, "manifest": 1}
+    assert engine.orchestrate("instagram", "manual", publish="render") == 1
+    end = _events(engine)[-1]
+    assert end["status"] == "failed" and "intel contracts sync" in end["error"]
+    assert not (tmp_path / "args.jsonl").exists()  # no agent ran
