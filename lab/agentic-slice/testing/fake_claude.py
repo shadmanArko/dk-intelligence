@@ -14,7 +14,17 @@ task = args[args.index("-p") + 1]
 tools = args[args.index("--allowedTools") + 1].split(",")
 delay = float(os.environ.get("FAKE_DELAY_S", "0.3"))
 with open(os.environ.get("FAKE_ARGS_LOG", os.devnull), "a") as f:  # what the engine passed, for the tests
-    f.write(json.dumps({"tools": tools, "builtins": args[args.index("--tools") + 1], "task": task}) + "\n")
+    f.write(
+        json.dumps(
+            {
+                "tools": tools,
+                "builtins": args[args.index("--tools") + 1],
+                "task": task,
+                "tool_search": os.environ.get("ENABLE_TOOL_SEARCH"),
+            }
+        )
+        + "\n"
+    )
 
 
 def out(e):

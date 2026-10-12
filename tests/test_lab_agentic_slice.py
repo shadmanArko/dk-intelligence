@@ -40,6 +40,7 @@ def test_the_engine_runs_planner_then_parallel_helpers_then_lead(engine, tmp_pat
     starts = [e["node"] for e in ev if e["kind"] == "start"]
     assert starts[:2] == ["orchestrator", "planner"] and starts[-1] == "writer-lead"
     assert set(starts[2:5]) == {"helper-1", "helper-2", "helper-3"}
+    assert [e["ms"] for e in ev] == sorted(e["ms"] for e in ev)  # one timeline, never overwritten by event data
     windows = {e["node"]: [e["ms"]] for e in ev if e["kind"] == "start"}
     for e in ev:
         if e["kind"] == "end" and e["node"] in windows:
@@ -61,6 +62,7 @@ def test_each_agent_gets_only_its_own_tools_and_no_builtins(engine, tmp_path):
     engine.orchestrate("instagram", "manual")
     calls = [json.loads(line) for line in (tmp_path / "args.jsonl").read_text().splitlines()]
     assert all(c["builtins"] == "" for c in calls)  # no shell, web or file tools for any agent
+    assert all(c["tool_search"] == "false" for c in calls)  # else the MCP tools hide behind the removed ToolSearch
     planner, *helpers, lead = calls
     assert all(t.startswith(("mcp__dk_intel_planner__", "mcp__demo_publisher__list_slots")) for t in planner["tools"])
     assert all(t.startswith("mcp__dk_intel_writer__") for h in helpers for t in h["tools"])

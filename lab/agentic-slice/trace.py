@@ -23,7 +23,7 @@ def main(run_id: str | None = None) -> int:
         what = {
             "start": f"start ({e.get('agent', '')} {e.get('model', '')})".strip(),
             "tool_call": f"→ {e.get('server')}.{e.get('tool')}",
-            "tool_result": f"← {e.get('tool')} {e.get('ms')} ms" + (" ERROR" if e.get("is_error") else ""),
+            "tool_result": f"← {e.get('tool')} {e.get('took_ms')} ms" + (" ERROR" if e.get("is_error") else ""),
             "thought": f"· {str(e.get('text', ''))[:90]}",
             "delegate": f"delegate → {', '.join(e.get('to', []))}",
             "gathered": f"gathered: {e.get('ok')} ok, {e.get('failed')} failed",

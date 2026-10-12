@@ -87,9 +87,11 @@ class Run:
         self.t0 = time.monotonic()
 
     def emit(self, node: str, kind: str, **data: Any) -> None:
-        event = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds"),
-                 "ms": round((time.monotonic() - self.t0) * 1000), "node": node, "kind": kind, **data}  # fmt: skip
-        with self._lock, self.path.open("a") as f:
+        if {"t", "ms", "node", "kind"} & data.keys():
+            raise ValueError("event data must not overwrite the timeline fields")
+        with self._lock, self.path.open("a") as f:  # stamped under the lock: the file is in time order
+            event = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds"),
+                     "ms": round((time.monotonic() - self.t0) * 1000), "node": node, "kind": kind, **data}  # fmt: skip
             f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
 
@@ -127,7 +129,10 @@ def call_agent(run: Run, node: str, agent: str, task: str) -> dict[str, Any] | N
     final: dict[str, Any] = {}
     last_text = ""
     try:
-        proc = subprocess.Popen(cmd, cwd=LAB, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # MCP tools load up front: with tool search on they are deferred behind ToolSearch, a built-in that
+        # `--tools ""` removes, and the agent would see no tools at all (found on the first real run)
+        env = {**os.environ, "ENABLE_TOOL_SEARCH": "false"}
+        proc = subprocess.Popen(cmd, cwd=LAB, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         assert proc.stdout is not None
         for line in proc.stdout:
             try:
@@ -150,7 +155,7 @@ def call_agent(run: Run, node: str, agent: str, task: str) -> dict[str, Any] | N
                         name, t_call = calls.get(c.get("tool_use_id", ""), ("?", time.monotonic()))
                         run.emit(
                             node, "tool_result", tool=name.split("__")[-1], is_error=bool(c.get("is_error")),
-                            ms=round((time.monotonic() - t_call) * 1000), output=_short(c.get("content")),
+                            took_ms=round((time.monotonic() - t_call) * 1000), output=_short(c.get("content")),
                         )  # fmt: skip
             elif e.get("type") == "result":
                 final = e

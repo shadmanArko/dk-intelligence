@@ -64,6 +64,21 @@ The same engine with `--trigger schedule`, so history shows which runs came from
 Only one run happens at a time (`runs/.running`). If the button and the schedule collide, the second one exits with
 "a run is already in progress".
 
+## Two real runs (2026-10-12, Sonnet, on the subscription)
+| Run | Trigger | Wall time | Agents | Tool calls | Tokens | Proposed / skipped |
+|---|---|---|---|---|---|---|
+| instagram | terminal | 71 s | 5 | 15 | 377k | 2 / 1 (s3: still `rewrite` after 2 rewrites, 0.46) |
+| facebook | Run button | 68 s | 5 | 16 | 420k | 1 / 2 (both still `rewrite`) |
+
+- The three helpers ran side by side, for 20 s, 17 s and 38 s. One after another they would have taken 75 s instead
+  of 38 s.
+- dk_intel's audit chain recorded the same MCP calls as the engine.
+- Twice an agent tried a tool outside its allowlist: a writer tried `search_posts`, and the writer-lead tried
+  `list_slots`. Claude Code refused both (shown as ERROR in the feed), and the agents carried on without them.
+- The gate held: nothing with verdict `rewrite` was proposed.
+- Found on the first real run: with `--tools ""` the agent saw **no** tools, because MCP tools are deferred behind
+  ToolSearch, which is a built-in. The engine now sets `ENABLE_TOOL_SEARCH=false`, and a test pins it.
+
 ## What to look at (the lessons for the real design)
 1. **The boundary lives in the server, not in the prompt.** The planner connects with dk_intel's `planner` profile.
    Asked to call `evaluate_drafts`, it is refused with `NOT_ALLOWED_FOR_PROFILE`.

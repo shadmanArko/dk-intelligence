@@ -56,7 +56,8 @@ function draw(){const g=$('g');let s='';
   s+=`<path class="edge ${cls}" d="M${x1+W},${y1+H/2} C${x1+W+20},${y1+H/2} ${x2-20},${y2+H/2} ${x2},${y2+H/2}"/>`}
  for(const [k,[x,y,l]] of Object.entries(SRV)){s+=`<g class="srv" id="srv-${k}"><rect x="${x}" y="${y}" width="210" height="30"/><text x="${x+10}" y="${y+20}">${l}</text></g>`}
  for(const [k,[x,y,l,sub]] of Object.entries(NODES)){const n=st[k]||{};const c={running:'var(--run)',done:'var(--done)',failed:'var(--fail)'}[n.status]||'var(--wait)';
-  const info=n.status?`${n.calls||0} tool calls${n.tokens?' · '+n.tokens.toLocaleString()+' tok':''}${n.ms?' · '+(n.ms/1000).toFixed(1)+' s':''}`:sub;
+  const k_=t=>t>=1000?Math.round(t/1000)+'k':String(t);
+  const info=n.status&&n.model?`${n.calls||0} calls${n.tokens?' · '+k_(n.tokens)+' tok':''}${n.ms?' · '+Math.round(n.ms/1000)+' s':''}`:(n.status||sub);
   s+=`<g class="node" onclick="show('${k}')"><rect x="${x}" y="${y}" width="${W}" height="${H}" stroke="${c}"/><text x="${x+12}" y="${y+23}">${l}</text><text class="sub" x="${x+12}" y="${y+42}">${info}</text></g>`}
  g.innerHTML=s}
 function flash(server){const el=document.getElementById('srv-'+server);if(!el)return;el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),900)}
@@ -66,7 +67,7 @@ function apply(e){ev.push(e);const n=st[e.node]=st[e.node]||{calls:0,events:[]};
  if(e.kind==='end'){n.status=e.status;n.ms=e.ms_total;n.tokens=(e.tokens_in||0)+(e.tokens_out||0);n.output=e.output;n.error=e.error;
   if(e.node==='orchestrator'){st.report={status:e.status==='done'?'done':'failed',calls:0,events:[],output:e}}}
  const line=document.createElement('div');line.className='k-'+e.kind+(e.status==='failed'?' k-fail':'');
- const what=e.kind==='tool_call'?`→ ${e.server}.${e.tool} ${e.input}`:e.kind==='tool_result'?`← ${e.tool} ${e.is_error?'ERROR ':''}(${e.ms} ms) ${e.output}`:
+ const what=e.kind==='tool_call'?`→ ${e.server}.${e.tool} ${e.input}`:e.kind==='tool_result'?`← ${e.tool} ${e.is_error?'ERROR ':''}(${e.took_ms} ms) ${e.output}`:
   e.kind==='end'?`${e.status} ${e.error||''}`:e.kind==='start'?`start ${e.agent||e.plan||''}`:e.kind==='thought'?`“${e.text}”`:JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k])=>!['t','ms','node','kind'].includes(k))));
  line.textContent=`${(e.ms/1000).toFixed(1).padStart(6)}s ${e.node.padEnd(12)} ${what}`;$('feed').prepend(line);draw()}
 function show(k){const n=st[k];$('dtitle').textContent='Details: '+k;if(!n){$('detail').textContent='not started';return}
