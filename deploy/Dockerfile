@@ -1,7 +1,7 @@
 # intel-api image (ADR 0014) and, from the same commit, the intel-mcp image (target `mcp`, ADR 0030). Two stages each: a builder with uv resolves the locked runtime dependencies; the runtime stage
 # gets only the virtualenv and the code. No compiler, no uv, no pip and no download cache in the final image.
 # Every image is pinned by digest (both stages use the same base); Dependabot proposes updates.
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -12,7 +12,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --no-editable
 
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS runtime
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS runtime
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="dk-intelligence intel-api" \
@@ -39,7 +39,7 @@ CMD ["python", "-m", "intel.serve.app"]
 # Built from the same commit with only the `mcp` and `rag` groups (FastMCP, onnxruntime, tokenizers; no torch), so
 # intel-api's image above keeps its dependencies and its scan surface. Models and knowledge packs are NOT in the image:
 # they arrive through the upload-only inbox into the read-only knowledge volume.
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS mcp-builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS mcp-builder
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -50,7 +50,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group mcp --group rag --no-editable
 
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS mcp
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS mcp
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="dk-intelligence intel-mcp" \
