@@ -1,0 +1,13 @@
+# Limits that stop a run from running away. Tokens come from every agent's own usage report (input + output).
+
+max_tokens_per_run: 4000000   # recommended cap for a 10-day run (measured: about 1.0M). Owner decision pending.
+alert_at: 0.8                 # a warning event (and later a Telegram message) at this share of the cap
+max_turns:                    # `claude -p --max-turns`, per agent
+  strategist: 3
+  copywriter: 6
+  designer: 8
+  adapter: 3
+max_ai_calls_per_idea: 6      # copywriter 1 + adapter 1-2 + designer 1 normally; the cap stops loops
+parallel_ideas: 3             # ideas written at the same time (each runs its agents one after the other)
+agent_timeout_s: 600
+render_timeout_s: 1200

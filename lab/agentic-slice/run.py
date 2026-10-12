@@ -48,9 +48,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 LAB = Path(__file__).resolve().parent
-sys.path.insert(0, str(LAB))  # handover.py and media.py sit next to this file (tests load run.py by path)
-import handover  # noqa: E402
-import media  # noqa: E402
+from intel.studio import handover, media  # noqa: E402 - these two graduated into the studio package
 
 REPO = LAB.parents[1]
 RUNS = LAB / "runs"
@@ -558,7 +556,7 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
         by_job = {m["job_id"]: slot_of[m["job_id"]] for m, _ in manifests}
         try:
             contract = client.spec(cache=REPO / "data" / "lab" / "publish-spec.json")
-            report = handover.submit(client, manifests, contract, handover.load_config(),
+            report = handover.submit(client, manifests, contract, handover.load_config(handover.CONFIG),
                                      handover.MediaLedger(REPO / "data" / "lab" / "media-ledger.json"),
                                      dry_run=publish == "dry-run")  # fmt: skip
         except handover.PublishError as ex:  # every post it affected is named, never dropped silently

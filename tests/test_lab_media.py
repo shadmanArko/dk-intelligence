@@ -2,28 +2,19 @@
 variety, the reels CLI contract). Pure logic and one fake `npm`; no model, no render."""
 
 import datetime as dt
-import importlib.util
 import json
 import re
 import stat
-import sys
 from pathlib import Path
 
 import pytest
 
+from intel.studio import media
+
 LAB = Path(__file__).resolve().parents[1] / "lab" / "agentic-slice"
 
 
-def _load():  # type: ignore[no-untyped-def]
-    spec = importlib.util.spec_from_file_location("lab_media", LAB / "media.py")
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["lab_media"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-M = _load()
+M = media
 AT = "2026-10-13T17:00:00+02:00"  # a Tuesday in ISO week 42
 VIDEO = {"kind": "video", "hook": "Sealed.", "shots": [{"category": "Eating"}, {"category": "Eating"}]}
 SLIDES = {"kind": "slides", "size": "album", "slides": [{"template": "photo", "title": "a"}, {"template": "card"}]}

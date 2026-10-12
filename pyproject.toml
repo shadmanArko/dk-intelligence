@@ -133,6 +133,7 @@ module = [
     "intel.adapters.*",
     "intel.rag.pack",
     "intel.mcp_server.*",
+    "intel.studio.*",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

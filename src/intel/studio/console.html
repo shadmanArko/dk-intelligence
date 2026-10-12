@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio Console</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b16;--mute:#7a756a;--line:#e4dfd3;--ok:#2f7d4f;--run:#b7791f;--fail:#b3402f;--off:#c9c4b8;--acc:#7a3b1d}
+@media(prefers-color-scheme:dark){:root{--bg:#171512;--card:#211f1b;--ink:#efeadf;--mute:#9a9486;--line:#34312a;--ok:#5bbd83;--run:#e0a43b;--fail:#e0715f;--off:#54503f;--acc:#e0a070}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+h1{font-size:17px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:0 0 8px}
+.grow{flex:1}.pill{padding:2px 10px;border-radius:99px;background:var(--bg);border:1px solid var(--line);font-size:12px}
+select,input,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button{background:var(--acc);color:#fff;border-color:var(--acc);cursor:pointer}button:disabled{opacity:.45;cursor:default}button.ghost{background:var(--card);color:var(--ink)}
+main{padding:16px;max-width:1280px;margin:0 auto;display:grid;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stats{display:flex;flex-wrap:wrap;gap:10px}.stat{flex:1 1 130px;background:var(--bg);border-radius:10px;padding:10px 12px}.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--mute)}
+.bar{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--ok)}
+.phases{display:flex;flex-wrap:wrap;gap:8px}.ph{padding:5px 12px;border-radius:99px;border:1px solid var(--line);font-size:13px;color:var(--mute)}.ph.run{border-color:var(--run);color:var(--run)}.ph.done{border-color:var(--ok);color:var(--ok)}
+.day{margin-top:12px}.day h3{margin:0 0 6px;font-size:14px}
+.idea{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:72px 1fr;gap:12px;cursor:pointer}
+.idea img,.idea .ph0{width:72px;height:128px;border-radius:8px;object-fit:cover;background:var(--bg);border:1px solid var(--line)}
+.angle{font-weight:600}.meta{font-size:12px;color:var(--mute)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}.chip{font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid var(--line)}
+.chip.ok{border-color:var(--ok);color:var(--ok)}.chip.held{border-color:var(--fail);color:var(--fail)}.chip.wait{color:var(--mute)}
+.detail{display:none;margin-top:8px;font-size:13px}.idea.open .detail{display:block}
+.cap{background:var(--bg);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap;word-break:break-word}
+.why{color:var(--fail);font-size:12px}
+#feed{font:12px ui-monospace,monospace;max-height:260px;overflow:auto;color:var(--mute)}#feed div{white-space:pre-wrap;word-break:break-word}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}tr.row{cursor:pointer}tr.sel{background:var(--bg)}
+</style></head><body>
+<header><h1>Studio Console</h1><span class="pill" id="state">idle</span><span class="grow"></span>
+<label>mode <select id="mode"><option value="render">render (media only, nothing sent)</option><option value="dry-run">dry-run (check with the publisher)</option><option value="drafts">drafts (into your Calendar)</option></select></label>
+<label>days <input id="days" type="number" min="1" max="30" placeholder="10" style="width:64px"></label>
+<button id="go">▶ Run now</button><button id="resume" class="ghost" hidden>↻ Resume this run</button></header>
+<main>
+<section class="card"><h2 id="rtitle">What it produced</h2><div class="stats" id="stats"></div><div class="bar" id="bar" hidden><i></i></div></section>
+<section class="card"><h2>Where the run is</h2><div class="phases" id="phases"></div><div class="meta" id="plan" style="margin-top:8px"></div></section>
+<section class="card"><h2>Ideas, by day: click one for its captions</h2><div id="days_"></div></section>
+<section class="card"><h2>Live feed</h2><div id="feed"></div></section>
+<section class="card"><h2>Run history</h2><table><thead><tr><th>run</th><th>mode</th><th>status</th><th>ideas made</th><th>tokens</th><th>seconds</th></tr></thead><tbody id="hist"></tbody></table></section>
+</main>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const k=t=>t>=1e6?(t/1e6).toFixed(2)+'M':t>=1e3?Math.round(t/1e3)+'k':String(t||0);
+const OUT={rendered:'media ready',valid:'valid (dry run)',drafted:'draft in Calendar',replayed:'already a draft'};
+let cur=null,after=0,open=new Set(),timer=null;
+function chips(i){const ok=new Set(i.outcome?i.outcome.platforms:[]);const have=new Set([...Object.keys(i.captions),...Object.keys(i.options)]);
+ return i.platforms.map(p=>{const h=i.holds[p]||i.holds['*'];const cls=ok.has(p)?'ok':h?'held':have.has(p)?'ok':'wait';
+  return `<span class="chip ${cls}" title="${esc(h?h.why:i.slots[p])}">${cls==='ok'?'✓':cls==='held'?'✕':'…'} ${p} ${esc((i.slots[p]||'').slice(11,16))}</span>`}).join('')}
+function card(i){const held=i.holds['*'];
+ const caps=Object.entries(i.captions).map(([p,t])=>`<div class="meta">${p}</div><div class="cap">${esc(t)}</div>`).join('')+
+  Object.entries(i.options).filter(([p,o])=>o.title).map(([p,o])=>`<div class="meta">${p} title and description</div><div class="cap">${esc(o.title)}\n${esc(o.description||'')}</div>`).join('');
+ const why=Object.entries(i.holds).map(([p,h])=>`<div class="why">${p==='*'?'whole idea':p}: ${esc(h.why)}</div>`).join('');
+ return `<div class="idea ${open.has(i.id)?'open':''}" onclick="tog('${i.id}')">${i.thumb?`<img src="${i.thumb}" alt="">`:'<div class="ph0"></div>'}
+ <div><div class="angle">${esc(i.angle||(held?'(no angle)':'planning…'))}</div>
+ <div class="meta">${esc(i.id)} · ${esc(i.format)} · ${esc(i.window.replace('_',' '))} · ${esc(i.pillar||'')} · ${held?'held':esc(OUT[i.outcome?.state]||i.stage)}</div>
+ <div class="chips">${chips(i)}</div><div class="detail">${i.hook?`<div class="meta">picture: ${esc(i.hook)}</div>`:''}${caps}${why}</div></div></div>`}
+function tog(id){open.has(id)?open.delete(id):open.add(id);draw(window.V)}
+function draw(v){if(!v)return;window.V=v;const n=v.ideas.length,done=v.ideas.filter(i=>i.outcome).length;
+ const posts=v.ideas.reduce((a,i)=>a+(i.outcome?i.outcome.platforms.length:0),0),planned=v.ideas.reduce((a,i)=>a+i.platforms.length,0);
+ $('rtitle').textContent=`What it produced: ${v.id} (${v.publish||'?'})`;
+ $('stats').innerHTML=[[v.status,'run status'],[`${done} of ${n}`,'ideas made'],[`${posts} of ${planned}`,'posts made'],[k(v.tokens),v.cap?`tokens of ${k(v.cap)}`:'tokens'],
+  [n?k(Math.round(v.tokens/n)):'-','tokens per idea'],[Math.round(v.seconds/60*10)/10+' min','time']].map(([b,s])=>`<div class="stat"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
+ $('bar').hidden=!v.cap;if(v.cap)$('bar').firstChild.style.width=Math.min(100,v.tokens/v.cap*100)+'%';
+ const names={};v.phases.forEach(p=>names[p.phase]=p);
+ $('phases').innerHTML=['inputs','strategist','production','handover'].map(n=>{const p=names[n];const c=!p?'':p.status==='end'?'done':'run';
+  return `<span class="ph ${c}">${n}${p&&p.seconds!=null?' · '+Math.round(p.seconds)+' s':''}</span>`}).join('');
+ $('plan').textContent=(v.plan||'')+(v.error?' · '+v.error:'');
+ const byDay={};v.ideas.forEach(i=>(byDay[i.date]=byDay[i.date]||[]).push(i));
+ $('days_').innerHTML=Object.entries(byDay).map(([d,l])=>`<div class="day"><h3>${new Date(d+'T12:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</h3>${l.map(card).join('')}</div>`).join('')||'<div class="meta">no ideas yet</div>';
+ v.dropped.forEach(d=>{$('days_').insertAdjacentHTML('beforeend',`<div class="why">${esc(d.slot_id)} ${esc(d.date)}: ruled out. ${esc(d.why)}</div>`)});
+ $('resume').hidden=!(v.status==='stopped'||v.status==='failed')||v.ideas.every(i=>i.outcome||i.holds['*']);
+}
+async function load(){if(!cur)return;const v=await (await fetch('/api/runs/'+cur)).json();draw(v);
+ const e=await (await fetch(`/api/runs/${cur}/events?after=${after}`)).json();after=e.next;
+ for(const x of e.events){const d=document.createElement('div');const extra=Object.entries(x).filter(([a])=>!['t','ms','node','kind'].includes(a)).map(([a,b])=>a+'='+(typeof b==='object'?JSON.stringify(b).slice(0,80):b)).join(' ');
+  d.textContent=`${(x.ms/1000).toFixed(0).padStart(5)}s ${x.node.padEnd(20)} ${x.kind} ${extra.slice(0,160)}`;$('feed').prepend(d)}}
+async function refresh(){const r=await (await fetch('/api/runs')).json(),s=await (await fetch('/api/status')).json();
+ $('go').disabled=!!s.running;$('state').textContent=s.running?'running '+s.running:'idle';
+ $('hist').innerHTML=r.map(x=>`<tr class="row ${x.id===cur?'sel':''}" onclick="pick('${x.id}')"><td>${x.id}</td><td>${x.publish||''}</td><td>${x.status}</td><td>${x.ideas}</td><td>${(x.tokens||0).toLocaleString()}</td><td>${x.seconds}</td></tr>`).join('');
+ if(s.running&&cur!==s.running)pick(s.running);else if(!cur&&r.length)pick(r[0].id);else load()}
+function pick(id){cur=id;after=0;$('feed').innerHTML='';open.clear();load()}
+$('go').onclick=async()=>{const mode=$('mode').value;let confirm=false;
+ if(mode==='drafts'){if(!window.confirm('This creates DRAFTS in your Calendar for you to approve. Nothing is posted without your approval. Continue?'))return;confirm=true}
+ const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publish:mode,days:+$('days').value||null,confirm})});
+ if(!r.ok)alert((await r.json()).detail);setTimeout(refresh,1500)};
+$('resume').onclick=async()=>{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publish:window.V.publish||'render',resume:cur,confirm:window.V.publish==='drafts'})});
+ if(!r.ok)alert((await r.json()).detail);setTimeout(refresh,1500)};
+refresh();timer=setInterval(refresh,2500);
+</script></body></html>

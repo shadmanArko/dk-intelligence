@@ -1,0 +1,17 @@
+# When posts go out. The three windows are the owner's practical posting windows (Berlin time) from the brand playbook:
+# lunch 11:00-12:00, pre_dinner 16:30-17:30, evening 19:30-21:00 (delivery orders peak at 18:00). Each platform gets
+# its own minute inside a window, so the same idea does not land everywhere at the same second.
+
+timezone: Europe/Berlin
+
+# The order of preference when the content scorer cannot decide (it only knows Facebook and Instagram).
+windows: [pre_dinner, lunch, evening]
+
+# The scorer (dk_intel's posting-times model) is asked about every window for the primary platform, and the day's ideas
+# are assigned to the windows that score best; an idea whose every window is below the bar is reported, not written.
+times:
+  instagram: {pre_dinner: "17:00", lunch: "11:30", evening: "20:00"}
+  facebook:  {pre_dinner: "17:15", lunch: "11:45", evening: "19:45"}
+  tiktok:    {pre_dinner: "17:30", lunch: "11:15", evening: "20:15"}
+  youtube:   {pre_dinner: "16:45", lunch: "11:20", evening: "20:30"}
+  threads:   {pre_dinner: "16:30", lunch: "11:00", evening: "20:45"}

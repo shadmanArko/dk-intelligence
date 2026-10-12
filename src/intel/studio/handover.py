@@ -36,9 +36,8 @@ from typing import Any
 
 import httpx
 
-LAB = Path(__file__).resolve().parent
-REPO = LAB.parents[1]
-CONFIG = LAB / "handover.json"
+REPO = Path(__file__).resolve().parents[3]
+CONFIG = REPO / "lab" / "agentic-slice" / "handover.json"  # the lab's defaults; the studio passes its own (routes.yaml)
 BATCH_MAX = 20  # the contract: up to 20 posts per batch
 SUPPORTED_SPEC = "publishing-spec/v1"  # contracts/registry.yaml publishing.spec
 SUPPORTED_MANIFEST = 1  # contracts/registry.yaml reels.manifest
@@ -49,7 +48,8 @@ GONE_MEDIA = {"media_expired", "unknown_media"}  # the server no longer has a fi
 BACKOFF = (0.5, 1.5, 4.0)
 
 # What each kind of render becomes on each platform: (render kind, size or format) → platform → publishing format.
-# One 9:16 master serves every short-video platform; the publisher makes its own renditions.
+# One 9:16 master serves every short-video platform; the publisher makes its own renditions. These are the lab's
+# defaults; the studio keeps its own table as data (config/studio/routes.yaml) and passes it in cfg["routes"].
 ROUTES: dict[tuple[str, str], dict[str, str]] = {
     ("video", "9:16"): {
         "instagram": "reel",
@@ -101,6 +101,7 @@ class Report:
     replayed: list[str] = field(default_factory=list)  # post_keys that already existed
     held: list[Held] = field(default_factory=list)
     failed: list[dict[str, Any]] = field(default_factory=list)  # refused by the API: post_key + problems
+    variants: dict[str, list[str]] = field(default_factory=dict)  # post_key → the platforms its post carries
     dry_run: bool = False
 
     def as_dict(self) -> dict[str, Any]:
@@ -111,6 +112,7 @@ class Report:
             "replayed": self.replayed,
             "held": [h.as_dict() for h in self.held],
             "failed": self.failed,
+            "variants": self.variants,
         }
 
 
@@ -232,22 +234,28 @@ class PublishClient:
         return str(media_id)
 
     def batch(self, posts: list[dict[str, Any]], dry_run: bool) -> dict[str, Any]:
-        return self._call("POST", "/v1/posts/batch", json={"dry_run": dry_run, "posts": posts}).json()
+        out: dict[str, Any] = self._call("POST", "/v1/posts/batch", json={"dry_run": dry_run, "posts": posts}).json()
+        return out
 
     def post(self, post_key: str) -> dict[str, Any] | None:
         """GET /v1/posts/{post_key}: the post, or None when there is none (so a slot isn't made twice)."""
         try:
-            return self._call("GET", f"/v1/posts/{post_key}").json()
+            found: dict[str, Any] = self._call("GET", f"/v1/posts/{post_key}").json()
+            return found
         except PublishError as e:
             if e.status == 404:
                 return None
             raise
 
     def overview(self, days_back: int = 7, days_ahead: int = 14) -> dict[str, Any]:
-        return self._call("GET", "/v1/overview", params={"days_back": days_back, "days_ahead": days_ahead}).json()
+        out: dict[str, Any] = self._call(
+            "GET", "/v1/overview", params={"days_back": days_back, "days_ahead": days_ahead}
+        ).json()
+        return out
 
     def calendar(self, **filters: Any) -> dict[str, Any]:
-        return self._call("GET", "/v1/calendar", params=filters).json()
+        out: dict[str, Any] = self._call("GET", "/v1/calendar", params=filters).json()
+        return out
 
 
 # ---------- media: upload once per file content ----------
@@ -256,13 +264,16 @@ class PublishClient:
 class MediaLedger:
     """content hash → media_id, so a re-run (or a second platform) never uploads the same file twice."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, fresh_days: int = MEDIA_FRESH_DAYS):
         self.path = path
+        self.fresh_days = (
+            fresh_days  # the studio sets horizon_days + 4 (a plan can be handed over days after it renders)
+        )
         self.data: dict[str, dict[str, Any]] = json.loads(path.read_text()) if path.exists() else {}
 
     def get(self, sha: str, now: dt.datetime) -> str | None:
         e = self.data.get(sha)
-        if e and now - dt.datetime.fromisoformat(e["at"]) < dt.timedelta(days=MEDIA_FRESH_DAYS):
+        if e and now - dt.datetime.fromisoformat(e["at"]) < dt.timedelta(days=self.fresh_days):
             return str(e["media_id"])
         return None
 
@@ -359,26 +370,32 @@ def plan_post(
     if not platforms:
         hold(None, "no_platforms", "the spec names no platforms to publish on")
         return None, held
-    at = publish.get("at")
-    try:
-        slot = dt.datetime.fromisoformat(at) if at else None
-    except ValueError:
-        slot = None
-    if slot is None or slot.tzinfo is None:
-        hold(None, "bad_slot", "the slot is missing or has no UTC offset (e.g. 2026-10-14T16:30:00+02:00)")
-        return None, held
-    why = _within(slot, now, spec["post"]["slot"])
-    if why:
-        hold(None, "slot_window", why)
-        return None, held
+    own_slots = publish.get("slots") or {}  # a cross-post: each platform has its own time (publish.slots[platform])
+
+    def slot_of(platform: str) -> tuple[dt.datetime | None, str]:
+        at = own_slots.get(platform) or publish.get("at")
+        try:
+            slot = dt.datetime.fromisoformat(at) if at else None
+        except ValueError:
+            slot = None
+        if slot is None or slot.tzinfo is None:
+            return None, "the slot is missing or has no UTC offset (e.g. 2026-10-14T16:30:00+02:00)"
+        return slot, ""
 
     ks = _kind_size(manifest)
-    routes = ROUTES.get(ks or ("", ""), {})
+    routes = (cfg.get("routes") or ROUTES).get(ks or ("", ""), {})
     variants: list[dict[str, Any]] = []
     for platform in platforms:
         info = spec["platforms"].get(platform)
         if info is None:
             hold(platform, "platform_off", f"{platform} is not switched on in the publisher")
+            continue
+        slot, slot_why = slot_of(platform)
+        if slot is None:
+            hold(platform, "bad_slot", slot_why)
+            continue
+        if why := _within(slot, now, spec["post"]["slot"]):
+            hold(platform, "slot_window", why)
             continue
         fmt = routes.get(platform)
         names = _files_for(manifest, ks) if ks else []
@@ -467,6 +484,25 @@ class _Expired(Exception):
         self.media_ids = media_ids
 
 
+def warm_uploads(client: PublishClient, manifest: dict[str, Any], folder: Path, spec: dict[str, Any],
+                 cfg: dict[str, Any], ledger: MediaLedger, now: dt.datetime | None = None) -> list[str]:  # fmt: skip
+    """Upload what one job needs as soon as it is rendered (the studio's pipeline: the next render runs while this
+    uploads). The same cheap gates as the real handover run first, so a job that will be held uploads nothing. The final
+    `submit` finds every file in the ledger and uploads nothing again. Returns the file names uploaded."""
+    now = now or dt.datetime.now(dt.UTC)
+    names = _needed_files(manifest)
+    probe, _ = plan_post(manifest, {n: "probe" for n in names}, spec, cfg, now)
+    if probe is None:
+        return []
+    done: list[str] = []
+    for name in names:
+        sha = _sha(folder / name)
+        if ledger.get(sha, now) is None:
+            ledger.put(sha, client.upload(folder / name), now)
+            done.append(name)
+    return done
+
+
 def submit(
     client: PublishClient,
     jobs: list[tuple[dict[str, Any], Path]],
@@ -520,6 +556,7 @@ def _run(
         post, _ = plan_post(manifest, media, spec, cfg, now)
         assert post is not None
         posts.append(post)
+        report.variants[post["post_key"]] = [v["platform"] for v in post["variants"]]
 
     def send(chunk: list[dict[str, Any]], dry: bool) -> dict[str, dict[str, Any]]:
         results = {r["post_key"]: r for r in client.batch(chunk, dry)["results"]}

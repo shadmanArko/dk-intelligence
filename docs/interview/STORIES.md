@@ -655,3 +655,36 @@ orchestrator runs on the same Mac as the footage, so a queue would only add a fa
 becomes the right answer the day the orchestrator moves. I also did not claim live verification: nothing has touched the
 real publisher yet (no key), so the bridge is proven against a fake that enforces the contract, and the first live run is
 a dry run.
+
+## S2 · Scaling an agent system from 3 posts to 150, and letting three real runs, not the tests, tell me what was wrong
+
+**Situation.** The lab made 3 posts for one platform. The owner wanted 3 ideas a day, each adapted to five platforms,
+150 posts per 10 days, approved on one page a day, at €0 and with nothing posted without a human.
+
+**Task.** Make the system 10x bigger without making it 10x more expensive, less safe, or impossible to debug, and prove
+it on the real model, renderer and publisher rather than on fakes.
+
+**Action.**
+- **Graduated the lab into a package with four ports** (tools, agent runner, renderer, publisher) and every limit as a
+  YAML line validated at load, so the next platform, the next format or a cheaper model is a change in one place.
+- **One idea, one master, five native posts:** a copywriter, then one adapter call that writes all five platforms' texts,
+  then one designer, then one render. Three AI calls per idea instead of seven. Platform rules reach the adapter as data
+  from the publisher's own contract, never from its prompt.
+- **Safety and cost as code:** a token cap that stops new calls and names every idea it missed, a call cap per idea, a
+  state file so a stopped run resumes without paying twice, renders strictly one at a time with uploads overlapping the
+  next render, a persistent connection per tool server.
+- **Ran it for real three times on the same frozen inputs** and read what held. Run 1: 96 of 130 posts. The traces
+  showed the agents didn't know the platforms' limits, wrote a whole video about a menu item the owner hadn't confirmed
+  (my new brand rule blocked it), and that the checker's German-line heuristic rejected obviously German captions. I
+  fixed the task, the agents' knowledge and the checker, each with a test.
+
+**Result.** 26 of 26 plannable ideas, **128 of 130 posts validated by the real publisher**, 541k tokens (4.2k per post,
+14 minutes), 0 tokens for every checking, rendering and uploading step. The designer is half the cost, so it is the first
+candidate for a cheaper model. The scorer ruled out 4 of 30 slots (a Thursday's second reel scores 51%): that goes to the
+owner as a calendar decision, not hidden by a fallback.
+
+**Trade-off I would defend.** I did not tune the adapter until its five texts sounded different: they obey the limits but
+are close to each other, and nothing yet measures which is better. I wrote that down as the finding that drives the next
+milestone (a per-platform performance playbook) instead of optimising a caption score that can't see wording. I also
+didn't create drafts in the owner's Calendar from a 10-day run: that waits for the review page, because approving 130
+posts one by one in a spreadsheet is the thing the page exists to fix.
