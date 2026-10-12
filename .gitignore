@@ -12,3 +12,6 @@ mlflow.db
 .coverage
 coverage.xml
 htmlcov/
+# lab: run logs and the demo publisher's output are local
+lab/agentic-slice/runs/
+lab/agentic-slice/proposals.json

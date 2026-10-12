@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "dk_intel_planner": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--quiet", "--directory", "${CLAUDE_PROJECT_DIR:-.}/../..", "intel", "mcp", "serve", "--profile", "planner"]
+    },
+    "dk_intel_writer": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--quiet", "--directory", "${CLAUDE_PROJECT_DIR:-.}/../..", "intel", "mcp", "serve", "--profile", "writer"]
+    },
+    "demo_publisher": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--quiet", "--directory", "${CLAUDE_PROJECT_DIR:-.}/../..", "python", "lab/agentic-slice/demo_publisher/server.py"]
+    }
+  }
+}
