@@ -9,7 +9,8 @@ interview showcase (ML-engineering leadership).
 and apply it (applied practices by default; the "not yet" list where its trigger is met); add what each measured
 change teaches.
 
-**New session, new account or new chat? Read [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) first** (both repos,
+**New session, new account or new chat? Read [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) first, then
+[docs/PHASE5_BUILD_GUIDE.md](docs/PHASE5_BUILD_GUIDE.md)** (both repos,
 where we stopped, what comes next). **Then read [docs/HANDOFF.md](docs/HANDOFF.md)**: current state, open items, decisions waiting
 for the owner, and the next task (Phase 5: agents). Then the [architecture](docs/ARCHITECTURE.md) and the
 [decision records](docs/adr/README.md) as needed.
@@ -21,8 +22,8 @@ for the owner, and the next task (Phase 5: agents). Then the [architecture](docs
 | 2 (2.1–2.6) | models that help sell: reach, weakness miner, community map, occasions, funnel, creators | done |
 | 3 (H0–H11) | MLOps hardening ([plan](docs/PHASE3_MLOPS_PLAN.md)) | done, except **H10 (GDPR) on PR #4, unmerged by the owner's choice** |
 | 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; dk_intel live on the VPS since 2026-10-12 |
-| **M8** | the lab makes the media: designer agent → render → drafts at dk-publishing ([results](docs/results/M8_media_pipeline.md), ADR 0031) | built, on branch `feat/m8-reels-handover`, not pushed or live-verified |
-| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | **S0 in progress** |
+| **M8** | the lab makes the media: designer agent → render → drafts at dk-publishing ([results](docs/results/M8_media_pipeline.md), ADR 0031) | done (merged; first live draft 2026-10-12) |
+| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | S0 + S1 done; **S2 next** ([build guide](docs/PHASE5_BUILD_GUIDE.md)) |
 
 Older docs (PHASE1_PLAN.md, PHASE2_PLAN.md) say "MCP is Phase 3". That was renumbered on 2026-10-08: Phase 3 became
 MLOps hardening.

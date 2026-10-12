@@ -1,141 +1,137 @@
-# Session handoff (2026-10-12): dk-intelligence + dk-publishing, everything a new session needs
+# Session handoff (updated 2026-10-12, late evening): read this first
 
-For a new Claude session, a different account or another chat. Read this page first, then each repo's `CLAUDE.md`.
-Nothing here is secret; keys, tokens and server addresses are never written in docs or chat.
+For a new Claude session, a **different Claude account** or another chat. Everything needed to continue lives in
+the repos: this page (the state and the owner), [PHASE5_BUILD_GUIDE.md](PHASE5_BUILD_GUIDE.md) (how to finish every
+remaining milestone), [PHASE5_CONTENT_STUDIO_PLAN.md](PHASE5_CONTENT_STUDIO_PLAN.md) (the approved plan), each repo's
+`CLAUDE.md` (rules), and the ADRs. Nothing here is secret. Keys, tokens and server addresses are never written in
+docs or chat.
+
+**If you are picking this up: read this page, then the build guide, then start S2 (build guide §4).** The owner
+approved the whole plan ("go, full permission"). Don't re-ask what is decided; report at milestone boundaries.
 
 ## 1. The owner and how to work with them
 - Shadman Arko runs **Dhaka Kacchi Berlin**, an online kacchi biryani kitchen, and builds all of its tech. This is also
-  their interview showcase for leading ML engineering.
-- They voice-type in informal English. Read for intent: "rack" or "rag" means RAG, and "go", "yes" or "start" means
-  go ahead.
-- They want **a clear recommendation and an order, not a menu**, short answers in plain words (no abbreviations), and
-  pages they can see.
-- At the end of a task: verify it yourself (tests, CI, deploy), then report the result plus **only** what needs their
-  decision.
-- Server (VPS) work is copy-paste steps **they** run. Each step starts with a `cd` and says what output to expect and
-  what to paste back. Secrets are typed with `read -rs`, never pasted into chat.
+  their interview showcase for leading ML engineering: build it like a production system, with measured results.
+- They voice-type in informal English. Read for intent: "rack" or "rag" means RAG; "go", "yes" or "start" means go
+  ahead.
+- They want **a clear recommendation and an order, not a menu**, short answers in plain words with no abbreviations,
+  and visual pages they can see (published artifacts, the Agent Console).
+- At the end of a task: verify it yourself (tests, CI, the deploy), then report the result plus **only** what needs
+  their decision. Don't make them wait on long foreground polls: watch CI in the background.
+- Server work is copy-paste steps **they** run (Claude never gets a shell on the VPS). Each step starts with a `cd`
+  and says what output to expect and what to paste back. Secrets are typed with `read -rs`, never pasted in chat.
+- When they ask "where is X?", show it: send the file (for example the rendered video) or give the exact path.
 
-## 2. The three projects (sibling folders under `Dhaka Kacchi/`)
-| Folder | Repo | Visibility | What it is |
+## 2. The four projects (sibling folders under `Dhaka Kacchi/`)
+| Folder | Repo | Visibility | Owns |
 |---|---|---|---|
-| `dk-intelligence` | shadmanArko/dk-intelligence | **private** | the ML platform: 7 models, the Sunday training run, intel-api on the VPS, the **dk_intel MCP server** (read-only knowledge, RAG), the agent **lab** |
-| `dk-publishing` | shadmanArko/dk-publishing | **public** | the social publishing pipeline: Google Sheet + HTTP API → Postgres → Dagster → platform adapters; never posts twice; **dk_publish MCP endpoint** |
-| `dhaka-kacchi-reels` | local git only (no remote yet) | private (to be) | the content engine: Remotion renders reels and slides from a JSON ContentSpec on the Mac; the **`dk_reels` MCP server**; read its `HANDOFF.md`, `CLAUDE.md`, `JOBS.md` |
-| `dhaka_kacchi_ai_harness` | (public) | public | the live ordering system on the same VPS. Read only, and only when needed. **Never touch its PR #2.** |
+| `dk-intelligence` | shadmanArko/dk-intelligence | **private** | 7 ML models, the Sunday training run, intel-api on the VPS, the **dk_intel MCP server** (18 tools: knowledge, brand rules and facts, the post checker), the **agent lab / studio**, the contracts registry. **Pushing to `main` deploys** (CI). |
+| `dk-publishing` | shadmanArko/dk-publishing | **public** | publishing to Facebook, Instagram, Threads and YouTube (live), TikTok (assisted: a Telegram card to the owner); the Calendar approval; the API and MCP below. Deploys are manual (`make deploy`, run by the owner). |
+| `dhaka-kacchi-reels` | shadmanArko/dhaka-kacchi-reels | **private** (created 2026-10-12) | rendering on the Mac (Remotion): one JSON ContentSpec → reel or slides; footage and music indexes; the **dk_reels MCP server** (creative and ops profiles). |
+| `dhaka_kacchi_ai_harness` | (public) | public | the live ordering system and the warehouse (orders, per-post social metrics, tracked links). Read only. **Never touch its PR #2.** |
 
-The rules that must not be broken are in each repo's `CLAUDE.md`. The most important:
-- dk-intelligence: Claude never gets a shell on the VPS; read-only on the warehouse; pushing to `main` deploys
-  (CI); next free ADR **0031**.
-- dk-publishing: `make check` before every commit; deploys are manual (`make deploy` / `make deploy-secrets`,
-  run by the owner); migrations only forward; never post twice; platform names only in `adapters/platforms/` and
-  `config/`; the repo is **public**, so no server addresses, tailnet names or secrets; next free ADR **0025**.
-- Both: €0 running cost, no paid AI APIs unless the owner decides; never delete the owner's data without consent.
+The most important rules (full lists in each `CLAUDE.md`):
+- **dk-intelligence:** no VPS shell; read-only on the warehouse; secrets only in `.env`; next free ADR **0034**;
+  migrations additive; ratchets only rise.
+- **dk-publishing:** `make check` before every commit (read its exit code; don't pipe it through `tail`); never post
+  twice; platform names only in `adapters/platforms/` and `config/`; next free ADR **0025**; public repo, so no
+  addresses or secrets. Read its `CLAUDE.md`, `HANDOFF.md` and `docs/CHANGE-MAP.md` before changing it.
+- **reels:** Remotion pinned 4.0.528; `npx tsc -p .`, `npm test` and `npm run regress` before claiming success;
+  never commit media; the two `index/*.schema.json` files are contracts (add fields only).
+- **All:** €0 running cost, no paid AI APIs; never delete the owner's data without consent; never commit the owner's
+  uncommitted edits.
 
-## 3. Where things stand (2026-10-12, evening)
+### dk-publishing for agents (ADR 0024 there; live since 2026-10-12)
+- `GET /v1/spec`: every platform rule, versioned (ETag), with an example and a JSON Schema per format.
+- `GET /v1/overview` and `GET /v1/calendar`: status of every post, read only.
+- `POST /v1/posts/batch`: up to 20 posts, always drafts, safe to resend.
+- **MCP at `https://publish.dhakakacchi.com/mcp/`** with the same keys:
+  - a read key gets `publishing_overview`, `list_posts`, `get_post`, `publishing_spec`;
+  - a draft key also gets `submit_posts`, `cancel_post`;
+  - there is **no approve tool**.
+- `dk api mcp-config --client …` prints client settings.
+- Eval (its `docs/evals/`): code hands over 6 posts for 0 AI tokens; an agent over MCP did 6 of 6 jobs right.
+- Its own open items (its `HANDOFF.md`): the next content batch, which new platform, a performance report.
 
-### dk-intelligence (`main` = `f1d5cee`; branch `feat/m8-reels-handover` = M8, local only)
-- **Phases 1–4 are done.** Phase 4 (MCP + RAG): dk_intel has been live on the VPS since 2026-10-12. The full status
-  line per milestone is in [HANDOFF.md](HANDOFF.md). Phase 3's H10 (GDPR) is on PR #4, unmerged by the owner's choice.
-- **The agent lab** (`lab/agentic-slice/`, PR #18 merged) is a small multi-agent system:
-  - code is the orchestrator: fetch (code) → planner (AI, one turn) → 3 writers in parallel (AI) → re-check and
-    propose (code);
-  - it uses two MCP servers: dk_intel, and a **toy** `demo_publisher`;
-  - the Agent Console (`uv run python lab/agentic-slice/console.py` → http://127.0.0.1:8770) has a live graph,
-    "What it produced" cards per post, and a Run button;
-  - `eval.py` freezes a week and compares versions.
+## 3. Where things stand
 
-  Measured: **377k → 21k tokens per run**, 35 seconds, every post that can pass proposed. The full story is in
-  [lab README](../lab/agentic-slice/README.md).
-- **[AGENTIC_PLAYBOOK.md](AGENTIC_PLAYBOOK.md)** holds the cost and quality rules from the lab. `CLAUDE.md` says to apply
-  it to **any** agent system, and to add each measured lesson.
-- **Known finding:** the content scorer judges format and posting time, not the words of a caption. The Saturday
-  12:00 carousel slot fails with any caption, which is a calendar problem.
-- **M8 (2026-10-12, branch `feat/m8-reels-handover`):** `--publish render|dry-run|drafts`; the designer agent;
-  `media.py`, `handover.py`; console cards with thumbnails. Real runs found and fixed a 3.5 GB-per-run disk leak, a
-  dry-run cache bug, loud music failing QA and a missing outcome event. Not yet run against the live publisher.
+### Phases 1–4: done
+dk_intel (MCP + RAG) has been live on the VPS since 2026-10-12; detail is in [HANDOFF.md](HANDOFF.md).
 
-### dk-publishing (`main` = `e0297dd`)
-- Facebook, Instagram, Threads and YouTube are live. TikTok is assisted (a Telegram card to the owner). LinkedIn, X
-  and Reddit are not built; the owner hasn't chosen.
-- **New today (ADR 0024, PR #1 merged, deployed and smoke-tested by the owner):**
-  - `GET /v1/spec`: the publishing contract. Every rule per platform and format, generated from the checking code,
-    versioned (ETag), with an example and a JSON Schema per format.
-  - `GET /v1/overview` and `GET /v1/calendar`: status of **every** post, the Sheet's too, read only.
-  - `POST /v1/posts/batch`: up to 20 posts. Always drafts, safe to resend, media may be https links.
-  - **MCP at `https://publish.dhakakacchi.com/mcp/`** with the same API keys:
-    - a read key gets `publishing_overview`, `list_posts`, `get_post`, `publishing_spec`;
-    - a draft key also gets `submit_posts`, `cancel_post`;
-    - there is **no approve tool**: the owner approves in the Sheet's Calendar tab.
+### Phase 5: the Content Studio (approved 2026-10-12)
+The target: **3 ideas a day × 5 platforms = 150 posts every 10 days**, one idea adapted natively per platform,
+approved on one review page a day, the owner's own footage indexed by the system. Visual version of the plan:
+https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc.
 
-    It's opt-in through `"mcp": {"enabled": true}` in the owner's `dk.json`, and that is on.
-  - `dk api mcp-config --client claude-code|claude-desktop|cursor|langchain|openai-agents` prints client settings.
-    The key appears only as `DK_PUBLISH_KEY`.
-  - Eval: [docs/evals/2026-10-12-publishing-mcp.md](../../dk-publishing/docs/evals/2026-10-12-publishing-mcp.md).
-    Code hands over 6 posts for 0 AI tokens; an agent over MCP did 6 of 6 jobs right, 51k tokens in all.
-- **Its own open items** are in `dk-publishing/HANDOFF.md`:
-  - the content plan ends 15 Oct, so the owner needs the next batch;
-  - which new platform to build;
-  - a performance report.
+| Milestone | Status | Where |
+|---|---|---|
+| M8 media pipeline (designer agent → reels render → drafts at dk-publishing) | **done**, merged (PR #19) | ADR 0031, [results](results/M8_media_pipeline.md) |
+| **S0** safety and one truth | **done** | ADR 0032; PRs #19 and #24 |
+| **S1** contracts between the projects | **done** | ADR 0033; PR #20; `contracts/` |
+| **S2** the studio at full scale | **next** | build guide §4 S2 |
+| S3 the daily review page (dk-publishing) | to do | build guide §4 S3 |
+| S4 the learning loop | to do (after S2, parallel with S5) | build guide §4 S4 |
+| S5 production breadth (templates, footage curator, template engineer) | to do | build guide §4 S5 |
+| S6 unattended (schedule, earned autonomy, model choice) | to do | build guide §4 S6 |
 
-## 4. What to do next, in this order
-**Phase 5 = the Content Studio**, approved by the owner on 2026-10-12. Plan:
-[PHASE5_CONTENT_STUDIO_PLAN.md](PHASE5_CONTENT_STUDIO_PLAN.md); visual version:
-https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc. The target is 3 ideas a day, each adapted natively to 5 platforms
-(150 posts every 10 days), approved on one daily review page, using the owner's own footage, which the system indexes.
-Milestones S0 → S1 → S2 → S3 run in order; S4 and S5 run in parallel after S2; S6 comes last.
+**What S0 did:**
+- reels got a private remote;
+- dk_intel rules 1.1 (`UNVERIFIED_CLAIM` for invented process claims, cooking times and "new in Berlin";
+  `PORTION_CLAIM`);
+- the designer prompt holds no copy of the rules;
+- reels price slides show only prices code fills from confirmed facts (before, three hard-coded prices skipped the
+  checker);
+- **the first live run.**
 
-**S0 (safety and one truth), status 2026-10-12:**
-- done: reels backed up to the private repo `shadmanArko/dhaka-kacchi-reels`;
-- done: brand rules have one owner (ADR 0032): `UNVERIFIED_CLAIM` and `PORTION_CLAIM` are in dk_intel, the designer
-  prompt holds no rule list, and reels price slides show only confirmed prices filled by code;
-- done: milestone 8 is merged;
-- done (2026-10-12): the first live check, with the owner's draft key in `.env`.
-  - A full `--publish dry-run` ran on live data: planner, 2 writers, 2 designers, every word checked, 2 reels rendered
-    (23 s and 33 s).
-  - It exposed three bugs, all fixed with tests:
-    1. 18–20 MB uploads timed out on the owner's line (measured 224 KB/s); uploads now stream in 256 KB chunks;
-    2. a failed handover dropped its posts from the report; every affected post is now named;
-    3. a publisher that was down at start crashed the run; it is now checked before any AI is spent.
-  - Then the two renders were handed over: the dry run validated both against the real publisher, and **one real
-    draft (`2026w42-ig-tue1700-s1`) waits for the owner's approval in the Calendar**.
-  - s2 was not sent: its caption says "smoky lamb kacchi is back", but `facts.yaml` lists the lamb box's
-    availability as unknown, and no rule checks availability claims yet (an S2 item: a facts-driven "item not
-    confirmed available" rule).
+The live run (2026-10-12) designed, checked and rendered 2 reels on live data. It found 3 bugs, all fixed with tests:
+1. streamed uploads (the owner's line does 224 KB/s, so a reel takes 80 s; a single write timed out);
+2. no silent drops when the handover fails;
+3. the publisher is checked before any AI.
 
-**S1 (contracts), status 2026-10-12: done** (ADR 0033).
-- `contracts/registry.yaml` lists every cross-project link, with pinned copies in `contracts/pinned/`.
-- `uv run intel contracts sync [--check]` compares the pins with the owners' current versions.
-- `tests/test_contracts.py` checks that every lab spec, handover batch and manifest fixture matches the pins, and that
-  the versions agree.
-- Every run checks versions first: dk_reels `list_templates.contracts`, and the publisher's `spec`. A mismatch stops
-  the run before any AI.
-- reels: the manifest is a zod schema checked before every write, and both schemas are exported; the reels
-  `CLAUDE.md` records the owner rules.
-- dk-publishing: the change map records that `/openapi.json` and `/v1/spec` are pinned by consumers.
+**One real draft, `2026w42-ig-tue1700-s1` (Instagram reel, 13.10.2026 17:00 Berlin), waits for the owner in the
+Calendar tab.** The video is in `dhaka-kacchi-reels/out/jobs/2026w42-ig-tue1700-s1/`. The second reel was held on
+purpose: it claims "smoky lamb kacchi is back", but the lamb box's availability is unknown in facts.yaml. A rule for
+that is part of S2.
 
-The settings-as-data part (content plan, platform mix, routes, budgets) moved to **S2**, because the lab becomes a
-package there.
+**What S1 did:**
+- `contracts/registry.yaml` with pinned copies (reels content spec and manifest, dk-publishing's API);
+- `uv run intel contracts sync [--check]`;
+- `tests/test_contracts.py`;
+- run-time version checks (dk_reels `list_templates.contracts`, the publisher's `spec`).
 
-**Next, S2: the studio at full scale.**
-- The lab becomes `src/intel/studio/`, with ports for the runner, renderer and publisher.
-- The settings become data files.
-- 10 days × 3 ideas × 5 platforms (idea → 5 native variants).
-- Chunking everywhere (the limit of 20), budgets, a resumable render queue, and the Run button for the full pipeline.
-- Measured on a frozen 10-day run. See the plan, §7.
+reels validates its manifest before every write. Both owner repos document "add fields only".
 
-**Still open for the owner:**
-- confirm the mutton box price and availability in `facts.yaml` (until then a price slide can show only Borhani);
-- where the daily review page lives (recommended: dk-publishing, owner-only, opened from a Telegram link);
-- the budget cap per 10-day run (recommended: about 4M tokens, alert at 80%).
+### Measured so far (for planning and the interview story)
+- **The lab:** 377k → 21k tokens per run (demo mode, v1 → v6), every passable post proposed.
+- **The media pipeline:** ~24k tokens and ~58 s per finished post. Renders take 22–33 s per reel.
+- **dk-publishing MCP eval:** code hands over 6 posts for 0 AI tokens; an agent over MCP did 6 of 6 jobs right, 51k
+  tokens in all.
+
+### Local state that isn't in git
+- dk-intelligence `.env` holds `DK_PUBLISH_URL` and `DK_PUBLISH_KEY` (a **draft** key named `content-agent`, made by the
+  owner 2026-10-12). Never print it.
+- `data/lab/` holds the ledgers and the cached publishing spec.
+- `lab/agentic-slice/runs/` holds run logs.
+- Renders are in `dhaka-kacchi-reels/out/jobs/<job_id>/`.
+
+## 4. The owner's open items
+Full list: build guide §5.
+1. Approve or reject the first draft in the Calendar.
+2. Confirm the facts: the mutton box price, and whether the lamb and taster boxes are available.
+3. Where the review page lives (S3).
+4. The token budget per run.
+5. The TikTok privacy default.
 
 ## 5. How to start a new session
-1. Open the session in `dk-intelligence`. Read this page, then `CLAUDE.md` and [HANDOFF.md](HANDOFF.md).
-2. Run the git checks from `CLAUDE.md` in **both** repos (`git status -sb`, `git log --oneline -3`, `git fetch -q`).
-   Parallel sessions have switched branches here before.
-3. For dk-publishing work, also read `dk-publishing/CLAUDE.md`, `dk-publishing/HANDOFF.md` and
-   `dk-publishing/docs/CHANGE-MAP.md`.
-4. Checks before any commit:
-   - dk-intelligence: `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`, and
+1. Open the session in `dk-intelligence`. Read this page, then [PHASE5_BUILD_GUIDE.md](PHASE5_BUILD_GUIDE.md), then
+   `CLAUDE.md`.
+2. Run the git checks in **all four** repos: `git status -sb`, `git log --oneline -3`, `git fetch -q`. Parallel
+   sessions have switched branches here before. If anything is unexpected, read `git reflog` before touching files.
+3. Checks before any commit:
+   - dk-intelligence: `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`, then
      `uv run pre-commit run --all-files`;
-   - dk-publishing: `make check`. Read its exit code; don't pipe it through `tail`.
-5. Then continue S0/S1 from §4, or follow what the owner asks.
+   - dk-publishing: `make check`;
+   - reels: `npx tsc -p .`, `npm test` and `npm run regress`.
+4. Read [AGENTIC_PLAYBOOK.md](AGENTIC_PLAYBOOK.md) before building any agent part (`CLAUDE.md` requires it).
+5. Start **S2** from build guide §4. Work in a branch, open a PR, check CI, merge (that deploys dk-intelligence),
+   report.
