@@ -62,11 +62,17 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
     delegate = next((e for e in ev if e["node"] == "orchestrator" and e["kind"] == "delegate"), {})
     planned = (ends.get("planner", {}).get("output") or {}).get("slots", [])
     items = delegate.get("slots") or [{"node": f"helper-{i + 1}", **s} for i, s in enumerate(planned[:3])]
-    lead_end = ends.get("writer-lead")
+    lead_end = ends.get("checker") or ends.get("writer-lead")  # code since v3; an agent in older runs
     lead = (lead_end or {}).get("output") or {}
     proposed = {str(x.get("slot_id")): x for x in lead.get("proposed", [])}
     skipped = {str(x.get("slot_id")): x for x in lead.get("skipped", [])}
     posts = []
+    screened = next((e for e in ev if e["node"] == "orchestrator" and e["kind"] == "screened"), {})
+    for d in screened.get("dropped", []):  # slots code ruled out before any AI: no caption can pass there
+        posts.append({"slot_id": str(d.get("slot_id")), "agent": "code", "day": d.get("day"), "date": None,
+                      "time": d.get("time"), "format": d.get("format"), "angle": None, "sources": [], "caption": None,
+                      "verdict": "rewrite", "score": d.get("score"), "rounds": 0, "tried": 0,
+                      "status": "not_planned", "why": d.get("why")})  # fmt: skip
     for it in items:
         h = ends.get(it["node"])
         out = (h or {}).get("output") or {}
@@ -80,7 +86,7 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
         elif h is None:
             status, why = "writing", ""
         elif lead_end is not None and lead_end.get("status") == "failed":
-            status, why = "failed", "the writer-lead failed before proposing it"
+            status, why = "failed", "the re-check failed before proposing it"
         else:
             status, why = "checking", ""
         posts.append({
@@ -90,6 +96,7 @@ def result_of(run_id: str, ev: list[dict[str, Any]]) -> dict[str, Any]:
             "verdict": out.get("verdict"), "score": out.get("score"), "rounds": out.get("rounds"),
             "tried": out.get("tried"), "status": status, "why": why,
         })  # fmt: skip
+    posts.sort(key=lambda p: p["slot_id"])
     return {"run": _summary(run_id, ev), "posts": posts}
 
 

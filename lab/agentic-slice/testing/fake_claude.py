@@ -11,7 +11,7 @@ import time
 args = sys.argv[1:]
 prompt = args[args.index("--system-prompt") + 1]
 task = args[args.index("-p") + 1]
-tools = args[args.index("--allowedTools") + 1].split(",")
+tools = args[args.index("--allowedTools") + 1].split(",") if "--allowedTools" in args else []
 delay = float(os.environ.get("FAKE_DELAY_S", "0.3"))
 with open(os.environ.get("FAKE_ARGS_LOG", os.devnull), "a") as f:  # what the engine passed, for the tests
     f.write(
@@ -53,12 +53,19 @@ def tool(name, inp, result):
 
 out({"type": "system", "subtype": "init", "tools": tools})
 if "PLANNER" in prompt:
-    tool(named("list_slots"), {"platform": "instagram"}, {"slots": ["s1", "s2", "s3"]})
-    tool(named("grounding_pack"), {"platform": "instagram", "days": 7}, {"occasions": []})
+    given = json.loads(task)  # the engine hands the planner its data: no tools, one turn
+    angles = ["rice", "delivery", "meat"]
     answer = {
         "slots": [
-            {"slot_id": f"s{i}", "day": d, "time": "17:00", "format": "reel", "angle": a, "sources": ["R-AAAAAAAA"]}
-            for i, (d, a) in enumerate([("Tue", "rice"), ("Thu", "delivery"), ("Sat", "meat")], start=1)
+            {
+                "id": s["slot_id"],  # `id`, not `slot_id`: as the real planner once answered
+                "day": s["day"],
+                "time": s["time"],
+                "format": s["format"],
+                "angle": a,
+                "sources": ["R-AAAAAAAA"],
+            }
+            for s, a in zip(given["slots"], angles, strict=False)
         ]
     }
 elif "WRITER helper" in prompt:
@@ -72,10 +79,11 @@ elif "WRITER helper" in prompt:
         {"drafts": [{"ref": r, "platform": "instagram", "caption": "Samstag Kacchi in Berlin"} for r in "abc"]},
         {"results": [{"verdict": "keep"}]},
     )
+    rewrite = os.environ.get("FAKE_REWRITE_SLOT") == slot
     answer = {
         "slot_id": slot,
         "caption": "Samstag gibt es Kacchi in Berlin.",
-        "verdict": "keep",
+        "verdict": "rewrite" if rewrite else "keep",
         "score": 0.6,
         "rounds": 1,
         "tried": 3,

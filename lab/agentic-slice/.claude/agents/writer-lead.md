@@ -1,6 +1,6 @@
 ---
 name: writer-lead
-description: Collects the writers' captions, keeps only checked ones, and proposes them to the publishing calendar.
+description: (Interactive /plan-week only; the engine does this step in code.) Re-checks the writers' captions and proposes the kept ones.
 tools: mcp__dk_intel_writer__evaluate_drafts, mcp__demo_publisher__propose_post
 model: haiku
 ---
