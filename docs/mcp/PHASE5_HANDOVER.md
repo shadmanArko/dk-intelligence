@@ -1,7 +1,8 @@
 # Phase 5 hand-over: what agents get from Phase 4, and what must be decided first
 
 Phase 5 builds agents (planner → writer → checker, and later ads). Phase 4 leaves them a read-only, tested
-contract. This page lists what is ready, what is missing, and the decisions only the owner can make.
+contract. This page lists what is ready, what is missing, and the decisions only the owner can make. **How to build the
+agents** (cost and quality practices, measured in the lab): [AGENTIC_PLAYBOOK.md](../AGENTIC_PLAYBOOK.md).
 
 ## Ready to use
 | For | What | Where |

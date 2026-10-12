@@ -1,0 +1,11 @@
+{
+  "note": "A toy posting calendar standing in for another product (e.g. a publishing system). Lab data only.",
+  "slots": [
+    {"id": "s1", "day": "Tue", "time": "17:00", "platform": "instagram", "format": "reel"},
+    {"id": "s2", "day": "Thu", "time": "17:00", "platform": "instagram", "format": "reel"},
+    {"id": "s3", "day": "Sat", "time": "12:00", "platform": "instagram", "format": "carousel"},
+    {"id": "s4", "day": "Wed", "time": "18:00", "platform": "facebook", "format": "image"},
+    {"id": "s5", "day": "Fri", "time": "18:00", "platform": "facebook", "format": "video"},
+    {"id": "s6", "day": "Sun", "time": "12:00", "platform": "facebook", "format": "image"}
+  ]
+}
