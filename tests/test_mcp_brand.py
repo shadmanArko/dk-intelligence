@@ -184,6 +184,17 @@ CASES = [
     ("SUPERLATIVE", {"caption": GOOD + " Die beste Kacchi Berlins"}, {}),
     ("ONLY_CLAIM", {"caption": GOOD + " Berlins einziges Old-Dhaka-Kacchi"}, {}),
     ("HALAL_UNCERTIFIED", {"caption": GOOD + " 100% halal"}, {}),
+    (
+        "UNVERIFIED_CLAIM",
+        {"caption": GOOD + " Von uns persönlich geprüft."},
+        {"caption": GOOD + " Wir bestätigen persönlich."},
+    ),
+    ("UNVERIFIED_CLAIM", {"caption": GOOD + " We personally check every Kacchi."}, {}),
+    ("UNVERIFIED_CLAIM", {"caption": GOOD + " 6 hours on dum."}, {"caption": GOOD + " Hours of patience."}),
+    ("UNVERIFIED_CLAIM", {"caption": GOOD + " Cooking since 5 a.m."}, {}),
+    ("UNVERIFIED_CLAIM", {"caption": GOOD + " New in Berlin!"}, {}),
+    ("PORTION_CLAIM", {"caption": GOOD + " Box für 2 Personen."}, {"caption": GOOD + " 1000 ml Box."}),
+    ("PORTION_CLAIM", {"caption": GOOD + " Feeds 2 people."}, {}),
     ("HEALTH_CLAIM", {"caption": GOOD + " und gesund"}, {}),
     ("ALLERGEN_CLAIM", {"caption": GOOD + " glutenfrei"}, {}),
     (

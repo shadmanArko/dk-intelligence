@@ -388,6 +388,17 @@ def screen(run: Run, platform: str, pack: dict[str, Any], slots: Rows,
     return examples[:EXAMPLES], open_, dropped
 
 
+def checked_prices(run: Run, node: str) -> list[dict[str, str]]:
+    """Code, not AI: the price rows a price slide may show (confirmed facts only, from dk_intel). On any failure:
+    none, so price slides turn into cards: a price never ships unchecked."""
+    try:
+        (facts,) = code_calls(run, node, "dk_intel_writer", [("get_facts", {"keys": ["menu"]})])
+    except Exception as ex:  # noqa: BLE001 - no facts, no prices
+        run.emit(node, "note", text=f"no confirmed prices: {_short(str(ex))}")
+        return []
+    return media.price_items(facts.get("items", []) if isinstance(facts, dict) else [])
+
+
 def recheck_captions(
     run: Run, node: str, platform: str, results: Rows, briefs: dict[str, dict[str, Any]]
 ) -> tuple[Rows, Rows]:
@@ -470,6 +481,7 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
              "dk-publishing batch"], task=f"{len(results)} captions to re-check, then make the media")  # fmt: skip
     t0 = time.monotonic()
     still, skipped = recheck_captions(run, node, platform, results, briefs)
+    prices = checked_prices(run, node)
     ledger = media.AssetLedger()
     avoid = ledger.recent()  # grows as this run's own specs are planned, so the week's posts don't share footage
     specs: dict[str, tuple[dict[str, Any], Path]] = {}  # job_id → (spec, spec file)
@@ -479,7 +491,7 @@ def make_media(run: Run, platform: str, results: list[dict[str, Any]], designs: 
         sid, b = str(r["slot_id"]), briefs[str(r["slot_id"])]
         spec, why = media.finalize_spec(designs.get(sid), jid=b["job_id"], platform=platform, slot_format=b["format"],
                                         planned_posted_at=b["planned_posted_at"], caption=r["caption"], avoid=avoid,
-                                        week_label=b["job_id"].split("-")[0])  # fmt: skip
+                                        week_label=b["job_id"].split("-")[0], prices=prices)  # fmt: skip
         if spec is None:
             skipped.append({"slot_id": sid, "why": why})
             continue

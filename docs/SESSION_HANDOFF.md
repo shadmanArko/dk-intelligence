@@ -78,31 +78,28 @@ The rules that must not be broken are in each repo's `CLAUDE.md`. The most impor
   - a performance report.
 
 ## 4. What to do next, in this order
-**Milestone 8 is built and measured, and not yet pushed or live-verified.** Results:
-[results/M8_media_pipeline.md](results/M8_media_pipeline.md); decision: ADR 0031. In short: the lab now plans, writes,
-**designs the media (a designer agent), checks, renders and hands over drafts** to dk-publishing, through the new
-`dk_reels` MCP server and `handover.py`. Two real runs on the frozen week: about 24k tokens and 58 s per finished post.
+**Phase 5 = the Content Studio**, approved by the owner on 2026-10-12. Plan:
+[PHASE5_CONTENT_STUDIO_PLAN.md](PHASE5_CONTENT_STUDIO_PLAN.md); visual version:
+https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc. The target is 3 ideas a day, each adapted natively to 5 platforms
+(150 posts every 10 days), approved on one daily review page, using the owner's own footage, which the system indexes.
+Milestones S0 → S1 → S2 → S3 run in order; S4 and S5 run in parallel after S2; S6 comes last.
 
-**Only the owner can do these (nothing below is blocked on code):**
-1. **Create a draft key** on the VPS (`dk api key-create content-agent --right draft`) and put `DK_PUBLISH_URL` and
-   `DK_PUBLISH_KEY` in `dk-intelligence/.env` (typed with `read -rs`, never pasted in chat).
-2. **Say go to push.** `feat/m8-reels-handover` (3 commits) is local only: a push to `main` deploys. The lab
-   isn't in the production image, but CI runs. Also a private GitHub repo for `dhaka-kacchi-reels` (it was not under
-   git; media stays out: `.gitignore`).
-3. **Decide the two brand questions** in the results note: a process-claims rule ("we personally check every
-   Kacchi" passed every check) and "halal" (dk_intel blocks it without a certifier; the reels notes allow it).
+**S0 (safety and one truth), status 2026-10-12:**
+- done: reels backed up to the private repo `shadmanArko/dhaka-kacchi-reels`;
+- done: brand rules have one owner (ADR 0032): `UNVERIFIED_CLAIM` and `PORTION_CLAIM` are in dk_intel, the designer
+  prompt holds no rule list, and reels price slides show only confirmed prices filled by code;
+- done: milestone 8 is merged;
+- **left:** the first live check, which needs the owner's draft key in `.env` (`DK_PUBLISH_URL`, `DK_PUBLISH_KEY`):
+  `run.py --publish dry-run`, then `drafts` for one slot, then the owner rejects or approves it in the Calendar.
+  After that, S0 is done.
 
-**Then, in order:**
-1. First live check: `run.py --publish dry-run` (validates with the real publisher, creates nothing), then `drafts` for
-   one slot, then the owner approves or rejects it in the Calendar. The bridge has only been tested against a fake.
-2. **Milestone 9: the style loop.** A template-engineer agent that writes new templates as code, in a git worktree,
-   behind gates and the owner's approval (a PR with a preview), fed by `style_request`s from the designer and by
-   `upcoming_occasions`. Needs the template registry in the reels repo first (planned in the approved plan; not built).
-3. **Phase 5: real agents.** Start only after the owner decides D5 and D9–D11 ([mcp/PHASE5_HANDOVER.md](mcp/PHASE5_HANDOVER.md)).
-   M8 already answers D9 for **posting** (proposals become Calendar drafts in dk-publishing).
-4. **Proposed, not set up:** a weekly cron (`run.py --publish drafts --trigger schedule`, the line is in the lab README;
-   the Mac must be awake; the owner installs it) and routines on the owner's Mac.
-5. **Optional, needs the owner's yes:** a media check at upload in dk-publishing (`ffprobe`, about +70 MB image).
+**Then S1:** the contract registry (`docs/contracts/`), schemas with consumer tests in 3 repos, `intel contracts sync`,
+and the content plan, platform mix, routes and budgets as data files. See the plan, §6 and §7.
+
+**Still open for the owner:**
+- confirm the mutton box price and availability in `facts.yaml` (until then a price slide can show only Borhani);
+- where the daily review page lives (recommended: dk-publishing, owner-only, opened from a Telegram link);
+- the budget cap per 10-day run (recommended: about 4M tokens, alert at 80%).
 
 ## 5. How to start a new session
 1. Open the session in `dk-intelligence`. Read this page, then `CLAUDE.md` and [HANDOFF.md](HANDOFF.md).
@@ -114,4 +111,4 @@ The rules that must not be broken are in each repo's `CLAUDE.md`. The most impor
    - dk-intelligence: `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`, and
      `uv run pre-commit run --all-files`;
    - dk-publishing: `make check`. Read its exit code; don't pipe it through `tail`.
-5. Then ask the owner "go for milestone 8?", or follow what they ask.
+5. Then continue S0/S1 from §4, or follow what the owner asks.

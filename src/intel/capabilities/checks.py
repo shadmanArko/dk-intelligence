@@ -15,7 +15,7 @@ from intel.capabilities.brand import CAPTION_LIMIT, EMOJI_MAX, FIRST_LINE_MAX, g
 from intel.capabilities.ports import BrandPack, BrandSource
 from intel.capabilities.types import Draft, ToolProblem, prov, refs
 
-RULES_VERSION = "1.0"
+RULES_VERSION = "1.1"  # 1.1 (2026-10-12): UNVERIFIED_CLAIM, PORTION_CLAIM (ex the designer prompt)
 MAX_DRAFTS = 20
 Severity = Literal["block", "warn"]
 
@@ -49,6 +49,12 @@ RULES: dict[str, Rule] = {
     "HALAL_UNCERTIFIED": Rule(
         "block", "'halal' without a named certifier (§5 UWG)", "say what the facts allow, or leave it out"
     ),
+    "UNVERIFIED_CLAIM": Rule(
+        "block",
+        "a claim about how or when we work that facts.yaml doesn't back (checking, cooking times, 'new in Berlin')",
+        "show the food instead; only say what get_facts confirms (e.g. the personal confirmation message)",
+    ),
+    "PORTION_CLAIM": Rule("block", "how many people a box feeds", "give the size in ml (get_facts), not people"),
     "HEALTH_CLAIM": Rule("block", "a health claim (EU 1924/2006)", "describe taste and craft instead"),
     "ALLERGEN_CLAIM": Rule(
         "block", "an allergen statement", "never state allergens in posts; customers ask us directly"
@@ -70,6 +76,24 @@ SUPERLATIVE = re.compile(
     re.I,
 )
 ONLY = re.compile(r"(berlin'?s only|only\b.{0,40}\bin berlin|einzig\w*)", re.I)
+# Owner decision 2026-10-12: no process claims beyond facts.yaml. These are the ones agents invent: checking or
+# inspecting food ("we personally check every Kacchi"), cooking durations and start times, "new in Berlin".
+# Confirming an order personally IS a fact (ordering.confirmation), so "confirm" is not matched.
+UNVERIFIED = re.compile(
+    r"(\b(personally|persönlich|by hand|von hand|handverlesen)\b.{0,40}"
+    r"\b(check|inspect|test|tast|prüf|kontroll|geprüft)\w*"
+    r"|\b(check|inspect|prüf|kontrollier)\w*\b.{0,40}\b(personally|persönlich|by hand|von hand)\b"
+    r"|\b(quality[- ]control\w*|qualitätskontroll\w*|hand[- ]checked|handgeprüft)"
+    r"|\b(\d{1,2}|two|three|four|five|six|seven|eight|zwei|drei|vier|fünf|sechs|sieben|acht)\s*(hours?|hrs?|stunden?)\b"
+    r"|\b(since|from|ab|seit)\s+\d{1,2}(?::\d{2})?\s*(a\.?m\.?|uhr)\b"
+    r"|\b(new in berlin|neu in berlin))",
+    re.I,
+)
+PORTION = re.compile(
+    r"\b(for|feeds?|serves?|für|reicht für)\s+(\d{1,2}|one|two|three|four|ein\w*|zwei|drei|vier)\s*"
+    r"(people|persons?|personen|leute)\b",
+    re.I,
+)
 HEALTH = re.compile(r"\b(gesund\w*|healthy|protein\w*|low[- ]fat|kalorienarm|superfood|detox|fettarm)\b", re.I)
 ALLERGEN = re.compile(
     r"(allergen\w*|allergiker|gluten[- ]?(frei|free)|laktose[- ]?frei|lactose[- ]free|nuss[- ]?frei|nut[- ]free)", re.I
@@ -174,6 +198,10 @@ def check_one(d: Draft, pack: BrandPack, prices: dict[float, str], halal_certifi
         hit("ONLY_CLAIM", (m.start(), m.end()))
     if "halal" in low and not halal_certified:
         hit("HALAL_UNCERTIFIED")
+    if m := UNVERIFIED.search(text):
+        hit("UNVERIFIED_CLAIM", (m.start(), m.end()))
+    if m := PORTION.search(text):
+        hit("PORTION_CLAIM", (m.start(), m.end()))
     if m := HEALTH.search(text):
         hit("HEALTH_CLAIM", (m.start(), m.end()))
     if m := ALLERGEN.search(text):

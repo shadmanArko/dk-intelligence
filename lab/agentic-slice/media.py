@@ -94,6 +94,43 @@ def designer_task(
     }
 
 
+def price_items(facts: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """The rows a price slide may show, from dk_intel get_facts: only menu items whose name, price AND availability
+    are confirmed. The designer never writes prices; a slide with no confirmed row becomes a plain card."""
+    by_item: dict[str, dict[str, dict[str, Any]]] = {}
+    for fact in facts:
+        parts = str(fact.get("key", "")).split(".")
+        if len(parts) == 3 and parts[0] == "menu":
+            by_item.setdefault(parts[1], {})[parts[2]] = fact
+
+    def confirmed(item: dict[str, dict[str, Any]], field: str) -> Any:
+        f = item.get(field) or {}
+        return f.get("value") if f.get("status") == "confirmed" else None
+
+    rows: list[dict[str, str]] = []
+    for item in by_item.values():
+        name, price, available = confirmed(item, "name"), confirmed(item, "price"), confirmed(item, "available")
+        if not name or not isinstance(price, int | float) or available is not True:
+            continue
+        row = {"name": str(name)[:40], "price": f"€{float(price):.2f}"}
+        size = confirmed(item, "size_ml")
+        if isinstance(size, int):
+            row["detail"] = f"{size} ml"
+        rows.append(row)
+    return rows[:4]
+
+
+def _with_checked_prices(slides: list[Any], prices: list[dict[str, str]]) -> list[Any]:
+    out = []
+    for s in slides:
+        if isinstance(s, dict):
+            s = {k: v for k, v in s.items() if k != "items"}  # prices are never the designer's
+            if s.get("template") == "price":
+                s = {**s, "items": prices} if prices else {**s, "template": "card"}
+        out.append(s)
+    return out
+
+
 def finalize_spec(
     answer: dict[str, Any] | None,
     *,
@@ -104,6 +141,7 @@ def finalize_spec(
     caption: str,
     avoid: list[str],
     week_label: str,
+    prices: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any] | None, str]:
     """The designer's answer is data: take its creative content, then set everything else from code. Returns
     (spec, "") or (None, why). Nothing the designer wrote for the envelope, scheduling or captions is trusted."""
@@ -120,10 +158,11 @@ def finalize_spec(
     else:
         if content.get("kind") != "slides" or not isinstance(content.get("slides"), list) or not content["slides"]:
             return None, f"a {slot_format} needs a slides spec, the designer made '{content.get('kind')}'"
+        slides = _with_checked_prices(content["slides"], prices or [])
         if kind == "carousel":
-            content = {**content, "size": "carousel"}
+            content = {**content, "size": "carousel", "slides": slides}
         else:  # one picture in the feed
-            content = {**content, "size": "album", "slides": content["slides"][:1]}
+            content = {**content, "size": "album", "slides": slides[:1]}
     language = answer["spec"].get("language")
     spec: dict[str, Any] = {
         "spec_version": 1,

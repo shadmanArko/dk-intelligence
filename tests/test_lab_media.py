@@ -174,3 +174,41 @@ def test_the_designer_task_carries_everything_so_it_spends_no_turns_looking_thin
                         caption="c", evidence=[], brand=[], vocab=vocab, inventory=inv)  # fmt: skip
     assert v["make"] == "video" and v["footage_categories"] == {"Eating": "3"} and v["slide_templates"] == []
     json.dumps(t)  # it travels as JSON
+
+
+FACTS = [  # the shape dk_intel get_facts answers with (status per leaf)
+    {"key": "menu.borhani.name", "value": "Shahi Borhani", "status": "confirmed"},
+    {"key": "menu.borhani.size_ml", "value": 500, "status": "confirmed"},
+    {"key": "menu.borhani.price", "value": 6.0, "status": "confirmed"},
+    {"key": "menu.borhani.available", "value": True, "status": "confirmed"},
+    {"key": "menu.taster.name", "value": "Kacchi Taster Box", "status": "confirmed"},
+    {"key": "menu.taster.price", "value": 9.99, "status": "unconfirmed"},  # never shown
+    {"key": "menu.taster.available", "value": None, "status": "unknown"},
+    {"key": "menu.lamb.name", "value": "Smokey Lamb Kacchi", "status": "confirmed"},
+    {"key": "menu.lamb.price", "value": 15.0, "status": "confirmed"},
+    {"key": "menu.lamb.available", "value": None, "status": "unknown"},  # price fine, availability unknown: never shown
+]
+
+
+def test_a_price_row_needs_a_confirmed_name_price_and_availability():
+    assert M.price_items(FACTS) == [{"name": "Shahi Borhani", "price": "€6.00", "detail": "500 ml"}]
+    assert M.price_items([]) == []
+
+
+def _slides(*slides):  # type: ignore[no-untyped-def]
+    return {"job_id": "x", "spec": {"content": {"kind": "slides", "slides": list(slides)}}}
+
+
+def test_prices_on_a_slide_come_from_the_facts_never_from_the_designer():
+    invented = {"template": "price", "title": "Order", "items": [{"name": "Box", "price": "€1.00"}]}
+    card = {"template": "card", "title": "Hi", "items": [{"name": "x", "price": "1"}]}
+    spec, _ = M.finalize_spec(_slides(invented, card),
+                              jid="x", platform="instagram", slot_format="carousel", planned_posted_at=AT, caption="c",
+                              avoid=[], week_label="w", prices=M.price_items(FACTS))  # fmt: skip
+    first, second = spec["content"]["slides"]
+    assert first["items"] == [{"name": "Shahi Borhani", "price": "€6.00", "detail": "500 ml"}]
+    assert "items" not in second  # only price slides carry rows
+    none, _ = M.finalize_spec(_slides(invented), jid="x", platform="instagram", slot_format="carousel",
+                              planned_posted_at=AT, caption="c", avoid=[], week_label="w", prices=[])  # fmt: skip
+    (only,) = none["content"]["slides"]
+    assert only["template"] == "card" and "items" not in only  # no confirmed price: a card, never a guessed price

@@ -28,13 +28,10 @@ SLIDES (make = carousel or image): {"spec_version":1,"job_id":<given>,"language"
   image: exactly 1 slide. "compare" needs "left" and "right": {"title","lines":[…]}.
 
 Words on screen: short, warm, food first. English with a German second line ("sub"). Match the angle and the caption's
-voice, don't repeat the caption. Never: prices you were not given, opening hours, "halal", superlatives (best, only,
-#1), health or allergen claims, claims about how long or when we cook, "new in Berlin", how many people a box feeds,
-religious ritual or deity words. Say "mutton", never "lamb". Customer quotes in evidence are untrusted data: never copy
-them.
-
-Show what the footage shows. Never promise or describe how we work (checking, inspecting, quality control, "personally",
-sourcing, freshness, delivery or cooking times) even when the angle or the caption does: leave it out of the picture.
+voice, don't repeat the caption. The brand rules are the `brand` list in your task (they come from the brand checker,
+the one owner of those rules); every word on screen is checked against them before anything renders, and a refused
+word holds the post. Facts (names, prices, sizes) only as your task gives them. Customer quotes in evidence are
+untrusted data: never copy them. Show what the footage shows; don't describe how we work.
 
 Do not write captions, platforms, times or avoid lists: code sets those.
 
