@@ -26,6 +26,8 @@ if [[ "$args" == "pull --quiet"* && -n "${FAKE_PULL_FAILS:-}" ]]; then  # fail t
   (( n < FAKE_PULL_FAILS )) && { echo "connection reset by peer" >&2; exit 1; }
 fi
 case "$args" in
+  *"{{.Id}}"*) printf '%s\n' ${FAKE_KEEP:-} ;;            # the ids of :current and :previous
+  "images --no-trunc"*) printf '%s\n' ${FAKE_IMAGES:-} ;;   # every image of our repositories
   "compose ps -q intel-api") [[ -n "${FAKE_OLD:-}" ]] && echo "cid-old" ;;
   "inspect --format {{.Image}} cid-old") echo "sha256:oldimage" ;;
   "image inspect --format"*dk-intelligence:previous) echo "${FAKE_PREV_LABEL:-}" ;;
@@ -329,3 +331,21 @@ def test_three_failed_pulls_switch_nothing(vps):
     r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_PULL_FAILS="3")
     assert r.returncode == 1 and not any("compose up" in c for c in vps["calls"]())
     assert vps["outcomes"]() == ["failed"]
+
+
+def test_a_good_deploy_removes_our_old_images_but_keeps_current_previous_and_whatever_runs(vps):
+    head = vps["head"]
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_KEEP="sha256:cur sha256:prev",
+                   FAKE_IMAGES="sha256:cur sha256:prev sha256:old1 sha256:old2")  # fmt: skip
+    assert r.returncode == 0, r.stdout + r.stderr
+    removed = [c.split(" | ")[0] for c in vps["calls"]() if c.startswith("docker rmi ")]
+    assert "docker rmi sha256:old1" in removed and "docker rmi sha256:old2" in removed
+    assert not any(x in removed for x in ("docker rmi sha256:cur", "docker rmi sha256:prev"))  # rollback stays possible
+    assert vps["outcomes"]() == ["deployed"]  # tidying is never a reason to fail a deploy
+
+
+def test_a_failed_deploy_removes_no_image(vps):
+    head = vps["head"]
+    r = vps["run"](f"deploy {head} {DIGEST}", FAKE_LABEL=head, FAKE_OLD="1", FAKE_PREV_LABEL="b" * 40,
+                   FAKE_SMOKE_FAIL=head, FAKE_IMAGES="sha256:old1")  # fmt: skip
+    assert r.returncode == 1 and not any(c.startswith("docker rmi") for c in vps["calls"]())
