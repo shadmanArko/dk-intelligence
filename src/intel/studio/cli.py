@@ -225,7 +225,20 @@ def schedule_status() -> None:
     )
 
 
-@studio_app.command("autonomy")
+@studio_app.command("remind")
+def remind_cmd(show: bool = typer.Option(False, "--show", help="print what is waiting instead of notifying")) -> None:
+    """The daily reminder: a Mac notification ONLY when something waits for you (what the Today page lists)."""
+    from intel.studio import console, today
+
+    cfg = _load(None, None, None, None)
+    data = today.build(console._readers(), cfg.schedule, today.owner_decisions())  # noqa: SLF001
+    message = today.reminder_text(data)
+    if show or message is None:
+        typer.echo("\n".join(f"[{i['level']}] {i['title']}" for i in data["items"]))
+    if message is not None and not show:
+        LocalNotifier(DATA).notify(*message)
+
+
 def autonomy_cmd() -> None:
     """Which kinds of post you approve most (measurement only: nothing is ever approved for you)."""
     from intel.studio import autonomy
