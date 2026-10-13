@@ -55,6 +55,7 @@ class Options:
     resume: str | None = None  # a run id: continue it
     suffix: str = ""  # redo ideas whose post was rejected: they need a new key, e.g. r2
     today: dt.date | None = None
+    start: dt.date | None = None  # first day to plan (default: tomorrow; the CLI passes the day after what exists)
 
 
 @dataclasses.dataclass
@@ -236,6 +237,7 @@ class Studio:
                 self.cfg,
                 o.today or self.now().astimezone(self._tz()).date(),
                 self.data_dir.parent / "performance",
+                o.start,
             )
         saved.write_text(json.dumps(data, ensure_ascii=False, indent=1))
         if o.save_inputs:
@@ -253,7 +255,8 @@ class Studio:
         if state.data["ideas"]:  # a resumed run keeps its plan, dates included
             return [slots.idea_from_dict(r["idea"]) for r in state.data["ideas"].values()]
         today = dt.date.fromisoformat(inputs["today"])
-        days = slots.plan_days(self.cfg, today)
+        start = dt.date.fromisoformat(inputs["start"]) if inputs.get("start") else None  # frozen inputs keep it
+        days = slots.plan_days(self.cfg, today, start)
         items = slots.probes(self.cfg, days)
         scores = slots.read_scores(items, inputs.get("probe_results", []))
         ideas, dropped = slots.assign(self.cfg, days, scores, self.opts.suffix)

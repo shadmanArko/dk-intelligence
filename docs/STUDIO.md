@@ -44,9 +44,20 @@ uv run intel studio eval show                     # posts made, tokens, minutes 
 ```bash
 uv run python -m intel.studio.console      # then open http://127.0.0.1:8771
 ```
-**Today** lists everything that waits for you (drafts to approve, footage proposals with Accept / Reject buttons, decisions,
-schedule) above a calm moving picture of the studio working (`/live` is the full-screen version; add `?demo=1` to watch it
-without a run). The daily check also sets a 9:00 reminder that appears only when something waits. Plain-words guide:
+Every page has the same top bar: **Today**, **Mission control**, **Runs**, **Guide**, and **Review drafts** (the publisher's
+page, in a new tab).
+
+**Today** lists everything that waits for you (drafts to approve, footage proposals with Accept / Reject buttons, how far
+ahead the calendar is planned, decisions, schedule) under a one-line progress strip of the current run.
+**Mission control** (`/live`, ADR 0038) shows a run as an engineer would: progress and an estimate of the time left, the
+pipeline with waiting / working / done counts per stage, a timeline of every agent call, every idea against every stage,
+tokens per agent and the last events. `/live?demo=1` plays a made-up run through the same code (add `&tick=55` to start
+partway). **Runs** starts a run and shows the history.
+
+**Planning the next days.** A run plans from the day after what the studio has already scheduled; `intel studio coverage`
+shows it, `intel studio run --publish drafts --from 2026-10-24` overrides it, and the Runs page has a "start on" field.
+
+The daily check also sets a 9:00 reminder that appears only when something waits. Plain-words guide:
 [OWNER_GUIDE.md](OWNER_GUIDE.md).
 
 ## Running without you (S6)

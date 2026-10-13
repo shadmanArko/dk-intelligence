@@ -1,9 +1,0 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Studio: live</title>
-<style>html,body{margin:0;height:100%;background:#1a0a0b}canvas{width:100vw;height:100vh;display:block}
-button{position:fixed;right:14px;bottom:14px;background:rgba(0,0,0,.35);color:#f3e9d8;border:1px solid rgba(255,255,255,.2);border-radius:99px;padding:6px 14px;font:13px system-ui;cursor:pointer}</style></head>
-<body><canvas id="c"></canvas><button id="snd">sound: off</button>
-<script src="/static/live.js"></script>
-<script>startLive(document.getElementById('c'),{demo:new URLSearchParams(location.search).get('demo')==='1'});
-document.getElementById('snd').onclick=e=>{e.target.textContent='sound: '+(toggleLiveSound()?'on':'off')}</script></body></html>

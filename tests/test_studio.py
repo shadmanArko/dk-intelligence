@@ -1077,32 +1077,193 @@ def test_today_says_so_when_nothing_waits_or_the_publisher_cannot_be_reached():
     }  # Sundays only
 
 
-def test_the_living_picture_places_every_idea_by_what_it_is_doing_and_never_shows_failure_loudly():
-    from intel.studio import today
+def _bar_events() -> list[dict[str, Any]]:
+    """A small real-shaped log: one strategist call, one director call, one idea through copy, adapt, design, render."""
+
+    def ev(ms: int, node: str, kind: str, **kw: Any) -> dict[str, Any]:
+        return {"t": "", "ms": ms, "node": node, "kind": kind, **kw}
+
+    return [
+        ev(1, "orchestrator", "start", publish="drafts"),
+        ev(10, "strategist-1", "start", agent="strategist", model="sonnet"),
+        ev(5000, "strategist-1", "end", status="done", ms_total=4990, tokens_in=100, tokens_out=50, turns=1),
+        ev(5100, "director:2026-10-14", "start", agent="director", model="sonnet"),
+        ev(6000, "director:2026-10-14", "end", status="done", ms_total=900, tokens_in=80, tokens_out=20, turns=1),
+        ev(6001, "d01i1", "treatment", template="one-take", variant="", directed=True),
+        ev(6100, "copywriter:d01i1", "start", agent="copywriter", model="sonnet"),
+        ev(8000, "copywriter:d01i1", "end", status="done", ms_total=1900, tokens_in=300, tokens_out=30, turns=2),
+        ev(8100, "adapter:d01i1", "start", agent="adapter", model="sonnet"),
+    ]
+
+
+def test_mission_control_numbers_come_from_the_events_and_a_working_agent_is_marked_working():
+    from intel.studio import telemetry
 
     ideas = [
-        {"id": "a", "stage": "planned", "holds": {}, "outcome": None, "template": "one-take"},
-        {"id": "b", "stage": "adapted", "holds": {}, "outcome": None, "template": "photo-motion"},
-        {"id": "c", "stage": "prepared", "holds": {}, "outcome": None, "template": "beat-reel"},
-        {"id": "d", "stage": "rendered", "holds": {}, "outcome": None, "template": "beat-reel"},
-        {"id": "e", "stage": "final", "holds": {}, "outcome": {"state": "drafted"}, "template": "split"},
-        {"id": "f", "stage": "final", "holds": {"*": {"code": "x"}}, "outcome": None, "template": None},
-    ]
-    s = today.scene({"id": "r", "status": "running", "ideas": ideas, "tokens": 1000, "cap": 4_000_000, "seconds": 90,
-                     "phases": [{"phase": "production", "status": "start"}]})  # fmt: skip
-    where = {p["id"]: p["station"] for p in s["particles"]}
-    assert where == {"a": "plan", "b": "design", "c": "render", "d": "upload", "e": "drafts", "f": "held"}
-    assert s["drafts"] == 1 and s["held"] == 1 and s["phase"] == "production" and s["running"] is True
-    assert [st["id"] for st in s["stations"]] == ["plan", "director", "write", "design", "render", "upload", "drafts"]
-    assert {st["id"]: st["active"] for st in s["stations"]}["render"] is True and {
-        st["id"]: st["active"] for st in s["stations"]
-    }["plan"] is False
-    idle = today.scene({"id": None, "status": "idle", "ideas": []})
-    assert idle["running"] is False and idle["particles"] == []
-    assert today.demo_scene(0)["running"] and len(today.demo_scene(40)["particles"]) == 12  # watchable without a run
+        {"id": "d01i1", "date": "2026-10-14", "format": "reel", "template": "one-take", "angle": "a", "holds": {},
+         "outcome": None},
+        {"id": "d01i2", "date": "2026-10-14", "format": "reel", "template": None, "angle": "b", "holds": {},
+         "outcome": None},
+    ]  # fmt: skip
+    t = telemetry.telemetry({"id": "r", "status": "running", "publish": "drafts", "ideas": ideas, "cap": 1000},
+                            _bar_events(), now_ms=9000)  # fmt: skip
+    cells = {m["id"]: m["cells"] for m in t["matrix"]}
+    assert cells["d01i1"] == {"plan": "done", "direct": "done", "write": "done", "adapt": "active",
+                              "design": "pending", "render": "pending", "upload": "pending"}  # fmt: skip
+    assert cells["d01i2"]["write"] == "pending" and cells["d01i2"]["direct"] == "pending"
+    assert [(w["lane"], w["idea"], w["seconds"]) for w in t["working"]] == [("adapter", "d01i1", 1)]
+    assert t["tokens"] == 580 and t["roles"]["copywriter"]["calls"] == 1 and t["running"] is True
+    assert t["percent"] == 17.5 and t["eta_s"] == 42  # 9 s elapsed at 17.5 %: about 42 s left
+    assert {s["id"]: s["done"] for s in t["stages"]}["write"] == 1
+    assert any("copywriter finished d01i1" in line for line in t["log"])
 
 
-def test_the_console_serves_today_the_live_picture_and_only_plain_ids_reach_the_curate_command(tmp_path, monkeypatch):
+def test_a_held_idea_is_shown_held_at_its_stage_and_the_rest_skipped_and_a_render_only_run_has_no_upload():
+    from intel.studio import telemetry
+
+    idea = {"id": "d01i1", "date": "2026-10-14", "format": "reel", "template": "one-take", "angle": "a",
+            "holds": {"*": {"code": "text_failed"}}, "outcome": None}  # fmt: skip
+    t = telemetry.telemetry({"id": "r", "status": "done", "publish": "render", "ideas": [idea]}, _bar_events())
+    c = t["matrix"][0]["cells"]
+    assert c["adapt"] == "held" and c["design"] == "skipped" and c["upload"] == "skipped" and t["ideas_held"] == 1
+    assert t["running"] is False and t["percent"] == 100.0
+
+
+def test_the_demo_is_a_run_of_events_through_the_same_function_and_it_finishes():
+    from intel.studio import telemetry
+
+    early, mid, end = (telemetry.demo(k) for k in (0, 40, 95))
+    assert early["running"] and early["percent"] == 0.0 and mid["running"] and 0 < mid["percent"] < 100
+    assert end["status"] == "done" and end["percent"] == 100.0 and end["ideas_done"] == 12
+    assert telemetry.demo(40) == mid  # deterministic: the same moment always draws the same picture
+    assert {b["lane"] for b in mid["bars"]} >= {"strategist", "director", "copywriter", "designer", "render"}
+
+
+# ---------- how far ahead the calendar is already planned ----------
+
+
+def _row(slot: str, state: str = "scheduled", source: str = "api") -> dict[str, Any]:
+    return {"post_key": slot, "platform": "instagram", "slot": slot, "state": state, "source": source}
+
+
+def test_coverage_says_how_many_days_are_scheduled_and_where_the_next_plan_starts():
+    from intel.studio import coverage
+
+    now = dt.datetime(2026, 10, 13, 10, 0, tzinfo=dt.UTC)
+    rows = [_row("2026-10-14T17:00:00+02:00"), _row("2026-10-15T20:00:00+02:00", "awaiting_approval"),
+            _row("2026-10-17T20:00:00+02:00"), _row("2026-10-23T23:30:00+02:00"),
+            _row("2026-10-30T12:00:00+01:00", "cancelled"),
+            _row("2026-10-29T12:00:00+01:00", source="sheet")]  # fmt: skip
+    cov = coverage.coverage(SHIPPED, rows, now)
+    assert cov["scheduled_through"] == "2026-10-23" and cov["days_ahead"] == 10
+    assert cov["next_start"] == "2026-10-24"  # cancelled posts and the owner's Sheet posts do not count
+    assert cov["gaps"] == ["2026-10-16", "2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22"]
+    assert [d["waiting"] for d in cov["days"]][:2] == [0, 1] and "Sat 24 Oct" in cov["sentence"]
+
+
+def test_coverage_with_nothing_scheduled_or_no_publisher_starts_on_the_plans_own_first_day():
+    from intel.studio import coverage
+
+    now = dt.datetime(2026, 10, 13, 10, 0, tzinfo=dt.UTC)
+    empty = coverage.coverage(SHIPPED, [], now)
+    assert empty["scheduled_through"] is None and empty["next_start"] == "2026-10-14" and empty["known"]
+    down = coverage.coverage(SHIPPED, None, now)
+    assert down["known"] is False and down["next_start"] == "2026-10-14"
+    late = [_row("2026-10-13T17:00:00+02:00")]  # today's own slot is history, not a plan
+    assert coverage.coverage(SHIPPED, late, now)["scheduled_through"] is None
+
+
+def test_the_owners_start_date_wins_but_never_lands_in_the_past():
+    from intel.studio import coverage
+
+    now = dt.datetime(2026, 10, 13, 10, 0, tzinfo=dt.UTC)
+    cov = coverage.coverage(SHIPPED, [_row("2026-10-23T20:00:00+02:00")], now)
+    assert coverage.resolve_start(SHIPPED, cov, None)[0] == dt.date(2026, 10, 24)
+    assert coverage.resolve_start(SHIPPED, cov, dt.date(2026, 11, 2))[0] == dt.date(2026, 11, 2)
+    day, why = coverage.resolve_start(SHIPPED, cov, dt.date(2026, 10, 1))
+    assert day == dt.date(2026, 10, 14) and "first possible" in why
+    days = slots.plan_days(SHIPPED, TODAY, dt.date(2026, 10, 24))
+    assert days[0] == dt.date(2026, 10, 24) and len(days) == 10
+    assert slots.plan_days(SHIPPED, TODAY, dt.date(2020, 1, 1))[0] == TODAY + dt.timedelta(days=1)
+
+
+def test_the_calendar_is_read_a_week_at_a_time_so_the_page_size_never_hides_a_day():
+    from intel.studio import coverage
+
+    asked: list[tuple[str, str]] = []
+
+    class Client:
+        def calendar(self, **f: Any) -> dict[str, Any]:
+            asked.append((f["from"], f["to"]))
+            return {"posts": [_row("2026-10-14T17:00:00+02:00")] if len(asked) <= 2 else []}
+
+    rows = coverage.fetch_rows(Client(), dt.datetime(2026, 10, 13, 10, 0, tzinfo=dt.UTC))
+    assert rows is not None and len(rows) == 1  # the same post seen at a window edge is kept once
+    assert len(asked) == 4 and asked[1][0] == asked[0][1]  # two weeks with posts, two empty weeks, then it stops
+
+    class Down:
+        def calendar(self, **f: Any) -> dict[str, Any]:
+            raise OSError("unreachable")
+
+    assert coverage.fetch_rows(Down(), dt.datetime(2026, 10, 13, tzinfo=dt.UTC)) is None
+
+
+def test_today_tells_you_to_plan_when_the_calendar_runs_short_and_starts_the_run_after_what_exists():
+    from intel.studio import coverage, today
+
+    now = dt.datetime(2026, 10, 13, 10, 0, tzinfo=dt.UTC)
+    short = coverage.coverage(SHIPPED, [_row("2026-10-15T20:00:00+02:00")], now)
+    t = today.build(_readers(), SHIPPED.schedule, [], short)
+    item = next(i for i in t["items"] if i["id"] == "coverage")
+    assert item["level"] == "todo" and item["actions"] == [{"label": "Open the Runs page", "href": "/runs"}]
+    start = next(i for i in t["items"] if i["id"] == "start")["actions"][0]
+    assert start["body"]["start"] == "2026-10-16" and "2026-10-16" in start["confirm"]
+    full = coverage.coverage(SHIPPED, [_row("2026-10-24T20:00:00+02:00")], now)
+    ok = next(i for i in today.build(_readers(), SHIPPED.schedule, [], full)["items"] if i["id"] == "coverage")
+    assert ok["level"] == "ok" and ok["actions"] == []
+    no_info = today.build(_readers(), SHIPPED.schedule, [], coverage.coverage(SHIPPED, None, now))
+    assert "coverage" not in {i["id"] for i in no_info["items"]}  # unreachable publisher: no claim either way
+
+
+def test_the_run_command_plans_from_the_day_after_what_is_scheduled_unless_you_give_a_date():
+    import typer
+
+    from intel.studio import cli
+
+    class Pub:
+        def calendar(self, **f: Any) -> dict[str, Any]:
+            return {"posts": [_row("2026-10-23T20:00:00+02:00")] if f["from"] < "2026-10-20" else []}
+
+    class Fake:
+        publisher = Pub()
+
+    real_now = dt.datetime
+
+    class Frozen(dt.datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> dt.datetime:
+            return real_now(2026, 10, 13, 10, 0, tzinfo=tz or dt.UTC)
+
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as m:
+        m.setattr(cli.dt, "datetime", Frozen)
+        assert cli._start_day(SHIPPED, Fake(), None, None) == dt.date(2026, 10, 24)  # noqa: SLF001
+        assert cli._start_day(SHIPPED, Fake(), "2026-11-02", None) == dt.date(2026, 11, 2)  # noqa: SLF001
+        assert cli._start_day(SHIPPED, Fake(), None, "20261013T101000Z") is None  # noqa: SLF001 - a resume keeps its days
+        with pytest.raises(typer.Exit):
+            cli._start_day(SHIPPED, Fake(), "next tuesday", None)  # noqa: SLF001
+
+    class Offline:
+        publisher = None
+
+    assert cli._start_day(SHIPPED, Offline(), "2026-11-02", None) == dt.date(2026, 11, 2)  # noqa: SLF001
+    assert cli._start_day(SHIPPED, Offline(), None, None) is None  # noqa: SLF001 - the plan's own default
+
+
+def test_the_console_serves_every_page_with_one_top_bar_and_only_plain_ids_reach_the_curate_command(
+    tmp_path, monkeypatch
+):
     from fastapi.testclient import TestClient
 
     from intel.studio import console
@@ -1121,11 +1282,12 @@ def test_the_console_serves_today_the_live_picture_and_only_plain_ids_reach_the_
         console, "_run_npm", lambda *a: (seen.append(a), type("R", (), {"returncode": 0, "stderr": ""})())[1]
     )
     c = TestClient(console.app)
-    assert "living" in c.get("/static/live.js").text or "startLive" in c.get("/static/live.js").text
-    assert (
-        "Studio: Today" in c.get("/").text and "startLive" in c.get("/live").text and "Run now" in c.get("/runs").text
-    )
-    assert c.get("/api/live").json()["status"] == "idle" and c.get("/api/live/demo?tick=5").json()["run"] == "demo"
+    pages = {u: c.get(u).text for u in ("/", "/live", "/runs", "/guide")}
+    assert all("id=topbar" in html for html in pages.values())  # the same top bar on every page
+    assert "Studio: Today" in pages["/"] and "Mission control" in pages["/live"] and "Run now" in pages["/runs"]
+    assert c.get("/api/telemetry").json()["status"] == "idle" and c.get("/api/telemetry/demo?tick=5").json()["demo"]
+    monkeypatch.setattr(console, "_running", lambda: None)
+    assert c.post("/api/run", json={"publish": "render", "start": "not-a-date"}).status_code == 422
     assert today_unlabelled(reels) == 1
     assert c.post("/api/curate/reject-all").json()["message"] == "rejected 2 proposals"
     assert seen == [("--reject", "c1")]  # the odd id was never passed to a command line

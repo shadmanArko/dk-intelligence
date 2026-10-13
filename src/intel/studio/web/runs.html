@@ -5,7 +5,7 @@
 :root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b16;--mute:#7a756a;--line:#e4dfd3;--ok:#2f7d4f;--run:#b7791f;--fail:#b3402f;--off:#c9c4b8;--acc:#7a3b1d}
 @media(prefers-color-scheme:dark){:root{--bg:#171512;--card:#211f1b;--ink:#efeadf;--mute:#9a9486;--line:#34312a;--ok:#5bbd83;--run:#e0a43b;--fail:#e0715f;--off:#54503f;--acc:#e0a070}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
-header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card)}
 h1{font-size:17px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:0 0 8px}
 .grow{flex:1}.pill{padding:2px 10px;border-radius:99px;background:var(--bg);border:1px solid var(--line);font-size:12px}
 select,input,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
@@ -26,12 +26,16 @@ main{padding:16px;max-width:1280px;margin:0 auto;display:grid;gap:14px}
 .why{color:var(--fail);font-size:12px}
 #feed{font:12px ui-monospace,monospace;max-height:260px;overflow:auto;color:var(--mute)}#feed div{white-space:pre-wrap;word-break:break-word}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}tr.row{cursor:pointer}tr.sel{background:var(--bg)}
+.cov{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}.cov .ok{color:var(--ok)}.days{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.dpill{font-size:12px;padding:2px 9px;border-radius:99px;border:1px solid var(--line)}.dpill.w{border-color:var(--run);color:var(--run)}
 </style></head><body>
-<header><h1>Studio Console</h1><span class="pill" id="state">idle</span><span class="grow"></span>
+<!--NAV-->
+<header><h1>Runs</h1><span class="pill" id="state">idle</span><span class="grow"></span>
 <label>mode <select id="mode"><option value="render">render (media only, nothing sent)</option><option value="dry-run">dry-run (check with the publisher)</option><option value="drafts">drafts (into your Calendar)</option></select></label>
 <label>days <input id="days" type="number" min="1" max="30" placeholder="10" style="width:64px"></label>
+<label>start on <input id="start" type="date" title="the first day to plan; filled in with the day after what is already scheduled"></label>
 <button id="go">▶ Run now</button><button id="resume" class="ghost" hidden>↻ Resume this run</button></header>
 <main>
+<section class="card"><h2>Already scheduled</h2><div class="cov"><b id="covline">Checking your Calendar…</b></div><div class="days" id="covdays"></div></section>
 <section class="card"><h2 id="rtitle">What it produced</h2><div class="stats" id="stats"></div><div class="bar" id="bar" hidden><i></i></div></section>
 <section class="card"><h2>Where the run is</h2><div class="phases" id="phases"></div><div class="meta" id="plan" style="margin-top:8px"></div></section>
 <section class="card"><h2>Ideas, by day: click one for its captions</h2><div id="days_"></div></section>
@@ -80,10 +84,15 @@ async function refresh(){const r=await (await fetch('/api/runs')).json(),s=await
  if(s.running&&cur!==s.running)pick(s.running);else if(!cur&&r.length)pick(r[0].id);else load()}
 function pick(id){cur=id;after=0;$('feed').innerHTML='';open.clear();load()}
 $('go').onclick=async()=>{const mode=$('mode').value;let confirm=false;
- if(mode==='drafts'){if(!window.confirm('This creates DRAFTS in your Calendar for you to approve. Nothing is posted without your approval. Continue?'))return;confirm=true}
- const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publish:mode,days:+$('days').value||null,confirm})});
+ if(mode==='drafts'){if(!window.confirm('This creates DRAFTS in your Calendar for you to approve, starting '+($('start').value||'tomorrow')+'. Nothing is posted without your approval. Continue?'))return;confirm=true}
+ const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publish:mode,days:+$('days').value||null,start:$('start').value||null,confirm})});
  if(!r.ok)alert((await r.json()).detail);setTimeout(refresh,1500)};
 $('resume').onclick=async()=>{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({publish:window.V.publish||'render',resume:cur,confirm:window.V.publish==='drafts'})});
  if(!r.ok)alert((await r.json()).detail);setTimeout(refresh,1500)};
+async function coverage(){try{const c=await (await fetch('/api/coverage')).json();
+ $('covline').textContent=c.sentence;if(c.known&&!$('start').dataset.touched)$('start').value=c.next_start;
+ $('covdays').innerHTML=(c.days||[]).map(d=>`<span class="dpill ${d.waiting?'w':''}" title="${d.waiting} waiting for you">${d.date.slice(5)} · ${d.posts}</span>`).join('')}catch(e){$('covline').textContent='Could not read the Calendar.'}}
+$('start').oninput=()=>{$('start').dataset.touched='1'};
+coverage();setInterval(coverage,60000);
 refresh();timer=setInterval(refresh,2500);
 </script></body></html>
