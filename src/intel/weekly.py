@@ -24,6 +24,7 @@ import httpx
 from intel.pipeline import steps as pipeline_steps
 from intel.plugins import ModelPlugin, RunContext, discover
 from intel.settings import Settings, required
+from intel.stopping import Stopped, sigterm_stops_cleanly
 
 if TYPE_CHECKING:  # the VPS imports this module (serve/runs.py) but has no pandera: Mac-only training group
     from intel.quality.contracts import Source
@@ -81,6 +82,7 @@ class Progress:
         out_dir: Path,
         uploader: Callable[[Path], None] | None = None,
         steps: dict[str, tuple[str, str]] | None = None,
+        only: Sequence[str] | None = None,
     ):
         self.path, self.uploader = out_dir / "current.json", uploader
         self.upload_error: str | None = None
@@ -96,6 +98,8 @@ class Progress:
             "current_step": None,
             "steps": {k: {"label": v[0], "status": "pending"} for k, v in (steps or pipeline_steps()).items()},
         }
+        if only:  # a single-model run: the page shows the other models' steps as not part of it
+            self.state["only"] = list(only)
         out_dir.mkdir(parents=True, exist_ok=True)
 
     def _save(self) -> None:
@@ -164,15 +168,22 @@ def is_due(weekly_dir: Path, now: dt.datetime | None = None) -> tuple[bool, str]
     attempt was before that anchor or failed more than RETRY_AFTER ago (so a broken step does not loop hourly)."""
     now = now or dt.datetime.now(dt.UTC)
     anchor = last_sunday_noon(now)
-    hist = [r for r in run_history(weekly_dir) if not r.get("dry_run")]  # --no-upload runs never reached the VPS
+    hist = [
+        r for r in run_history(weekly_dir) if not r.get("dry_run") and not r.get("only")
+    ]  # not --no-upload, not 1 model
     ok = [
-        dt.datetime.fromisoformat(r["finished_at"]) for r in hist if r.get("status") != "error" and r.get("finished_at")
+        dt.datetime.fromisoformat(r["finished_at"])
+        for r in hist
+        if r.get("status") not in ("error", "stopped") and r.get("finished_at")  # a stopped run is an attempt, not done
     ]
     tries = [dt.datetime.fromisoformat(r["started_at"]) for r in hist if r.get("started_at")]
     if ok and max(ok) >= anchor:
         return False, f"done this week ({max(ok):%a %d %b %H:%M} UTC)"
     if tries and max(tries) >= anchor and now - max(tries) < RETRY_AFTER:
-        return False, f"last attempt failed at {max(tries):%H:%M} UTC; retrying after {RETRY_AFTER.seconds // 3600} h"
+        return (
+            False,
+            f"last attempt did not finish at {max(tries):%H:%M} UTC; retrying after {RETRY_AFTER.seconds // 3600} h",
+        )
     return True, f"due since {anchor:%a %d %b %H:%M} UTC"
 
 
@@ -202,6 +213,21 @@ class Lock:
         import shutil
 
         shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def select_plugins(
+    only: Sequence[str] | None, plugins: Sequence[ModelPlugin] | None = None
+) -> Sequence[ModelPlugin] | None:
+    """The plug-ins a run trains: all of them, or those named by step key or model name (`only`)."""
+    if not only:
+        return plugins
+    pool = discover() if plugins is None else plugins
+    wanted = set(only)
+    chosen = [p for p in pool if p.step in wanted or wanted & set(p.models)]
+    known = {x for p in pool for x in (p.step, *p.models)}
+    if unknown := wanted - known:
+        raise ValueError(f"unknown model or step: {', '.join(sorted(unknown))} (known: {', '.join(sorted(known))})")
+    return chosen
 
 
 SCORERS = ("content_scorer", "reach_scorer")
@@ -417,9 +443,13 @@ def run_weekly(
     wait_max_s: int = 8 * 3600,
     log: Callable[[str], None] = print,
     plugins: Sequence[ModelPlugin] | None = None,
+    only: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    with Lock(s.intel_data_dir / "weekly"):
-        return _run_weekly(s, upload=upload, wait_max_s=wait_max_s, log=log, plugins=plugins)
+    """The Sunday run. `only` (model names or step keys) trains just those models: the same data steps and judge, no
+    knowledge pack, and the run does not count as this week's training."""
+    chosen = select_plugins(only, plugins)
+    with Lock(s.intel_data_dir / "weekly"), sigterm_stops_cleanly():
+        return _run_weekly(s, upload=upload, wait_max_s=wait_max_s, log=log, plugins=chosen, only=only)
 
 
 def _run_weekly(
@@ -429,6 +459,7 @@ def _run_weekly(
     wait_max_s: int = 8 * 3600,
     log: Callable[[str], None] = print,
     plugins: Sequence[ModelPlugin] | None = None,
+    only: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     from intel.market import run_market_pull
     from intel.package import build_package, verify_package
@@ -450,9 +481,12 @@ def _run_weekly(
         "failed_gates": [],
         "dry_run": not upload,
     }
+    if only:
+        rep["only"] = [p.step for p in plugins]  # a one-model run is not this week's training (see is_due)
     d = s.intel_data_dir
     uploader = (lambda f: _upload_report(f, s)) if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key else None
-    prog = Progress(rep["run_id"], d / "weekly", uploader, pipeline_steps(plugins))
+    prog = Progress(rep["run_id"], d / "weekly", uploader, pipeline_steps(plugins), only=rep.get("only"))
+    stopped = False
     step = "wait"
     results: list[tuple[Path, dict[str, Any]]] = []  # (run folder, report) of every model this run produced
     ledger: list[dict[str, Any]] | None = None
@@ -660,11 +694,20 @@ def _run_weekly(
             prog.skip("package", "not better: nothing to package")
             prog.skip("upload", "not better: nothing to upload")
             rep["status"] = "fail"
+    except Stopped:  # the owner pressed Stop: say so, keep what exists, skip everything that comes after
+        stopped = True
+        rep.update(status="stopped", failed_step=step, error="stopped by the owner")
+        prog.fail(step, "stopped by the owner")
+        log(f"stopped by the owner during {step}")
     except Exception as e:
         rep.update(status="error", failed_step=step, error=f"{type(e).__name__}: {e}"[:500])
         prog.fail(step, rep["error"])
         log(traceback.format_exc())
-    if rep.get("pull_id"):  # the knowledge pack: a soft step, it never fails the model run
+    if stopped:
+        prog.skip("knowledge", "stopped by the owner")
+    elif only:
+        prog.skip("knowledge", "single-model run: the knowledge pack is rebuilt by the full run")
+    elif rep.get("pull_id"):  # the knowledge pack: a soft step, it never fails the model run
         prog.start("knowledge")
         try:
             from intel.rag.lifecycle import weekly_refresh
@@ -688,7 +731,7 @@ def _run_weekly(
             log(traceback.format_exc())
     else:
         prog.skip("knowledge", "no pull this week")
-    if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key and rep.get("pull_id"):
+    if upload and not stopped and s.dk_inbox_ssh and s.dk_inbox_ssh_key and rep.get("pull_id"):
         try:  # reference profiles for the VPS's model monitoring (ADR 0018); never fails the run
             new_runs = [rd for rd, rr in results if rr["kind"].removesuffix("_run") in SCORERS]
             refs = references_to_send(ledger, new_runs, d, log, active_versions(s.intel_api_url))
@@ -703,7 +746,7 @@ def _run_weekly(
     out = d / "weekly" / f"weekly-{rep['run_id']}.run.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rep, indent=2, default=str) + "\n")
-    if upload and s.dk_inbox_ssh and s.dk_inbox_ssh_key:
+    if upload and not stopped and s.dk_inbox_ssh and s.dk_inbox_ssh_key:
         prog.start("report")
         try:
             _upload_report(out, s)
@@ -714,7 +757,7 @@ def _run_weekly(
             prog.fail("report", f"could not upload: {e}")
             log(f"could not upload the run report: {e}")
     else:
-        prog.skip("report", "dry run: not uploaded")
+        prog.skip("report", "stopped by the owner" if stopped else "dry run: not uploaded")
     prog.finish(rep["status"])
     return rep
 

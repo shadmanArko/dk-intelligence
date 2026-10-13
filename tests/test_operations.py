@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from intel import mlview
 from intel.studio import console, console_system, ops, telemetry, trace
+from intel.studio.run import Options
 from intel.studio.runlog import RunLog, read_events
 from tests.studio_fakes import TODAY
 from tests.test_studio import World
@@ -172,7 +173,9 @@ def test_the_ml_demo_walks_every_step_and_ends_with_every_model_judged():
 
 
 def test_the_actions_are_a_fixed_list_and_spending_ones_ask_first():
-    assert set(ops.ACTIONS) == {"all", "ml.weekly", "agents.drafts", "agents.render", "ml.pull", "ml.market"}
+    base = {"all", "ml.weekly", "agents.drafts", "agents.render", "ml.pull", "ml.market"}
+    single = {a for a in ops.ACTIONS if a.startswith("ml.only.")}
+    assert set(ops.ACTIONS) == base | single and len(single) == 6  # one per model plug-in, from the code's own plug-ins
     assert [s.id for s in ops.ACTIONS["all"].steps] == ["ml.weekly", "agents.drafts"]
     assert ops.ACTIONS["all"].confirm and ops.ACTIONS["agents.drafts"].confirm and not ops.ACTIONS["ml.pull"].confirm
     assert all(isinstance(part, str) for a in ops.ACTIONS.values() for s in a.steps for part in s.cmd)
@@ -184,6 +187,8 @@ def test_the_driver_runs_steps_in_order_stops_at_the_first_failure_and_reports_e
     assert code == 0 and [c[-1] for c in seen][0].endswith("weekly.sh") and len(seen) == 2
     now = ops.current(tmp_path)
     assert now and now["state"] == "done" and [s["state"] for s in now["steps"]] == ["done", "done"]
+    assert ops.drive("ml.pull", tmp_path, run=lambda cmd: 130) == 130
+    assert ops.current(tmp_path)["state"] == "stopped" and ops.current(tmp_path)["steps"][0]["state"] == "stopped"
     assert ops.drive("all", tmp_path, run=lambda cmd: 3) == 3
     failed = ops.current(tmp_path)
     assert failed and failed["state"] == "failed"
@@ -249,3 +254,142 @@ def test_every_page_has_the_top_bar_and_the_token_and_the_pages_for_the_whole_ma
     )
     assert c.get("/api/ml/demo?tick=10").json()["demo"] and c.get("/api/ml/model/..%2F..%2Fx").status_code in (404, 422)
     assert telemetry.demo(60)["running"] and TODAY  # the telemetry demo still works with the richer events
+
+
+# ---------- one model alone, and stopping ----------
+
+
+def test_one_model_alone_is_a_candidate_run_that_never_uploads_and_never_counts_as_the_weeks_training():
+    import datetime as dt
+
+    from intel import weekly
+
+    funnel = ops.ACTIONS["ml.only.funnel"]
+    assert funnel.group == "model" and funnel.models == ("funnel",) and not funnel.confirm
+    assert funnel.steps[0].cmd[-4:] == ["weekly", "--only", "funnel", "--no-upload"]
+    both = ops.ACTIONS["ml.only.train"]
+    assert set(both.models) == {"content_scorer", "reach_scorer"}  # the two scorers are trained together
+    assert [p.step for p in weekly.select_plugins(["funnel"])] == ["funnel"]
+    assert [p.step for p in weekly.select_plugins(["reach_scorer"])] == ["train"]
+    assert len(weekly.select_plugins(None) or weekly.discover()) == 6
+    with pytest.raises(ValueError, match="unknown model"):
+        weekly.select_plugins(["nonsense"])
+    catalog = {a["id"]: a for a in ops.catalog()}
+    assert catalog["ml.only.funnel"]["models"] == ["funnel"] and catalog["all"]["models"] == []
+    # the weekly "done this week" rule ignores a one-model run, and a stopped run is an attempt, not a success
+    anchor = dt.datetime(2026, 10, 11, 10, tzinfo=dt.UTC)
+
+    def run_json(tmp: Path, rid: str, **kw: Any) -> None:
+        (tmp / "weekly").mkdir(exist_ok=True)
+        base = {"run_id": rid, "status": "pass", "started_at": (anchor + dt.timedelta(hours=1)).isoformat(),
+                "finished_at": (anchor + dt.timedelta(hours=2)).isoformat(), "dry_run": False}  # fmt: skip
+        (tmp / "weekly" / f"weekly-{rid}.run.json").write_text(json.dumps({**base, **kw}))
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        run_json(tmp, "a", only=["funnel"])
+        assert weekly.is_due(tmp / "weekly", anchor + dt.timedelta(hours=3))[0]  # still due: it was one model
+        run_json(tmp, "b", status="stopped", only=None)
+        due, why = weekly.is_due(tmp / "weekly", anchor + dt.timedelta(hours=3))
+        assert not due and "did not finish" in why  # not retried straight away ...
+        assert weekly.is_due(tmp / "weekly", anchor + dt.timedelta(hours=9))[0]  # ... but it is not "done" either
+
+
+def test_the_sunday_run_stopped_by_the_owner_says_so_keeps_what_exists_and_skips_the_rest(tmp_path, monkeypatch):
+    import intel.weekly as w
+    from intel.settings import Settings
+    from intel.stopping import Stopped
+
+    def stop_now(*_a: Any, **_k: Any) -> int:
+        raise Stopped()
+
+    monkeypatch.setattr(w, "mip_refresh_running", lambda: True)
+    monkeypatch.setattr(w, "wait_for_mip", stop_now)
+    s = Settings(_env_file=None, intel_data_dir=tmp_path)
+    r = w.run_weekly(s, upload=True, log=lambda *_: None)
+    assert r["status"] == "stopped" and r["failed_step"] == "wait" and r["error"] == "stopped by the owner"
+    st = json.loads((tmp_path / "weekly" / "current.json").read_text())
+    assert st["result"] == "stopped" and st["steps"]["wait"]["status"] == "failed"
+    assert st["steps"]["knowledge"]["status"] == "skipped" and st["steps"]["report"]["status"] == "skipped"
+    assert list((tmp_path / "weekly").glob("weekly-*.run.json")) and not (tmp_path / "weekly" / ".lock").exists()
+
+
+def test_a_studio_run_that_gets_sigterm_ends_with_stopped_keeps_its_work_and_resumes_without_paying_twice(tmp_path):
+    import signal
+
+    from intel.studio import schedule
+    from intel.studio.state import RunState
+
+    w = World(tmp_path)
+    original = w.runner.run
+    count = {"n": 0}
+
+    def dying(node: str, agent: str, task: str, files: Any = None) -> Any:
+        count["n"] += 1
+        if count["n"] == 12:
+            os.kill(os.getpid(), signal.SIGTERM)  # what the Stop button sends
+        return original(node, agent, task, files)
+
+    w.runner.run = dying  # type: ignore[method-assign]
+    before = signal.getsignal(signal.SIGTERM)
+    assert w.go("dry-run", trigger="schedule") == 130
+    assert signal.getsignal(signal.SIGTERM) == before  # the handler is put back
+    ev = w.events()
+    assert ev[-1]["kind"] == "end" and ev[-1]["status"] == "stopped" and ev[-1]["note"] == "stopped by the owner"
+    assert not (w.data / ".running").exists() and "STOPPED" in (w.data / "last-summary.md").read_text()
+    holds = [h for r in RunState(w.folder / "state.json").data["ideas"].values() for h in r["holds"]]
+    assert holds == []  # an agent that was killed by the stop is not a failed idea
+    info = schedule.run_info(w.folder)
+    assert info is not None and info.finished  # a stop is final: the schedule never restarts it behind your back
+    first = [c["node"] for c in w.runner.calls]
+    w.runner.run = original  # type: ignore[method-assign]
+    assert w.studio.run(Options(publish="dry-run", resume=w.folder.name)) == 0
+    assert (
+        not set(first) & {c["node"] for c in w.runner.calls[len(first) :]} and w.summary()["ideas"]["completed"] == 30
+    )
+
+
+def test_stop_asks_the_runs_first_then_clears_what_is_left_and_never_touches_its_own_group(tmp_path):
+    studio, ml = tmp_path / ".running", tmp_path / "pid"
+    studio.write_text("111 20261013T100000Z")
+    ml.write_text("222")
+    (tmp_path / "ops").mkdir()
+    running = {"state": "running", "pid": 333, "label": "x", "steps": []}
+    (tmp_path / "ops" / "current.json").write_text(json.dumps(running))
+    live = {111, 222, 333}
+    log: list[tuple[str, int]] = []
+    groups = {111: 900, 222: 901, 333: 902}
+
+    def term(pid: int) -> None:
+        log.append(("term", pid))
+        if pid in (111, 222):  # the runs stop themselves; the driver would have to be asked again
+            live.discard(pid)
+
+    def stop(**over: Any) -> list[str]:
+        args: dict[str, Any] = {"alive": lambda p: p in live, "pgid_of": groups.get, "term": term,
+                                "term_group": lambda g: log.append(("group", g)),
+                                "kill_group": lambda g: log.append(("kill", g)), "sleep": lambda s: None}  # fmt: skip
+        return ops.stop_all(studio, ml, tmp_path / "ops", grace_s=2, **{**args, **over})
+
+    assert stop() == ["the studio run", "the ML run", "the operation"]
+    assert log[:2] == [("term", 111), ("term", 222)]  # the runs first, so they can write their own ending
+    assert ("term", 333) in log and {x for x in log if x[0] == "group"} == {("group", g) for g in (900, 901, 902)}
+    assert ("kill", 902) in log  # the driver ignored the polite request: the last resort
+    log.clear()
+    live.update({111})
+    stop(pgid_of=lambda p: os.getpgid(0), term=lambda p: None)
+    assert log == []  # this console's own process group is never signalled
+    assert ops.stop_all(tmp_path / "none", tmp_path / "none2", tmp_path / "nothing", grace_s=0) == []
+
+
+def test_the_stop_endpoint_needs_the_token_and_says_when_nothing_runs(monkeypatch, tmp_path):
+    monkeypatch.setattr(console_system.ops, "stop_all", lambda *a, **k: [])
+    monkeypatch.setattr(console_system, "_ml_paths", lambda: (tmp_path, tmp_path, tmp_path))
+    anon = TestClient(console.app, base_url="http://127.0.0.1:8771")
+    assert anon.post("/api/ops/stop").status_code == 403
+    c = _client()
+    assert c.post("/api/ops/stop").status_code == 409
+    monkeypatch.setattr(console_system.ops, "stop_all", lambda *a, **k: ["the studio run"])
+    assert c.post("/api/ops/stop").json() == {"stopped": ["the studio run"]}

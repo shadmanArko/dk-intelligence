@@ -42,7 +42,9 @@ def history_rows(weekly_dir: Path, n: int = 8) -> list[dict]:
         out.append(
             {
                 "run_id": r.get("run_id"),
-                "status": (r.get("status") or "?") + (" (dry run)" if r.get("dry_run") else ""),
+                "status": (r.get("status") or "?")
+                + (" (dry run)" if r.get("dry_run") else "")
+                + (f" (only {', '.join(r['only'])})" if r.get("only") else ""),
                 "failed_step": r.get("failed_step"),
                 "new": (r.get("challenger") or {}).get("balanced_accuracy"),
                 "current": (r.get("champion") or {}).get("balanced_accuracy"),

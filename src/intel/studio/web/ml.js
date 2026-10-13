@@ -70,6 +70,7 @@ function modelHtml(d){
   if((r.top_complaints||[]).length)h.push('<h3>Top of its output</h3><div>'+r.top_complaints.map(x=>`<span class="chip">${esc(x)}</span>`).join('')+'</div>');
   if((d.insights_keys||[]).length)h.push(`<h3>What it produced (insights.json)</h3><div>${d.insights_keys.map(x=>`<span class="chip">${esc(x.key)} · ${k(x.size)} chars</span>`).join('')}</div><button class="btn" id="insBtn" style="margin-top:6px">open the output</button><div id="insBox"></div>`);
   if((d.files||[]).length)h.push(`<h3>Files of this run</h3><div class="meta">${d.files.map(esc).join(' · ')}</div>`);
+  h.push('<div id="retrain" style="margin-top:16px"></div>');
   if(!d.report&&!r.version)h.push('<div class="empty">No run yet for this model.</div>');
   return h.join('');
 }
@@ -78,6 +79,9 @@ async function openModel(name,demoCard){
   const close=()=>m.remove();m.onclick=e=>{if(e.target===m)close()};
   let d;try{d=demoCard?{card:demoCard,report:null,insights_keys:[],files:[]}:await api('/api/ml/model/'+name)}catch(e){m.firstChild.innerHTML='<div class="empty">could not load</div>';return}
   m.firstChild.innerHTML=modelHtml(d);m.querySelector('#mClose').onclick=close;
+  if(!demoCard)try{const o=await api('/api/ops'),a=o.actions.find(x=>x.group==='model'&&x.models.includes(name));
+    if(a){const box=m.querySelector('#retrain');box.innerHTML=`<button class="btn" id="rtBtn" ${o.studio_running||o.ml_running||(o.current&&o.current.state==='running')?'disabled':''}>Retrain ${esc(a.models.join(' and ').replace(/_/g,' '))} now</button> <span class="meta">a candidate only: nothing is uploaded or deployed (${esc(a.cost)})</span><div id="rtMsg" class="meta"></div>`;
+      box.querySelector('#rtBtn').onclick=async()=>{if(!confirm(a.label+'\n\n'+a.what+'\n\nCost: '+a.cost+'. Start?'))return;try{await post('/api/ops/start',{action:a.id,confirm:true});box.querySelector('#rtMsg').textContent='started: watch it on the ML pipeline page'}catch(e){box.querySelector('#rtMsg').textContent=e.message}}}}catch(e){}
   const b=m.querySelector('#insBtn');if(b)b.onclick=async()=>{const t=await (await fetch(`/api/ml/model/${name}/insights`)).text();let v;try{v=JSON.parse(t)}catch(e){v=t}m.querySelector('#insBox').innerHTML=jbox(v)};
 }
 function mlHeader(M){
