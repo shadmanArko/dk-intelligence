@@ -16,5 +16,5 @@ decisions:
     done: false
   - id: tiktok
     title: "TikTok privacy"
-    detail: "TikTok posts are 'only me' until you trust the output. Change privacy_level in config/studio/routes.yaml to public when you do."
-    done: false
+    detail: "Decided 2026-10-13: nothing to change now. TikTok runs as assisted posting (a Telegram card with the video, caption and settings; the owner posts by hand) and works well. When the TikTok API is approved, revisit this: privacy_level in config/studio/routes.yaml (only_me or public)."
+    done: true
