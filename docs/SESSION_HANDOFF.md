@@ -107,7 +107,7 @@ that is part of S2.
 
 **Owner desk (after S6):** a **Today** page (`uv run python -m intel.studio.console`, port 8771) lists everything that waits for
 the owner and has buttons for the safe actions (accept footage proposals, curator batch, run, schedule install, analyst note), a
-Mission control (`/live`, `?demo=1`: a run drawn from its own events, ADR 0038), a top bar on every page, a plan that starts after what is
+the Operations pages (`/ops`, `/system`, `/ml`, `/demo`: the whole machine layer by layer with start buttons, ADR 0040), Mission control (`/live`, `?demo=1`: a run drawn from its own events, ADR 0038), a top bar on every page, a plan that starts after what is
 already scheduled (`coverage.py`, `--from`, the "start on" field), and a 9:00 reminder that appears only when something waits. The guide for
 the owner is [OWNER_GUIDE.md](OWNER_GUIDE.md); open decisions live in `config/studio/owner-todo.yaml`.
 

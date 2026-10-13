@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio: Agent system</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>
+.dr{position:fixed;right:12px;top:58px;bottom:12px;width:min(580px,94vw);z-index:40;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.stats{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:10px}.stat span{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}.stat b{font-size:19px;font-weight:600}
+</style></head><body>
+<!--NAV-->
+<div class="wrap">
+<section class="card">
+ <div class="row"><h1 id="title">Agent system</h1><span class="pill" id="status">…</span><span class="pill demo" id="demo" hidden>demo: a made-up run, drawn the same way</span><span class="grow"></span>
+  <select id="runPick" class="btn" style="background:var(--card)"></select><a class="btn" id="demoLink" href="?demo=1">Show a demo</a></div>
+ <div class="meta" style="margin-top:6px">How the orchestrator works: which agent it calls, which MCP server each agent and the code itself talk to, which tools they call, and what every call received and returned. Click anything.</div>
+ <div class="stats">
+  <div class="stat"><span>Agent calls</span><b id="sAgents">0</b></div><div class="stat"><span>Tool calls by agents</span><b id="sTools">0</b></div>
+  <div class="stat"><span>MCP calls by code</span><b id="sCode">0</b></div><div class="stat"><span>Tokens</span><b id="sTok">0</b></div>
+  <div class="stat"><span>Renders</span><b id="sRend">0</b></div><div class="stat"><span>Publisher calls</span><b id="sPub">0</b></div><div class="stat"><span>Retries</span><b id="sRetry">0</b></div>
+ </div>
+</section>
+<section class="card"><h2>The system, layer by layer (line thickness = number of calls; moving dashes = working now)</h2><div id="map"></div></section>
+<section class="card"><h2>Every call, in order</h2><div id="calls"></div></section>
+</div>
+<aside class="card dr" id="drawer" hidden></aside>
+<script src="/static/common.js"></script><script src="/static/system.js"></script>
+<script>
+const demo=q.get('demo')==='1';let S=null,tick=+(q.get('tick')||0),run=q.get('run')||'',lastTick=0;
+if(demo){$('demo').hidden=false;$('demoLink').textContent='Back to the live run';$('demoLink').href='/system'}
+const ctx={select:id=>{SYS.sel=id;SYS.callId=null;SYS.callData=null;draw()},
+  openCall:async id=>{SYS.callId=id;SYS.callData=null;if(id){SYS.callData=await api(demo?`/api/system/demo/call?id=${encodeURIComponent(id)}&tick=${lastTick}`:`/api/system/call?id=${encodeURIComponent(id)}${run?'&run='+run:''}`)}draw()},redraw:()=>draw()};
+function draw(){if(!S)return;
+ const L=S.layers,A=Object.values(L.agents);
+ $('title').textContent=S.run?`Agent system · run ${S.run}`:'Agent system';
+ $('status').className='pill '+(S.running?'run':S.finished?'ok':'');$('status').textContent=S.running?'working':S.finished?'finished':S.run?'cut off':'no run yet';
+ $('sAgents').textContent=A.reduce((a,v)=>a+v.calls,0);$('sTools').textContent=L.tools.reduce((a,t)=>a+t.by_agents,0);$('sCode').textContent=L.tools.reduce((a,t)=>a+t.by_code,0);
+ $('sTok').textContent=k(A.reduce((a,v)=>a+(v.tokens_in||0)+(v.tokens_out||0),0));$('sRend').textContent=L.renderer.renders;
+ $('sPub').textContent=Object.values(L.publisher).reduce((a,v)=>a+v.calls,0);$('sRetry').textContent=A.reduce((a,v)=>a+(v.retries||0),0);
+ renderSystemMap($('map'),S,ctx.select);renderAllCalls($('calls'),S,ctx);
+ const d=$('drawer');if(!SYS.sel&&!SYS.callId){d.hidden=true;return}
+ d.hidden=false;d.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="grow"></span><button class="btn" id="closeDr">close ✕</button></div>`+(SYS.callData?callView(SYS.callData):drawerHtml(S,SYS.sel));
+ $('closeDr').onclick=()=>{SYS.sel=null;SYS.callId=null;SYS.callData=null;draw()};wireDrawer(d,S,ctx)}
+async function load(){lastTick=tick;S=await api(demo?`/api/system/demo?tick=${tick++}`:`/api/system${run?'?run='+run:''}`);draw()}
+(async()=>{if(!demo){const rs=await api('/api/runs');$('runPick').innerHTML='<option value="">latest run</option>'+rs.map(r=>`<option value="${r.id}" ${r.id===run?'selected':''}>${r.id} · ${r.status} · ${r.ideas}</option>`).join('');$('runPick').onchange=()=>{run=$('runPick').value;load()}}else $('runPick').hidden=true})();
+every(demo?900:2500,load);
+</script></body></html>

@@ -268,13 +268,47 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
 
     add(1, "orchestrator", "start", trigger="demo", publish="drafts")
     add(300, "orchestrator", "phase", phase="inputs", status="start")
+    for at, server, tool, took, arg in (
+        (900, "dk_intel_planner", "grounding_pack", 900, '{"platform": "instagram", "days": 10}'),
+        (
+            3000,
+            "dk_intel_writer",
+            "evaluate_drafts",
+            2100,
+            '{"drafts": ["...30 probe drafts, one per posting window..."]}',
+        ),
+        (4400, "dk_reels_creative", "list_templates", 300, "{}"),
+        (5100, "dk_reels_creative", "inventory", 420, "{}"),
+        (5600, "dk_intel_planner", "get_facts", 80, '{"keys": ["menu"]}'),
+    ):
+        add(
+            at,
+            "code:inputs",
+            "code_call",
+            server=server,
+            tool=tool,
+            input=arg,
+            output='{"ok": true, "demo": true}',
+            took_ms=took,
+            ok=True,
+            error=None,
+        )
     add(8000, "orchestrator", "phase", phase="inputs", status="end", seconds=7.7)
     add(8100, "orchestrator", "ideas", planned=n_ideas, dropped=[])
     add(8200, "orchestrator", "phase", phase="strategist", status="start")
     t = 8300
     for c in range(0, n_ideas, 6):
         dur = rnd.randint(40000, 56000)
-        add(t, f"strategist-{c // 6 + 1}", "start", agent="strategist", model="sonnet")
+        add(
+            t,
+            f"strategist-{c // 6 + 1}",
+            "start",
+            agent="strategist",
+            model="sonnet",
+            tools=[],
+            hidden=0,
+            task='{"slots": ["...six ideas: date, weekday, format, time, slot score..."], "brand": ["..."]}',
+        )
         add(
             t + dur,
             f"strategist-{c // 6 + 1}",
@@ -284,6 +318,11 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
             tokens_in=5300,
             tokens_out=5200,
             turns=1,
+            output={
+                "slots": [
+                    {"slot_id": i["id"], "pillar": "food", "angle": f"demo angle {i['id']}"} for i in ideas[c : c + 6]
+                ]
+            },
         )
         add(
             t + dur + 10,
@@ -300,8 +339,29 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
     angle_at = {i["id"]: t for i in ideas}
     for day in sorted({i["date"] for i in ideas}):
         dur = rnd.randint(15000, 24000)
-        add(t, f"director:{day}", "start", agent="director", model="sonnet")
-        add(t + dur, f"director:{day}", "end", status="done", ms_total=dur, tokens_in=5200, tokens_out=1700, turns=1)
+        add(
+            t,
+            f"director:{day}",
+            "start",
+            agent="director",
+            model="sonnet",
+            tools=[],
+            hidden=0,
+            task='{"date": "' + day + '", "ideas": ["...angle, formats, candidate templates, craft notes..."]}',
+        )
+        add(
+            t + dur,
+            f"director:{day}",
+            "end",
+            status="done",
+            ms_total=dur,
+            tokens_in=5200,
+            tokens_out=1700,
+            turns=1,
+            output={
+                "ideas": [{"idea_id": x["id"], "template": "demo", "why": "made up"} for x in ideas if x["date"] == day]
+            },
+        )
         for i in [x for x in ideas if x["date"] == day]:
             add(t + dur + 5, i["id"], "treatment", template=rng_pick(rnd, templates), variant="", directed=True)
         t += dur + 10
@@ -319,16 +379,49 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
             ("designer", 11000, 19000, 10800),
         ):
             dur = rnd.randint(lo, hi)
-            add(s, f"{role}:{i['id']}", "start", agent=role, model="sonnet")
+            node = f"{role}:{i['id']}"
+            allowed = {"copywriter": ["mcp__dk_intel_writer__evaluate_drafts"], "adapter": [],
+                       "designer": ["mcp__dk_reels_creative__search_assets", "mcp__dk_reels_creative__search_music",
+                                    "mcp__dk_reels_creative__preview_spec"]}[role]  # fmt: skip
+            add(
+                s,
+                node,
+                "start",
+                agent=role,
+                model="sonnet",
+                tools=allowed,
+                hidden=2,
+                task='{"idea_id": "' + i["id"] + '", "angle": "...", "brand": ["..."], "evidence": ["..."]}',
+            )
+            used = {"copywriter": [("dk_intel_writer", "evaluate_drafts", 950)],
+                    "adapter": [],
+                    "designer": [("dk_reels_creative", "search_assets", 180),
+                                 ("dk_reels_creative", "search_music", 120),
+                                 ("dk_reels_creative", "preview_spec", 30)]}[role]  # fmt: skip
+            at = s + 1500
+            for server, tool, took in used:
+                add(at, node, "tool_call", tool=tool, server=server, input='{"demo": true}')
+                add(
+                    at + took,
+                    node,
+                    "tool_result",
+                    tool=tool,
+                    is_error=False,
+                    took_ms=took,
+                    output='{"ok": true, "demo": true}',
+                )
+                at += took + 800
+            add(s + dur - 200, node, "thought", text=f"demo answer of the {role} for {i['id']}")
             add(
                 s + dur,
-                f"{role}:{i['id']}",
+                node,
                 "end",
                 status="done",
                 ms_total=dur,
                 tokens_in=tok,
                 tokens_out=int(tok * 0.1),
                 turns=2,
+                output={"demo": True, "agent": role, "idea": i["id"]},
             )
             s += dur
         r0 = max(s, render_free)
@@ -341,6 +434,18 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
     end = render_free + 1500
     add(end, "orchestrator", "phase", phase="production", status="end", seconds=(end - t0) / 1000)
     add(end + 10, "orchestrator", "phase", phase="handover", status="start")
+    add(end + 300, "publisher", "publisher_call", method="spec", what="", took_ms=250, ok=True, error=None)
+    for k in range(0, n_ideas, 4):
+        add(
+            end + 1500 + k * 300,
+            "publisher",
+            "publisher_call",
+            method="batch",
+            what="12 posts",
+            took_ms=900,
+            ok=True,
+            error=None,
+        )
     add(end + 6000, "orchestrator", "phase", phase="handover", status="end", seconds=6.0)
     add(
         end + 6010,
@@ -368,6 +473,14 @@ def demo_events(seed: int = 7, n_ideas: int = 12) -> tuple[list[dict[str, Any]],
 
 def rng_pick(rnd: random.Random, options: list[str]) -> str:
     return options[rnd.randrange(len(options))]
+
+
+def demo_events_at(tick: int) -> tuple[list[dict[str, Any]], int]:
+    """The demo run's events that have happened `tick` polls after it began, and the demo clock (ms)."""
+    events, _ = demo_events()
+    total = events[-1]["ms"]
+    clock = min((max(0, tick) * DEMO_SPEEDUP_MS) % (total + 5 * DEMO_SPEEDUP_MS), total)
+    return [e for e in events if e["ms"] <= clock], clock
 
 
 def demo(tick: int) -> dict[str, Any]:

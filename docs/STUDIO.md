@@ -44,8 +44,18 @@ uv run intel studio eval show                     # posts made, tokens, minutes 
 ```bash
 uv run python -m intel.studio.console      # then open http://127.0.0.1:8771
 ```
-Every page has the same top bar: **Today**, **Mission control**, **Runs**, **Guide**, and **Review drafts** (the publisher's
-page, in a new tab).
+Every page has the same top bar: **Today**, **Operations**, **Agent system**, **ML pipeline**, **Mission control**, **Runs**,
+**Demo**, **Guide**, and **Review drafts** (the publisher's page, in a new tab).
+
+**The whole machine (ADR 0040).** *Operations* (`/ops`) starts everything (the ML run, then the studio), or either half, or the
+warehouse pull, or the market snapshot alone, from a fixed list; it asks first when tokens are spent. *Agent system* (`/system`)
+is a map of every layer: orchestrator and its phases, the agents, the MCP servers, their tools and the ports (publisher,
+renderer), with calls, tokens and time on every box and line; click any box, then any call, to see what it was given, which
+tools it called (input, result, time), what it said and its answer. *ML pipeline* (`/ml`) shows the 15 steps of the Sunday run
+and, for each of the 7 models, the data it read, the split, the candidates tried, the new model against the current one, the
+confusion matrix and every judge gate. *Demo* (`/demo`) plays a made-up whole run (ML, then agents) through the same pages, no
+tokens and no real data (`/system?demo=1`, `/ml?demo=1` show each half). The console now needs its own host and a session token
+for every button.
 
 **Today** lists everything that waits for you (drafts to approve, footage proposals with Accept / Reject buttons, how far
 ahead the calendar is planned, decisions, schedule) under a one-line progress strip of the current run.

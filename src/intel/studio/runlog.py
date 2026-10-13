@@ -23,6 +23,7 @@ class RunLog:
         self.path = directory / "events.jsonl"
         self._lock = threading.Lock()
         self._t0 = time.monotonic()
+        self.current_phase: str | None = None  # what the orchestrator is doing now (code-level calls note it)
         self._base = (
             self._last_ms()
         )  # a resumed run goes on from where its clock stopped (the time it was off is not counted)
@@ -53,6 +54,7 @@ class RunLog:
 
     def phase(self, name: str, status: str, **data: Any) -> None:
         """A named stage of the run (planning, writing, checking, rendering, handover) starting or ending."""
+        self.current_phase = name if status == "start" else None
         self.emit("orchestrator", "phase", phase=name, status=status, **data)
 
 

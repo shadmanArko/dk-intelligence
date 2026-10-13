@@ -42,6 +42,7 @@ from intel.studio.ports import PublisherPort, RendererPort, RunnerPort, ToolPort
 from intel.studio.render import keep_awake
 from intel.studio.runlog import RunLog, short
 from intel.studio.state import RunState
+from intel.studio.trace import LoggedPublisher, LoggedTools
 
 MODES = ("render", "dry-run", "drafts")
 
@@ -91,7 +92,13 @@ class Studio:
             self.log = RunLog(folder, run_id)
             self.state = RunState(folder / "state.json")
             self.opts = o
-            return self._run(folder, run_id)
+            plain_tools, plain_publisher = self.tools, self.publisher
+            self.tools = LoggedTools(plain_tools, self.log)  # every call the code itself makes is noted (ADR 0040)
+            self.publisher = LoggedPublisher(plain_publisher, self.log) if plain_publisher is not None else None
+            try:
+                return self._run(folder, run_id)
+            finally:
+                self.tools, self.publisher = plain_tools, plain_publisher
         finally:
             lock.unlink(missing_ok=True)
 
