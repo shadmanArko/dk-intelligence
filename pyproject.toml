@@ -134,6 +134,7 @@ module = [
     "intel.rag.pack",
     "intel.mcp_server.*",
     "intel.studio.*",
+    "intel.performance.*",
 ]
 # --strict, spelled out: a per-module `strict = true` is applied to every module by mypy
 disallow_untyped_defs = true

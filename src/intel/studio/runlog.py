@@ -18,7 +18,7 @@ def short(value: Any, n: int = 300) -> str:
 class RunLog:
     def __init__(self, directory: Path, run_id: str) -> None:
         self.id = run_id
-        self.dir = directory
+        self.dir = directory.resolve()  # an agent runs in another folder: its config path must be absolute
         self.dir.mkdir(parents=True, exist_ok=True)
         self.path = directory / "events.jsonl"
         self._lock = threading.Lock()

@@ -30,9 +30,11 @@ from intel.mcp_server.cli import mcp_app, pack_app  # noqa: E402 (no fastmcp imp
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(pack_app, name="pack")
 
+from intel.performance.cli import performance_app  # noqa: E402
 from intel.studio.cli import studio_app  # noqa: E402
 
 app.add_typer(studio_app, name="studio")
+app.add_typer(performance_app, name="performance")
 
 
 def _pulls_dir():

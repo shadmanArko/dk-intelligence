@@ -688,3 +688,34 @@ are close to each other, and nothing yet measures which is better. I wrote that 
 milestone (a per-platform performance playbook) instead of optimising a caption score that can't see wording. I also
 didn't create drafts in the owner's Calendar from a 10-day run: that waits for the review page, because approving 130
 posts one by one in a spreadsheet is the thing the page exists to fix.
+
+## S4 · Closing the loop with statistics I could defend on 100 posts
+
+**Situation.** The studio made 130 posts per 10 days but knew nothing about what worked on each platform. The data was
+483 posts, a usual one with 1-2 likes, on accounts that had grown several times over, and the existing scorer couldn't
+see wording and its test set was spent.
+
+**Task.** Give the agents real evidence about our own past posts without producing confident noise, and without touching
+the scorers.
+
+**Action.**
+- **Normalised for growth:** each post is compared with the previous 20 on its platform, so an account that grew 5x is not
+  mistaken for better writing. Reach carries the signal; engagement is too sparse (a median of 1-2) and the playbook says so.
+- **Plain statistics with intervals, not a model:** the median lift of a value against all the other posts with a
+  bootstrap interval; a claim only when the whole interval is on one side of zero and both groups have 15 or more
+  posts; nothing at all below 30 matured posts. It states how many comparisons it made and that a few findings are chance.
+- **Kept it out of reach of the things it must not steer:** language and prices go to the owner only; limits the checker
+  enforces are not offered as levers; reach is not described as sales (tracked links are empty).
+- **Closed the loop in the task, not the prompt:** the strategist and each adapter get the few supported lines, or "no
+  evidence"; each idea cites the line it leans on. I measured it on the same frozen 10-day inputs.
+
+**Result.** The data says Instagram reels reach 2.1x and no-emoji captions 2.4x. With the playbook in the task, no-emoji
+Instagram captions went from 38% to 84% of the plan, at about 2.5k more tokens per idea. The run that dipped (115 of 130
+posts) was not the playbook: a German-language heuristic in the checker rejected plainly German captions; I found it in
+the traces, fixed the checker with tests, and the next run recovered to 126 of 130. Threads and YouTube honestly got
+"no evidence".
+
+**Trade-off I would defend.** I did not let the playbook choose the format or the posting window. Those are code-owned
+for safety and predictability, the data can't see orders, and about 1 in 20 findings is chance. The honest limit, stated
+in the results, is that the agents can only act on the caption and the picture. Moving the format and day levers
+into the plan is an owner decision for after the studio's own posts have results.

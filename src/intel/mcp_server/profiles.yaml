@@ -4,17 +4,19 @@
 owner:
   tools: [score_drafts, model_status, upcoming_occasions, competitor_complaints, community_areas, funnel_status,
           find_creators, search_reviews, search_brand, search_posts, get_sources, verify_citations, trend_signals,
-          check_drafts, brand_rules, get_facts, grounding_pack, evaluate_drafts]
+          check_drafts, brand_rules, get_facts, grounding_pack, evaluate_drafts, platform_playbook,
+          performance_by_feature, post_performance]
   resources: ["dk://*"]
   prompts: ["*"]
 analyst:
   tools: [search_reviews, search_brand, search_posts, get_sources, verify_citations, trend_signals,
-          competitor_complaints, community_areas, funnel_status, find_creators, get_facts]
+          competitor_complaints, community_areas, funnel_status, find_creators, get_facts, platform_playbook,
+          performance_by_feature, post_performance]
   resources: ["dk://about", "dk://catalog", "dk://models/*", "dk://evidence/*", "dk://brand/*", "dk://rules/*"]
   prompts: [cited_answer]
 planner:
   tools: [grounding_pack, upcoming_occasions, competitor_complaints, community_areas, funnel_status, trend_signals,
-          search_posts, search_brand, brand_rules, get_facts]
+          search_posts, search_brand, brand_rules, get_facts, platform_playbook]
   resources: ["dk://about", "dk://catalog", "dk://models/*", "dk://evidence/*", "dk://brand/*", "dk://rules/*"]
   prompts: [role_planner]
 writer:

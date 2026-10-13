@@ -71,7 +71,7 @@ RULES: dict[str, Rule] = {
 
 GERMAN = re.compile(
     r"[äöüß]|\b(und|der|die|das|den|dem|ein|eine|ist|sind|nicht|mit|für|auf|bei|jetzt|bestell\w*|samstag|frisch|"
-    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt|aus|von|vom|zum|zur|im|unser|unsere|dein|deine|dich|dir|schmeckt|jede|jeder|jedes|jeden|alle|alles|offen|zeigt|zeigen|bereit|deckel|topf|reis|fleisch|zutat|zutaten|gewürze|duft|wartet|warten|kommt|kommen)\b|\b\w{3,}(?:lich|liche|lichen|licher|liches|ung|ungen|heit|keit|abend|nacht)\b|\b\w{3,}tag\b",
+    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt|aus|von|vom|zum|zur|im|unser|unsere|dein|deine|dich|dir|schmeckt|jede|jeder|jedes|jeden|alle|alles|offen|zeigt|zeigen|bereit|deckel|topf|reis|fleisch|zutat|zutaten|gewürze|duft|wartet|warten|kommt|kommen|durch|vor|nach|über|unter|zwischen|gegen|bis|seit|beim|unterwegs|nachbarn?|nachbarschaft|teilen|teilt|ruhe|ruhig\w*|stiller?|blick|tresen|sauber|wird|werden|gleich|kochen|kocht|essen|tisch|familie|freunde?|abends?|woche|wochenende|sonntag|montag|dienstag|mittwoch|donnerstag|freitag|bringt|bringen|holen|abholen|liefern|lieferung|duftet|dampf|würzig|zart\w*|saftig\w*|heiß|heiss|neue\w*|einen|einem|einer|des|zu|ich|du|mir|dir|dich|mich|kann|muss|soll|dass|wenn|dann|denn|aber|doch|sehr|mehr|viel|viele|schicht|zuhause|daheim)\b|\b\w{3,}(?:lich|liche|lichen|licher|liches|ung|ungen|heit|keit|abend|nacht)\b|\b\w{3,}tag\b",
     re.I,
 )
 PRICE = re.compile(r"(?:€\s?(\d{1,3}(?:[.,]\d{1,2})?))|(?:(\d{1,3}(?:[.,]\d{1,2})?)\s?(?:€|eur\b|euro\b))", re.I)

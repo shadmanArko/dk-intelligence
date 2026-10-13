@@ -38,5 +38,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0032](0032-brand-rules-and-prices-have-one-owner.md) | Brand rules and prices have one owner: dk_intel; prompts and renderers hold none | Accepted |
 | [0033](0033-contracts-between-projects.md) | Contracts between the projects: owner-defined, consumer-pinned, tested, checked at run time | Accepted |
 | [0034](0034-the-studio-package.md) | The studio package: ports, settings as data, one idea → five native posts, budgets, resume | Accepted |
+| [0035](0035-performance-learning.md) | Performance learning: growth-normalised results, plain statistics with intervals, a playbook the studio reads | Accepted |
 
 Template: [0000-template.md](0000-template.md).

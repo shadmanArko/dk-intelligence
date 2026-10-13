@@ -35,6 +35,7 @@ from intel.mcp_server.kit.middleware import (
 from intel.mcp_server.servers.brand import build_brand_server
 from intel.mcp_server.servers.evidence import build_evidence_server
 from intel.mcp_server.servers.models import build_models_server
+from intel.mcp_server.servers.performance import build_performance_server
 from intel.mcp_server.servers.studio import build_studio_server
 
 HERE = Path(__file__).parent
@@ -43,6 +44,7 @@ SERVERS: dict[str, Callable[[Deps], FastMCP]] = {
     "brand": build_brand_server,
     "evidence": build_evidence_server,
     "studio": build_studio_server,
+    "performance": build_performance_server,
 }
 TOOLS_API = "1.0"
 

@@ -60,7 +60,8 @@ def run_view(folder: Path) -> dict[str, Any]:
         ideas.append({
             "id": idea_id, "date": idea["date"], "format": idea["format"], "window": idea["window"],
             "platforms": sorted(idea["slots"]), "slots": idea["slots"], "angle": row.get("angle"),
-            "pillar": row.get("pillar"), "stage": row["stage"], "captions": row.get("captions", {}),
+            "pillar": row.get("pillar"), "playbook_note": row.get("playbook_note"), "stage": row["stage"],
+            "captions": row.get("captions", {}),
             "options": row.get("options", {}), "holds": row.get("holds", {}), "outcome": row.get("outcome"),
             "hook": ((row.get("design") or {}).get("spec") or {}).get("content", {}).get("hook"),
             "thumb": f"/api/runs/{folder.name}/thumb/{row['thumb']}" if row.get("thumb") else None,

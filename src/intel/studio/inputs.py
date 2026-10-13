@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 from intel.studio import media, slots
@@ -42,7 +43,9 @@ def evaluate(tools: ToolPort, drafts: list[dict[str, Any]]) -> list[dict[str, An
     return out
 
 
-def fetch_inputs(tools: ToolPort, cfg: StudioConfig, today: dt.date) -> dict[str, Any]:
+def fetch_inputs(
+    tools: ToolPort, cfg: StudioConfig, today: dt.date, performance_root: Path | None = None
+) -> dict[str, Any]:
     days = slots.plan_days(cfg, today)
     items = slots.probes(cfg, days)
     primary = cfg.plan.primary_platform
@@ -104,12 +107,27 @@ def fetch_inputs(tools: ToolPort, cfg: StudioConfig, today: dt.date) -> dict[str
         pack_, probe, (vocab, inventory) = f_pack.result(), f_probe.result(), f_reels.result()
         (price_rows, unavailable), tags = f_menu.result(), f_tags.result()
         shown = examples(pack_)
+    performance = performance_for_prompts(cfg, performance_root)
     return {"today": today.isoformat(), "pack": pack_, "probe_results": probe, "vocab": vocab, "inventory": inventory,
-            "prices": price_rows, "unavailable": unavailable, "hashtags": tags, "examples": shown}  # fmt: skip
+            "prices": price_rows, "unavailable": unavailable, "hashtags": tags, "examples": shown,
+            "performance": performance}  # fmt: skip
+
+
+def performance_for_prompts(cfg: StudioConfig, root: Path | None = None) -> dict[str, Any]:
+    """What the numbers support, per platform, in the few lines an agent's task can carry (S4). Read from the latest
+    playbook on disk (`uv run intel performance build`); none yet is stated as such, never invented."""
+    from intel.performance import playbook
+
+    folder = root or (Path(__file__).resolve().parents[3] / "data" / "performance")
+    pb = playbook.latest(folder)
+    out = {p: playbook.for_prompt(pb, p) for p in cfg.plan.platforms}
+    out["_basis"] = {"pull": (pb or {}).get("pull_id"), "caveats": (pb or {}).get("caveats", [])}
+    return out
 
 
 def platform_slices(cfg: StudioConfig, publish_spec: dict[str, Any], hashtags: dict[str, Any],
-                    idea_format: str, platforms: list[str]) -> dict[str, dict[str, Any]]:  # fmt: skip
+                    idea_format: str, platforms: list[str],
+                    performance: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:  # fmt: skip
     """What the adapter is told about each platform, all of it from code: the publisher's own caption rules for the
     publishing format this idea takes there, the brand playbook's hashtag range, the options it may write."""
     route = cfg.routes.formats[idea_format]
@@ -134,6 +152,7 @@ def platform_slices(cfg: StudioConfig, publish_spec: dict[str, Any], hashtags: d
             "emoji_max": limits.get("emoji_max"),
             "option_fields": {k: {"max_length": v.get("max_length")} for k, v in options.items() if k in allowed},
             "feel": cfg.routes.feel.get(p, ""),
+            "what_worked": (performance or {}).get(p),
         }
     return out
 

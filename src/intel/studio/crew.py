@@ -104,7 +104,14 @@ class Crew:
         i = idea.idea_id
         st = self.state.idea(i)
         platforms = list(idea.slots)
-        slices = platform_slices(self.cfg, self.publish_spec, self.inputs.get("hashtags", {}), idea.format, platforms)
+        slices = platform_slices(
+            self.cfg,
+            self.publish_spec,
+            self.inputs.get("hashtags", {}),
+            idea.format,
+            platforms,
+            self.inputs.get("performance"),
+        )
         task: dict[str, Any] = {
             "idea_id": i,
             "idea": {"angle": st["angle"], "pillar": st.get("pillar", ""), "core_caption": st["core"]["caption"],

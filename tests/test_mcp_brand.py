@@ -196,6 +196,16 @@ CASES = [
         {"caption": "Young Kacchi in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"},
         {"caption": "Festliche Kacchi in Berlin\nSamstagabend. #kacchibiryani #berlinfood #biryaniberlin"},
     ),  # suffixes  # fmt: skip
+    (
+        "LANG_ORDER",
+        {"caption": "Cooking for the neighbours in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"},
+        {"caption": "Kacchi unterwegs durch Humboldthain\nKacchi in Berlin. #kacchibiryani #berlinfood #biryaniberlin"},
+    ),  # fmt: skip
+    (
+        "LANG_ORDER",
+        {"caption": "Quiet moment before the pot in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"},
+        {"caption": "Nachbarn teilen Kacchi in Berlin\nKacchi. #kacchibiryani #berlinfood #biryaniberlin"},
+    ),  # fmt: skip
     ("WERBUNG_MISSING", {"caption": GOOD, "paid": True}, {"caption": "Werbung: " + GOOD, "paid": True}),
     ("PRICE_UNCONFIRMED", {"caption": GOOD + " Taster nur 9,99 €"}, {"caption": GOOD + " Box 15,00 €"}),
     ("PRICE_MISMATCH", {"caption": GOOD + " Box 12,50 €"}, {"caption": GOOD + " Lieferung 5 €"}),

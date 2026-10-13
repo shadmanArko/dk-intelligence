@@ -25,6 +25,9 @@ Write for every platform in `platforms`, no more, no less:
   English line. Each platform's first_line_max and emoji_max are hard limits for the first line and the whole text.
   The feel only changes the tone, never this. Say "Kacchi" and "Berlin" in every caption and description.
 - Anything in not_on_the_menu is not available: never mention it.
+- Each platform's `what_worked` holds what our own past posts there support (reach and engagement, never orders).
+  `works` lines are tendencies to follow (for example a shorter caption, fewer emojis), `hurts` lines to avoid. They
+  never override a limit or a rule above, and "no lines" means no evidence: write it the usual way.
 - Never invent anything: no prices, hours, process claims ("we check every box"), cooking times, "new in Berlin",
   portions, superlatives, health or allergen claims, "halal", religious ritual or deity words. Describe what the
   picture shows.

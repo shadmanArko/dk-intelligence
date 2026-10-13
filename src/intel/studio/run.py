@@ -171,7 +171,16 @@ class Studio:
 
         # 4. angles
         with self.phase("strategist", ideas=len(ideas)):
-            plan_angles(self.ai, cfg, state, log, ideas, inputs["pack"], inputs.get("unavailable", []))
+            plan_angles(
+                self.ai,
+                cfg,
+                state,
+                log,
+                ideas,
+                inputs["pack"],
+                inputs.get("unavailable", []),
+                inputs.get("performance"),
+            )
 
         # 5. the crews, with renders and uploads running behind them
         crew = self.crew = Crew(self.ai, self.tools, cfg, state, log, inputs, publish_spec)
@@ -197,7 +206,12 @@ class Studio:
         if o.inputs:
             data: dict[str, Any] = json.loads(o.inputs.read_text())
         else:
-            data = fetch_inputs(self.tools, self.cfg, o.today or self.now().astimezone(self._tz()).date())
+            data = fetch_inputs(
+                self.tools,
+                self.cfg,
+                o.today or self.now().astimezone(self._tz()).date(),
+                self.data_dir.parent / "performance",
+            )
         saved.write_text(json.dumps(data, ensure_ascii=False, indent=1))
         if o.save_inputs:
             o.save_inputs.parent.mkdir(parents=True, exist_ok=True)

@@ -53,7 +53,7 @@ function card(i){const held=i.holds['*'];
  return `<div class="idea ${open.has(i.id)?'open':''}" onclick="tog('${i.id}')">${i.thumb?`<img src="${i.thumb}" alt="">`:'<div class="ph0"></div>'}
  <div><div class="angle">${esc(i.angle||(held?'(no angle)':'planning…'))}</div>
  <div class="meta">${esc(i.id)} · ${esc(i.format)} · ${esc(i.window.replace('_',' '))} · ${esc(i.pillar||'')} · ${held?'held':esc(OUT[i.outcome?.state]||i.stage)}</div>
- <div class="chips">${chips(i)}</div><div class="detail">${i.hook?`<div class="meta">picture: ${esc(i.hook)}</div>`:''}${caps}${why}</div></div></div>`}
+ ${i.playbook_note?`<div class="meta">leans on: ${esc(i.playbook_note)}</div>`:''}<div class="chips">${chips(i)}</div><div class="detail">${i.hook?`<div class="meta">picture: ${esc(i.hook)}</div>`:''}${caps}${why}</div></div></div>`}
 function tog(id){open.has(id)?open.delete(id):open.add(id);draw(window.V)}
 function draw(v){if(!v)return;window.V=v;const n=v.ideas.length,done=v.ideas.filter(i=>i.outcome).length;
  const posts=v.ideas.reduce((a,i)=>a+(i.outcome?i.outcome.platforms.length:0),0),planned=v.ideas.reduce((a,i)=>a+i.platforms.length,0);

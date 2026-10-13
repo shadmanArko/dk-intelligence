@@ -578,3 +578,41 @@ def test_an_unusable_agent_answer_is_asked_for_once_more_and_never_more(world):
     w2.go("render")
     assert next(r for r in w2.result() if r["idea_id"] == "d01i1")["holds"]["*"]["code"] == "agent_failed"
     assert sum(c["node"].startswith("copywriter:d01i1") for c in w2.runner.calls) == 2  # the call and one retry
+
+
+# ---------- S4: what worked reaches the plan ----------
+
+
+def test_what_the_numbers_support_reaches_the_strategist_and_each_platforms_adapter(world):
+    import numpy as np
+
+    from intel.performance import playbook
+    from tests.test_performance import _frame
+
+    rng = np.random.default_rng(3)
+    pb = playbook.build(_frame("instagram", 80, rng), "pullX")
+    playbook.write(world.data.parent / "performance", pb, _frame("instagram", 80, rng))
+    world.go("render")
+    strategist = next(c["task"] for c in world.runner.calls if c["agent"] == "strategist")
+    ig = strategist["what_worked"]["instagram"]
+    assert len(ig["works"]) <= 2 and len(ig["hurts"]) <= 1 and "format = reel" in " ".join(ig["works"])
+    assert strategist["what_worked"]["tiktok"]["status"].startswith(
+        "no performance data"
+    )  # no data is said, not hidden
+    adapter = next(c["task"] for c in world.runner.calls if c["agent"] == "adapter")
+    assert adapter["platforms"]["instagram"]["what_worked"]["works"] and adapter["platforms"]["youtube"]["what_worked"]
+    assert all(r["angle"] for r in world.result())
+    state = json.loads((world.folder / "state.json").read_text())
+    assert state["ideas"]["d01i1"]["playbook_note"] == "instagram: reels reach more"  # the plan cites what worked
+    frozen = json.loads((world.folder / "inputs.json").read_text())
+    assert frozen["performance"]["_basis"]["pull"] == "pullX"  # a frozen input carries it, so a replay is comparable
+
+
+def test_without_a_playbook_the_agents_are_told_there_is_none_not_given_invented_advice(world):
+    world.go("render")
+    strategist = next(c["task"] for c in world.runner.calls if c["agent"] == "strategist")
+    assert (
+        strategist["what_worked"]["instagram"]["status"] == "no playbook yet"
+        and not strategist["what_worked"]["instagram"]["works"]
+    )
+    assert all(r["angle"] for r in world.result())

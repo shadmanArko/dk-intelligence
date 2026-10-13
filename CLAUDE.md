@@ -23,7 +23,7 @@ for the owner, and the next task (Phase 5: agents). Then the [architecture](docs
 | 3 (H0–H11) | MLOps hardening ([plan](docs/PHASE3_MLOPS_PLAN.md)) | done, except **H10 (GDPR) on PR #4, unmerged by the owner's choice** |
 | 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; dk_intel live on the VPS since 2026-10-12 |
 | **M8** | the lab makes the media: designer agent → render → drafts at dk-publishing ([results](docs/results/M8_media_pipeline.md), ADR 0031) | done (merged; first live draft 2026-10-12) |
-| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | S0–S3 done (S2: [how to run](docs/STUDIO.md), [results](docs/results/S2_studio.md); S3 is built and merged in dk-publishing, **not yet deployed**); **S4 next** ([build guide](docs/PHASE5_BUILD_GUIDE.md)) |
+| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | S0–S4 done (S2: [how to run](docs/STUDIO.md), [results](docs/results/S2_studio.md); S3 live in dk-publishing; S4: [results](docs/results/S4_performance_learning.md)); **S5 next** ([build guide](docs/PHASE5_BUILD_GUIDE.md)) |
 
 Older docs (PHASE1_PLAN.md, PHASE2_PLAN.md) say "MCP is Phase 3". That was renumbered on 2026-10-08: Phase 3 became
 MLOps hardening.
@@ -69,7 +69,7 @@ and `tests/test_restore_drill.py`. Monitoring as code: `bash deploy/monitoring/c
     origin or citizenship data anywhere else without asking.
 11. **€0 running cost, no paid AI APIs** (ADR 0012), unless the owner decides otherwise for Phase 4; ask.
 12. **Migrations are additive** (ADR 0015, `tests/test_migration_policy.py`). Accepted ADRs are never edited; a
-    changed decision gets a new ADR. Next free ADR number: **0035** (0024 is on the H10 branch).
+    changed decision gets a new ADR. Next free ADR number: **0036** (0024 is on the H10 branch).
 13. **Ratchets only move one way** (ADR 0010): the strict-mypy module list only grows; the coverage floor
     (`fail_under = 80`, precision 2) only rises; 0 fixable HIGH/CRITICAL vulnerabilities.
 14. **Never touch harness PR #2** ("RAG System…", by another contributor): the owner said "DO not accept the rag
@@ -122,7 +122,7 @@ postmortem (`docs/postmortems/`). Plans are written as a doc for the owner's app
   - `serve/` (intel-api on the VPS: app, registry, measure, monitor, guardrail, lifecycle, telegram, views,
     `migrations/`);
   - `control.py` (Mac Control Room);
-  - Phase 5: `studio/` (the Content Studio: ports, settings, strategist, crews, render and upload pipeline, console), settings in `config/studio/*.yaml`, run it with `uv run intel studio run` ([STUDIO.md](docs/STUDIO.md)); `lab/agentic-slice/` is the older lab (demo mode), it imports `media` and `handover` from `studio/`;
+  - Phase 5: `performance/` (S4: results per post, the playbook, `uv run intel performance build|join|analyst`), `studio/` (the Content Studio: ports, settings, strategist, crews, render and upload pipeline, console), settings in `config/studio/*.yaml`, run it with `uv run intel studio run` ([STUDIO.md](docs/STUDIO.md)); `lab/agentic-slice/` is the older lab (demo mode), it imports `media` and `handover` from `studio/`;
   - Phase 4: `capabilities/` (plain-Python tool logic), `adapters/` (intel-api, packs, pgvector), `rag/` (knowledge
     packs: clean, chunk, embed, rerank, store, gate, ship), `mcp_server/` (the dk_intel gateway, servers, kit,
     prompts, profiles, budgets, HTTP + tokens). Docs: `docs/mcp/` (catalog, clients, threat model, Phase 5 hand-over),

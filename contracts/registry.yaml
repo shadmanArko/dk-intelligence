@@ -37,3 +37,9 @@ contracts:
     source: {snapshots: tests/mcp/snapshots}
     version: catalog snapshots      # tests/test_mcp_security.py: additive only, reviewed
     consumers: [lab agents, Claude Code, LangChain and Agents SDK clients]
+  warehouse.performance:
+    owner: dhaka_kacchi_ai_harness
+    what: the warehouse tables the performance join reads (social_post.permalink, social_metrics_snapshot) and the publisher's live_url that names the same post
+    source: {pull: social_post, social_metrics_snapshot}
+    version: data contracts (src/intel/quality/contracts.py; the pull validates both before any use)
+    consumers: [src/intel/performance/build.py, src/intel/performance/urls.py]

@@ -36,6 +36,19 @@ def cites(pack: Any) -> dict[str, str]:
     return out
 
 
+def compact_performance(performance: dict[str, Any] | None) -> dict[str, Any]:
+    """The strategist's view of the playbook: per platform at most 2 lines that work and 1 that hurts."""
+    if not performance:
+        return {"status": "no playbook yet"}
+    out: dict[str, Any] = {"basis": performance.get("_basis", {}).get("caveats", [])}
+    for platform, entry in performance.items():
+        if platform.startswith("_"):
+            continue
+        out[platform] = {"status": entry.get("status"), "works": entry.get("works", [])[:2],
+                         "hurts": entry.get("hurts", [])[:1]}  # fmt: skip
+    return out
+
+
 def words(text: str) -> frozenset[str]:
     return frozenset(w for w in re.findall(r"[a-zäöüß0-9]+", text.lower()) if len(w) > 2)
 
@@ -62,12 +75,18 @@ def normalise(
             continue
         pillar = str(s.get("pillar") or "").strip().lower()
         sources = [c for c in s.get("sources") or [] if isinstance(c, str) and c in pack_cites][:3]
-        out[sid] = {"angle": angle, "pillar": pillar if pillar in pillars else "", "sources": sources}
+        out[sid] = {
+            "angle": angle,
+            "pillar": pillar if pillar in pillars else "",
+            "sources": sources,
+            "playbook_note": str(s.get("playbook_note") or "").strip()[:300],
+        }
     return out
 
 
 def plan_angles(ai: AI, cfg: StudioConfig, state: RunState, log: RunLog, ideas: list[slots.Idea],
-                pack: dict[str, Any], unavailable: list[str]) -> None:  # fmt: skip
+                pack: dict[str, Any], unavailable: list[str],
+                performance: dict[str, Any] | None = None) -> None:  # fmt: skip
     """Give every idea an angle. Chunks of `chunk_ideas`; each chunk sees the angles already chosen. Duplicates and
     missing answers are asked for once more; an idea that still has none is held with that reason."""
     pillars = {p.name for p in cfg.plan.pillars}
@@ -91,7 +110,8 @@ def plan_angles(ai: AI, cfg: StudioConfig, state: RunState, log: RunLog, ideas: 
             ]  # fmt: skip
             task = {"slots": open_slots, "grounding_pack": pack, "pillars": [p.model_dump() for p in cfg.plan.pillars],
                     "pillar_counts": dict(counts), "max_pillar_share": cfg.plan.max_pillar_share,
-                    "previous": previous, "not_on_the_menu": unavailable}  # fmt: skip
+                    "previous": previous, "not_on_the_menu": unavailable,
+                    "what_worked": compact_performance(performance)}  # fmt: skip
             res = ai.call(node if attempt == 1 else f"{node}-redo", "strategist", task)
             got = normalise(res.answer, {i.idea_id for i in pending}, pillars, pack_cites)
             retry: list[slots.Idea] = []

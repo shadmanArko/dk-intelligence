@@ -186,7 +186,7 @@ API's `approve_post`, `cancel_post`, `review_drafts`).
 
 **Done when:** the owner approves a real day of posts on the page. Measure the time.
 
-### S4: the learning loop (can run in parallel with S5 after S2)
+### S4: the learning loop (DONE 2026-10-13: ADR 0035, [results](results/S4_performance_learning.md))
 **Goal:** each plan uses what actually performed per platform.
 - **Data:**
   - the ordering system's warehouse has `social_post`, `social_metrics_snapshot` (Instagram, Facebook, Threads,
@@ -214,7 +214,7 @@ API's `approve_post`, `cancel_post`, `review_drafts`).
 
 **Done when:** a plan cites what worked last time; every platform has performance rows.
 
-### S5: production breadth
+### S5: production breadth (next)
 **Goal:** 10 days without heavy clip repeats; new looks without code per post.
 - **reels:** a **template registry**, one folder per template: schema, composition, resolver, `meta.json`. The
   `list_templates` tool reads it. Then add templates:

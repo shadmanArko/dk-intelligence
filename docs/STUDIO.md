@@ -40,6 +40,16 @@ uv run intel studio eval run --label v2 --publish render
 uv run intel studio eval show                     # posts made, tokens, minutes per version
 ```
 
+## What worked (S4)
+```bash
+uv run intel performance build      # after each Sunday pull: results per post, the playbook per platform (0 tokens)
+uv run intel performance join       # our published studio posts joined to their results (needs the publisher key)
+uv run intel performance analyst    # the weekly "what worked" note and proposals for you (one call, about 5k tokens)
+```
+The studio reads the latest playbook by itself: the strategist and each platform's adapter get the few lines the numbers
+support (or "no evidence"), and each idea carries a `playbook_note` saying what it leans on. Read
+`data/performance/<pull id>/playbook.md` and `analyst.md`. Method and limits: [ADR 0035](adr/0035-performance-learning.md).
+
 ## Rules it keeps
 Drafts only: there is no approve call anywhere in the studio. A post can't change under its key (an existing key is
 skipped). Nothing is dropped silently: every idea or platform that does not go out has a reason in the report.
