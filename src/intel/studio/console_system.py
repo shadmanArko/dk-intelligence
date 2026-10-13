@@ -179,6 +179,28 @@ def api_ops() -> dict[str, Any]:
             "ml_running": lock_alive(_ml_paths()[0])}  # fmt: skip
 
 
+@router.get("/api/cleanup")
+def api_cleanup() -> dict[str, Any]:
+    """What a cleanup would delete, and the disk now (nothing is deleted by asking)."""
+    import datetime as dt
+    import shutil
+
+    from intel.studio import cleanup, handover, media
+
+    env = handover.load_env()
+    client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"]) if len(env) == 2 else None
+    r = cleanup.run(cleanup.load_retention(), client, media.REELS, DATA, dt.datetime.now(dt.UTC),
+                    working=_running() is not None)  # fmt: skip
+    disk = shutil.disk_usage(REPO)
+
+    def part(p: cleanup.Plan) -> dict[str, Any]:
+        return {"count": len(p.delete), "bytes": p.freed, "kept": len(p.keep), "skipped": p.skipped}
+
+    return {"disk": {"free": disk.free, "total": disk.total, "free_percent": round(100 * disk.free / disk.total, 1)},
+            "videos": part(r.jobs), "packs": part(r.packs), "uploads": part(r.uploads),
+            "would_free": r.jobs.freed + r.packs.freed + r.uploads.freed}  # fmt: skip
+
+
 @router.post("/api/ops/stop")
 def api_ops_stop() -> dict[str, Any]:
     """Stop what is running: the studio run, the ML run and the operation that started them (see ops.stop_all)."""

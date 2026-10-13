@@ -80,6 +80,12 @@ ACTIONS: dict[str, Action] = {
                "about 13 minutes and about 650,000 tokens", (
                    Step("agents.render", "Studio run: media only",
                         [*PY, "studio", "run", "--publish", "render", "--trigger", "button"]),), True),
+        Action("cleanup", "disk", "Free disk space",
+               "Delete generated videos nothing needs (finished posts, experiments), old knowledge packs and old "
+               "copies sent to the VPS. Never your footage and photos, a post that still waits, or a run that can "
+               "be resumed.",
+               "about a minute, no tokens",
+               (Step("cleanup", "Free disk space", [*PY, "studio", "cleanup", "--apply"]),), True),
         Action("ml.pull", "ml", "Pull the warehouse",
                "Only the read-only snapshot of the VPS warehouse, with its data checks.",
                "about 20 seconds", (Step("ml.pull", "Pull the warehouse", [*PY, "pull"]),), False),

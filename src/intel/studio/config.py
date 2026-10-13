@@ -223,6 +223,15 @@ def load(directory: Path = CONFIG_DIR) -> StudioConfig:
         except yaml.YAMLError as e:
             raise StudioConfigError(f"{path.name}: {e}") from e
     try:
-        return StudioConfig.model_validate(parts)
+        cfg = StudioConfig.model_validate(parts)
     except ValidationError as e:
         raise StudioConfigError(f"studio settings are not valid:\n{e}") from e
+    # only the files are held to this (a one-off `--days 1` is allowed): a run must be permitted again before the plan
+    # it made has run out, or the calendar goes dry
+    if cfg.schedule.min_days_between > cfg.plan.horizon_days - cfg.schedule.lead_days:
+        raise StudioConfigError(
+            f"schedule.yaml: min_days_between {cfg.schedule.min_days_between} is longer than the plan lasts after the "
+            f"check starts (plan.yaml horizon_days {cfg.plan.horizon_days} - lead_days {cfg.schedule.lead_days}): "
+            "the calendar would run dry"
+        )
+    return cfg

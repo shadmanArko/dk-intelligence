@@ -31,6 +31,7 @@ class Readers:
     running: Callable[[], str | None]
     schedule_installed: Callable[[], bool]
     now: Callable[[], dt.datetime]
+    disk_free: Callable[[], float | None] = lambda: None  # the share of this Mac's disk that is free (0 to 1)
 
 
 def _item(
@@ -71,6 +72,24 @@ def build(r: Readers, cfg: ScheduleCfg, decisions: list[dict[str, Any]],
             )
         else:
             items.append(_item("drafts", "ok", "No drafts waiting", "Nothing to approve."))
+    free = r.disk_free()
+    if free is not None and free < 0.15:
+        items.append(
+            _item(
+                "disk",
+                "todo",
+                f"This Mac's disk is nearly full ({free * 100:.0f}% free)",
+                "Old generated videos, knowledge packs and upload copies can go. Your footage and photos never do.",
+                [
+                    {
+                        "label": "Free disk space",
+                        "api": "/api/ops/start",
+                        "body": {"action": "cleanup", "confirm": True},
+                        "confirm": "Delete old generated videos and packs that nothing needs?",
+                    }
+                ],
+            )
+        )
     pending = r.pending_proposals()
     if pending:
         lines = [

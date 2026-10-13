@@ -9,8 +9,8 @@ check_every_minutes: 30  # how often the Mac asks "is a run due, or is one unfin
 max_resumes: 3           # tries to finish a run that was cut off; after that it stops and tells you
 resume_within_hours: 36  # a cut-off run older than this is dropped (its slots have passed); a new one is planned instead
 publish: drafts          # drafts | dry-run | render
-lead_days: 4             # run when the last planned slot in the publisher's calendar is fewer than this many days ahead
-min_days_between: 6      # never run twice within this many days
+lead_days: 2             # run when the last planned slot in the publisher's calendar is fewer than this many days ahead
+min_days_between: 3      # never run twice within this many days (it must not outlast the plan: see the check in config.py)
 max_awaiting: 40         # skip when this many drafts already wait for your approval (do not pile up a backlog)
 remind_at: "09:00"        # a Mac notification at this time when something waits for you (only then)
 notify: true             # a macOS notification and a summary file when a scheduled run finishes, fails or nears the budget

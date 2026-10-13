@@ -45,5 +45,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0039](0039-catch-up-and-finish-cut-off-runs.md) | A Mac that is off catches up, and a run that was cut off is finished | Accepted |
 | [0040](0040-operations-center-the-whole-machine-in-one-place.md) | An operations center: the whole machine (ML and agents) in one place, layer by layer, with start buttons | Accepted |
 | [0041](0041-stopping-a-run-and-training-one-model.md) | Stopping a run cleanly, and training one model on its own | Accepted |
+| [0042](0042-keeping-the-disks-from-filling-up.md) | Keeping the disks from filling up: delete what nothing needs, and plan fewer days | Accepted |
 
 Template: [0000-template.md](0000-template.md).

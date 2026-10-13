@@ -34,6 +34,9 @@ That is all. You never need the terminal for this.
   minute, no tokens, and it is a candidate only: nothing is uploaded or deployed. The full ML run deploys.
 - **Explain how it works to someone:** open **How it works** (top bar): where the agents, the orchestrator, the MCP servers, the
   RAG and the schedule are, with the files to show and a ten-minute demo order. The **Agent system** page shows the RAG part live.
+- **The disk is filling up:** **Operations** shows the free space and a **Free disk space** button (it says what it would
+  free first). It also runs by itself once a day, and Today warns below 15% free. It never touches your own footage and photos or a
+  post that still waits to go out. For the VPS, [runbooks/disk.md](runbooks/disk.md) has the steps you run there.
 - **Start things:** **Operations** has *Run everything*, *Run the ML part*, *Run the agent part*, and the small ones (pull,
   market snapshot). It always asks before it spends tokens. The run keeps going if you close the tab.
 - **Let the curator learn more footage** (button): it looks at 20 clips and proposes descriptions; you accept them. Do it a few
