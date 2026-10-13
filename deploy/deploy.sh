@@ -20,6 +20,22 @@ source ./metrics.sh
 # intel-mcp (ADR 0030) runs only when the owner enabled its compose profile: COMPOSE_PROFILES=mcp in deploy/.env
 MCP_ON=false
 grep -qE '^COMPOSE_PROFILES=.*\bmcp\b' .env && MCP_ON=true
+tidy_images() {  # after a good deploy: remove our own old images; keep what runs, :current and :previous (rollback)
+  # `docker image prune -f` removes only untagged layers. The images CI builds are pulled by digest (intel-api) or by a
+  # sha tag (intel-mcp), so they were never "dangling": every deploy left two more behind (74 GB on 2026-10-13).
+  local keep id repo
+  local -a tags=(dk-intelligence:current dk-intelligence:previous) repos=("$REGISTRY_IMAGE")
+  if $MCP_ON; then   # intel-mcp is only looked at when the owner switched it on
+    tags+=(dk-intelligence-mcp:current dk-intelligence-mcp:previous)
+    repos+=("$REGISTRY_IMAGE-mcp")
+  fi
+  keep="$(docker image inspect --format '{{.Id}}' "${tags[@]}" 2>/dev/null || true)"
+  for repo in "${repos[@]}"; do
+    for id in $(docker images --no-trunc --format '{{.ID}}' "$repo" 2>/dev/null | sort -u || true); do
+      grep -qxF "$id" <<<"$keep" || docker rmi "$id" >/dev/null 2>&1 || true   # an image in use cannot be removed: fine
+    done
+  done
+}
 pull() {  # image: up to 3 attempts; the VPS->registry link has reset mid-pull twice (postmortem 2026-10-12)
   local n
   for n in 1 2 3; do
@@ -170,6 +186,7 @@ if smoke "$SHA"; then
     fi
   fi
   docker image prune -f >/dev/null
+  tidy_images
   echo "== deployed ${SHA:0:12}"
   if [[ -f monitoring/.env ]]; then   # keep the monitoring stack in step with this commit's config (never fatal)
     monitoring/up.sh || echo "!! monitoring refresh failed (the app deploy itself succeeded)"
