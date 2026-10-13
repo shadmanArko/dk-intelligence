@@ -1,0 +1,621 @@
+<title>AI-Native Autonomous Digital Marketing Department — Social Media MVP v1.0</title>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light">
+<style>
+/* Layout concept: an engineering drawing set. Cool drafting paper with a fine grid, graphite ink, one copper accent for
+   what is happening now, cobalt for the system's own lines. Each slide is a "sheet" with a title block in its footer. */
+:root{
+  --paper:#F3F6FA; --paper-2:#E8EDF4; --card:#FFFFFF; --ink:#0E1A2B; --ink-2:#465671; --ink-3:#7A889D;
+  --line:#C7D1DE; --grid:#DDE5EE; --blue:#1D5CC4; --blue-soft:#E2EBF9; --copper:#C2531A; --copper-soft:#FBE8DB;
+  --green:#14855A; --green-soft:#DAF1E6; --amber:#B77900; --amber-soft:#FBEFD2; --red:#C0392B; --red-soft:#FAE0DC;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif; --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace; color-scheme:light;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.55 var(--body);padding-inline:16px;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:36px 36px;background-attachment:fixed}
+.wrap{max-width:1180px;margin-inline:auto}
+h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.005em;margin:0;text-wrap:balance;line-height:1.02}
+h1{font-size:clamp(46px,7vw,92px)} h2{font-size:clamp(36px,4.6vw,60px)} h3{font-size:24px;font-weight:600}
+p{margin:0}.lead{font-size:clamp(17px,1.6vw,20px);color:var(--ink-2);max-width:64ch}
+.mono{font-family:var(--mono)} .eyebrow{font:500 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+.num{font-variant-numeric:tabular-nums}
+/* top bar */
+#bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;display:flex;align-items:center;gap:14px;padding:10px 0;margin-inline:-16px;padding-inline:16px;
+  background:rgba(243,246,250,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+#bar b{font:700 20px var(--display);letter-spacing:.04em;white-space:nowrap}
+#dots{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+#dots button{width:26px;height:6px;border-radius:3px;border:0;background:var(--line);cursor:pointer;padding:0;transition:background .2s,width .2s}
+#dots button.on{background:var(--copper);width:40px}#dots button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+#sheetno{font:500 12px var(--mono);color:var(--ink-2);white-space:nowrap}
+.btn{font:500 14px var(--body);border:1px solid var(--ink);background:var(--ink);color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink)} .btn:hover{filter:brightness(1.15)} .btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* slides */
+.slide{padding-block:84px 56px;border-top:1px solid var(--line);position:relative}
+.slide:first-of-type{border-top:0;padding-top:56px}
+.head{display:grid;gap:14px;margin-bottom:40px}
+.titleblock{display:flex;flex-wrap:wrap;gap:0 18px;justify-content:space-between;margin-top:48px;padding-top:10px;border-top:1.5px solid var(--ink);
+  font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.titleblock span:last-child{color:var(--ink)}
+.grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.g3{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px}
+.tile{background:var(--card);border:1px solid var(--line);padding:18px 20px;border-radius:10px;display:grid;gap:6px;align-content:start}
+.tile .big{font:700 clamp(40px,4.2vw,58px)/1 var(--display);font-variant-numeric:tabular-nums}
+.tile .big small{font:600 22px var(--display);color:var(--ink-2);margin-left:4px}
+.tile .lab{font:500 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.tile p{font-size:14px;color:var(--ink-2)}
+.tile.hot .big{color:var(--copper)} .tile.cool .big{color:var(--blue)} .tile.ok .big{color:var(--green)}
+.pill{display:inline-block;font:500 11px var(--mono);letter-spacing:.06em;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-2);background:var(--card)}
+.pill.ok{color:var(--green);border-color:var(--green);background:var(--green-soft)}.pill.bad{color:var(--red);border-color:var(--red);background:var(--red-soft)}
+.pill.warn{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}.pill.hot{color:var(--copper);border-color:var(--copper);background:var(--copper-soft)}
+svg text{font-family:var(--mono)}
+.note{font:400 12px var(--mono);color:var(--ink-3)}
+/* hero */
+.hero{display:grid;gap:30px}
+.hero h1 em{font-style:normal;color:var(--copper)}
+.product{display:grid;gap:8px;padding:14px 18px;border:1.5px solid var(--ink);border-radius:10px;background:var(--card);max-width:760px}
+.pname{font:700 clamp(26px,3.4vw,44px)/1.02 var(--display);letter-spacing:.02em;text-transform:uppercase}
+.pver{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pipe{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 8px 4px}
+.pipe svg{width:100%;height:auto;display:block}
+/* simulation */
+.sim{display:grid;gap:16px}
+.simbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:6px;overflow:hidden}
+.seg button{font:500 13px var(--body);padding:7px 14px;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.seg button.on{background:var(--ink);color:#fff}
+.progress{height:10px;border-radius:5px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden;flex:1;min-width:160px}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--copper));width:100%}
+.gantt{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-x:auto}
+.gantt svg{min-width:640px;width:100%;height:auto;display:block}
+.log{font:400 12px/1.7 var(--mono);color:var(--ink-2);min-height:7.2em;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;overflow:hidden}
+.log div:last-child{color:var(--ink)}
+/* architecture */
+.arch{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(260px,1fr);gap:16px;align-items:start}
+@media(max-width:900px){.arch{grid-template-columns:1fr}}
+.arch .card svg{width:100%;height:auto;display:block}
+.node{cursor:pointer}.node rect{transition:fill .15s,stroke .15s}.node:hover rect,.node.on rect{fill:var(--copper-soft);stroke:var(--copper)}
+.node:focus-visible rect{stroke:var(--blue);stroke-width:3}
+#detail h3{margin-bottom:8px}#detail p{color:var(--ink-2);font-size:15px}#detail ul{margin:10px 0 0;padding-left:18px;color:var(--ink-2);font-size:14px}
+/* platforms and templates */
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.tabs button{font:500 14px var(--body);padding:8px 16px;border-radius:99px;border:1px solid var(--line);background:var(--card);cursor:pointer;color:var(--ink)}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.plat{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:24px;align-items:center}
+@media(max-width:760px){.plat{grid-template-columns:1fr}}
+.phone{width:min(260px,100%);aspect-ratio:9/16;border:2px solid var(--ink);border-radius:26px;background:linear-gradient(160deg,#F7D9C4,#E9A874 45%,#B5532A);position:relative;overflow:hidden;margin-inline:auto;box-shadow:0 10px 0 var(--paper-2)}
+.phone.wide{aspect-ratio:16/9;border-radius:12px;width:min(340px,100%)}.phone.sq{aspect-ratio:4/5;border-radius:14px}
+.phone .cap{position:absolute;inset:auto 12px 14px;background:rgba(255,255,255,.92);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.35;color:var(--ink)}
+.phone .tag{position:absolute;top:12px;left:12px}
+.phone .steam{position:absolute;inset:0;background:radial-gradient(circle at 50% 60%,rgba(255,255,255,.55),transparent 55%);animation:pulse 4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35;transform:scale(1.08)}}
+.tpl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tpl .t{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px}
+.tpl .scr{aspect-ratio:9/12;border-radius:6px;position:relative;overflow:hidden;background:linear-gradient(160deg,#F3D3BC,#C8703A)}
+.tpl .t b{font:600 13px var(--mono)} .tpl .t span{font-size:12px;color:var(--ink-2)}
+.scr .w{position:absolute;font:700 22px var(--display);color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+.k1 .w:nth-child(1){left:10%;top:22%;animation:pop 3s infinite}.k1 .w:nth-child(2){left:30%;top:46%;animation:pop 3s .5s infinite}.k1 .w:nth-child(3){left:14%;top:70%;animation:pop 3s 1s infinite}
+@keyframes pop{0%,15%{opacity:0;transform:translateY(12px) scale(.9)}30%,80%{opacity:1;transform:none}100%{opacity:0}}
+.k2{background:linear-gradient(160deg,#EBC7AE,#B24E26)}.k2:after{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 40% 45%,rgba(255,255,255,.5),transparent 40%);animation:zoom 6s ease-in-out infinite alternate}
+@keyframes zoom{to{transform:scale(1.35) translate(6%,-4%)}}
+.k3:after{content:"";position:absolute;width:160%;height:100%;left:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.35) 0 22px,rgba(255,255,255,0) 22px 60px);animation:pan 5s linear infinite}
+@keyframes pan{to{transform:translateX(-30%)}}
+.k4 i{position:absolute;width:46%;height:30%;border-radius:4px;background:rgba(255,255,255,.55);animation:shuf 4s ease-in-out infinite}
+.k4 i:nth-child(1){left:6%;top:8%}.k4 i:nth-child(2){left:50%;top:14%;animation-delay:.4s}.k4 i:nth-child(3){left:10%;top:48%;animation-delay:.8s}.k4 i:nth-child(4){left:46%;top:56%;animation-delay:1.2s}
+@keyframes shuf{50%{transform:translate(4%,4%) rotate(3deg)}}
+.k5 .w{left:12%;font-size:15px;opacity:0;animation:step 4.5s infinite}.k5 .w:nth-child(1){top:20%}.k5 .w:nth-child(2){top:42%;animation-delay:1.2s}.k5 .w:nth-child(3){top:64%;animation-delay:2.4s}
+@keyframes step{0%{opacity:0;transform:translateX(-12px)}15%,85%{opacity:1;transform:none}100%{opacity:0}}
+.k6:before,.k6:after{content:"";position:absolute;top:0;bottom:0;width:50%;animation:split 4s ease-in-out infinite alternate}
+.k6:before{left:0;background:rgba(255,255,255,.4)}.k6:after{right:0;background:rgba(14,26,43,.35);animation-direction:alternate-reverse}
+@keyframes split{to{transform:translateX(8%)}}
+.k7 .w{left:12%;top:38%;font-size:34px;animation:fadein 3.4s ease-in-out infinite}
+@keyframes fadein{0%,100%{opacity:.1;letter-spacing:.2em}50%{opacity:1;letter-spacing:0}}
+/* brain */
+.loop{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.step{display:grid;grid-template-columns:34px 1fr;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.step:last-child{border:0}.step .n{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--blue);color:var(--blue);display:grid;place-items:center;font:500 13px var(--mono)}
+.step b{display:block}.step span{color:var(--ink-2);font-size:14px}
+.gate{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:5px 0;font-size:14px;border-bottom:1px solid var(--paper-2)}
+.gate .ic{font:600 14px var(--mono)} .gate.p .ic{color:var(--green)}.gate.w .ic{color:var(--amber)}.gate.f .ic{color:var(--red)}
+.gate span{color:var(--ink-2)}
+.bars{display:grid;gap:10px}.bar{display:grid;grid-template-columns:150px 1fr 64px;gap:10px;align-items:center;font-size:14px}
+@media(max-width:560px){.bar{grid-template-columns:1fr}}
+.bar .trk{height:16px;background:var(--paper-2);border-radius:3px;overflow:hidden;border:1px solid var(--line)}
+.bar .fill{height:100%;background:var(--blue);width:0;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.bar .fill.c{background:var(--copper)}.bar .fill.g{background:var(--green)}
+.bar b{font:600 14px var(--mono);text-align:right}
+/* trust */
+.layers{display:grid;gap:10px}.lay{display:grid;grid-template-columns:150px 1fr;gap:14px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--blue);border-radius:6px;padding:12px 16px}
+@media(max-width:560px){.lay{grid-template-columns:1fr}}
+.lay b{font:600 14px var(--mono);color:var(--blue)}.lay span{color:var(--ink-2);font-size:15px}
+/* resilience */
+.res{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}.res svg{width:100%;height:auto;display:block}
+/* calculators */
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media(max-width:800px){.calc{grid-template-columns:1fr}}
+.fld{display:grid;gap:4px;margin-bottom:14px}.fld label{font:500 13px var(--body);display:flex;justify-content:space-between}
+.fld label output{font:500 13px var(--mono);color:var(--copper)}
+input[type=range]{width:100%;accent-color:var(--copper)} input[type=number]{font:500 14px var(--mono);padding:6px 8px;border:1px solid var(--line);border-radius:6px;width:100%}
+.res-out{display:grid;gap:10px;align-content:start}
+.row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--paper-2);font-size:15px}.row b{font:600 15px var(--mono);font-variant-numeric:tabular-nums}
+.row.total{border-bottom:0;border-top:2px solid var(--ink);margin-top:4px;font-size:17px}.row.total b{color:var(--green);font-size:20px}
+/* wall */
+.wall{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.wall div{background:var(--card);padding:16px 14px;display:grid;gap:2px}.wall b{font:700 34px var(--display);font-variant-numeric:tabular-nums}.wall span{font-size:12px;color:var(--ink-2);font-family:var(--mono)}
+/* offer */
+.offer{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.offer .card h3{margin-bottom:8px}.offer ul{margin:0;padding-left:18px;color:var(--ink-2);font-size:15px;display:grid;gap:5px}
+.cta{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;background:var(--ink);color:#fff;border-radius:12px;padding:26px 28px;margin-top:20px}
+.cta h3{font-size:34px;max-width:22ch}.cta p{color:#B9C6DB;max-width:52ch;font-size:15px}
+.cta .who{font:500 13px var(--mono);color:#fff;border:1px dashed #5A6E8C;padding:10px 14px;border-radius:6px}
+@media print{#bar{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+</style>
+
+<div id="bar"><b>AI-NATIVE MARKETING DEPT.</b><span class="pill hot">MVP v1.0</span><div id="dots" role="tablist" aria-label="Slides"></div><span id="sheetno" class="num">SHEET 1 / 12</span><button class="btn ghost" id="present" type="button">Present</button></div>
+
+<div class="wrap">
+
+<!-- 1 HERO -->
+<section class="slide hero" data-title="The studio">
+  <div class="product"><div class="eyebrow">The product</div><div class="pname">AI-Native Autonomous Digital Marketing Department</div><div class="pver"><span class="pill hot">Social Media MVP v1.0</span><span class="note">built and proven on a real Berlin food brand</span></div></div>
+  <h1>It plans, writes, designs and publishes your content. <em>You only press approve.</em></h1>
+  <p class="lead">One system turns what your customers say and what your own posts achieved into native posts for five platforms. It checks itself, learns every week from real results, and runs for the price of a few small servers.</p>
+  <div class="grid g4">
+    <div class="tile hot"><div class="lab">posts in one run</div><div class="big"><span data-count data-to="103">103</span></div><p>five platforms, from 27 approved ideas</p></div>
+    <div class="tile cool"><div class="lab">minutes for all of it</div><div class="big"><span data-count data-to="13.5" data-dec="1">13.5</span></div><p>plan, write, design, render, hand over</p></div>
+    <div class="tile ok"><div class="lab">tokens per finished post</div><div class="big"><span data-count data-to="6.4" data-dec="1">6.4</span><small>k</small></div><p>measured: 659,047 tokens for 103 posts</p></div>
+    <div class="tile"><div class="lab">software licences</div><div class="big">€0</div><p>open-source stack; AI tokens are the only variable cost (slides 10 and 11)</p></div>
+  </div>
+  <div class="pipe">
+    <svg viewBox="0 0 1100 150" role="img" aria-label="The pipeline: data, learn, plan, create, check, approve, publish">
+      <defs><path id="rail" d="M70 70 H1030"/></defs>
+      <path d="M70 70 H1030" stroke="#C7D1DE" stroke-width="3" fill="none"/>
+      <g id="pipenodes"></g>
+      <circle r="6" fill="#C2531A"><animateMotion dur="7s" repeatCount="indefinite"><mpath href="#rail"/></animateMotion></circle>
+      <circle r="6" fill="#C2531A" opacity=".55"><animateMotion dur="7s" begin="-2.3s" repeatCount="indefinite"><mpath href="#rail"/></animateMotion></circle>
+      <circle r="6" fill="#1D5CC4" opacity=".7"><animateMotion dur="7s" begin="-4.6s" repeatCount="indefinite"><mpath href="#rail"/></animateMotion></circle>
+    </svg>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · overview</span><span>Sheet 1 of 12 · measured 13 Oct 2026</span></div>
+</section>
+
+<!-- 2 PROMISE -->
+<section class="slide" data-title="Why it matters">
+  <div class="head"><div class="eyebrow">The problem</div><h2>Good content is a daily job that never stops.</h2>
+  <p class="lead">A single post needs an idea, a caption in the right voice, a design, the right format for each platform, a fact check and a time slot. Multiply by five platforms and three posts a day. Most small teams do it late, inconsistently, or not at all.</p></div>
+  <div class="grid g3">
+    <div class="card"><h3>What the studio takes over</h3><p class="lead" style="font-size:16px">Ideas from your own data, captions per platform, designs and videos, the brand and fact check, scheduling. The work a person does at a desk for hours.</p></div>
+    <div class="card"><h3>What stays with you</h3><p class="lead" style="font-size:16px">One decision per post: approve or reject. Nothing is published without it. The studio never approves its own work.</p></div>
+    <div class="card"><h3>What it gets better at</h3><p class="lead" style="font-size:16px">Every week it measures what your posts really achieved and rewrites its playbook from the results. Its models are retrained and only replaced when the new one is proven better.</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · scope</span><span>Sheet 2 of 12</span></div>
+</section>
+
+<!-- 3 WATCH IT WORK -->
+<section class="slide" id="simslide" data-title="Watch it work">
+  <div class="head"><div class="eyebrow">Live replay of a real run</div><h2>Watch a plan being made, call by call.</h2>
+  <p class="lead">This replays the structure and timings of the run measured on 13 October: 30 ideas planned, 27 passed the brand check, 103 posts handed over. Each bar is one real kind of work: an agent thinking, a render, an upload.</p></div>
+  <div class="sim">
+    <div class="simbar"><div class="seg" id="scn"><button class="on" data-n="30" type="button">10-day plan (measured)</button><button data-n="15" type="button">5-day plan (scaled)</button></div>
+      <button class="btn" id="replay" type="button">Replay</button><div class="progress" aria-hidden="true"><i id="simprog"></i></div><span class="mono num" id="simclock">13:28</span></div>
+    <div class="grid g4">
+      <div class="tile"><div class="lab">ideas finished</div><div class="big num" id="sIdeas">27</div><p id="sHeld">3 held back by the brand check</p></div>
+      <div class="tile"><div class="lab">posts made</div><div class="big num" id="sPosts">103</div><p>native versions, five platforms</p></div>
+      <div class="tile"><div class="lab">tokens used</div><div class="big num" id="sTok">659k</div><p>of a 4,000k safety cap</p></div>
+      <div class="tile"><div class="lab">agent calls</div><div class="big num" id="sCalls">101</div><p>each with its own prompt and tools</p></div>
+    </div>
+    <div class="gantt"><svg id="gantt" viewBox="0 0 1000 250" role="img" aria-label="Timeline of every agent call, render and upload"></svg></div>
+    <div class="log" id="simlog" aria-live="off"></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · replay</span><span>Sheet 3 of 12 · scaled from run 20261013T111013Z</span></div>
+</section>
+
+<!-- 4 ARCHITECTURE -->
+<section class="slide" data-title="How it is built">
+  <div class="head"><div class="eyebrow">Architecture</div><h2>Code runs the show. Agents only judge.</h2>
+  <p class="lead">The orchestrator is ordinary, testable code. It calls small specialist agents for the parts that need judgment, gives each only the tools it needs, and checks every answer before anything moves on. Click any box.</p></div>
+  <div class="arch"><div class="card"><svg id="archsvg" viewBox="0 0 860 470" role="img" aria-label="Architecture map"></svg></div>
+  <div class="card" id="detail"><h3>Pick a box</h3><p>The orchestrator, five agents, three tool servers, a knowledge base and two outputs. Each one is a separate, replaceable part.</p></div></div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="tile cool"><div class="lab">tool calls made by code, not agents</div><div class="big">17 <small>of 23</small></div><p>Brand checks, scoring and retrieval run as plain code at zero tokens.</p></div>
+    <div class="tile"><div class="lab">tools one agent may use</div><div class="big">≤ 3</div><p>The rest of the server is hidden from it, on top of a turn limit and an empty working folder.</p></div>
+    <div class="tile ok"><div class="lab">finished work repeated after a crash</div><div class="big">0</div><p>Each step is saved the moment it is earned.</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · architecture</span><span>Sheet 4 of 12 · decisions recorded: 42</span></div>
+</section>
+
+<!-- 5 PLATFORMS -->
+<section class="slide" data-title="Every platform">
+  <div class="head"><div class="eyebrow">Native, not copy-pasted</div><h2>One idea becomes the right post on each platform.</h2>
+  <p class="lead">A creative director agent picks the look; code makes sure a day never looks like the one before. Each platform gets its own caption, format and length from one master render.</p></div>
+  <div class="tabs" id="ptabs" role="tablist"></div>
+  <div class="card plat" id="pbody"></div>
+  <h3 style="margin:34px 0 12px">Seven templates, rotated by rules so the feed never feels repeated</h3>
+  <div class="tpl" id="tpl"></div>
+  <div class="titleblock"><span>AI-Native Marketing Department · formats</span><span>Sheet 5 of 12</span></div>
+</section>
+
+<!-- 6 BRAIN -->
+<section class="slide" data-title="How it learns">
+  <div class="head"><div class="eyebrow">The brain</div><h2>It learns from every post, and proves it before it changes.</h2>
+  <p class="lead">Two loops. The fast one turns your real results into rules the writers read. The slow one retrains seven models every week and only deploys a model that beats the current one on posts it has never seen.</p></div>
+  <div class="loop">
+    <div class="card"><h3>Loop 1: results become a playbook</h3>
+      <div class="step"><div class="n">1</div><div><b>Measure</b><span>Reach, engagement and orders per post, normalised against your own 20 previous posts so growth does not fool it.</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>Test</b><span>Bootstrap confidence intervals per feature. Findings that the data cannot support are not shown.</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>Write the playbook</b><span>Per platform: what works, how often to use it. The strategist and writers read it on the next run.</span></div></div>
+      <div class="step"><div class="n">4</div><div><b>Check the effect</b><span>The next posts are measured again. The loop closes.</span></div></div></div>
+    <div class="card"><h3>Loop 2: the judge decides who goes live</h3>
+      <div class="step"><div class="n">1</div><div><b>Pull</b><span>13,871 rows from 40 tables, checksummed, plus 1.9M public posts of market knowledge.</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>Train 7 models</b><span>Whole weekly run in 4 min 16 s.</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>Judge</b><span>The new model faces the current one on 77 unseen posts. Seven gates, all must pass.</span></div></div>
+      <div class="step"><div class="n">4</div><div><b>Deploy only if better</b><span>Otherwise the old model stays. This week one of two scorers was refused.</span></div></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3>The learned rule changed behaviour</h3>
+      <p class="note" style="margin:6px 0 14px">Measured on the studio's own posts. Small sample, intervals reported in the playbook.</p>
+      <div class="bars" id="learnbars"></div></div>
+    <div class="card"><h3>The judge's seven gates (content scorer)</h3>
+      <div id="gates"></div>
+      <p class="note" style="margin-top:10px">Balanced accuracy 0.699 against 0.674 for the current model (gain +0.025, 95% range −0.043 to +0.093). AUC 0.744 against 0.713. 12 ms per post, a 10 KB model.</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · learning</span><span>Sheet 6 of 12 · weekly run 11 Oct 2026</span></div>
+</section>
+
+<!-- 7 KNOWLEDGE -->
+<section class="slide" data-title="What it knows">
+  <div class="head"><div class="eyebrow">Retrieval with citations</div><h2>It writes from evidence, and the evidence is checked.</h2>
+  <p class="lead">Agents do not browse. Code retrieves once per run from a private knowledge base, hands the agents quotes and posts with citation ids, and throws away any claim whose citation does not exist.</p></div>
+  <div class="grid g4">
+    <div class="tile"><div class="lab">competitor reviews</div><div class="big num" data-count data-to="13589" data-dec="0">13,589</div><p>what customers praise and complain about</p></div>
+    <div class="tile"><div class="lab">creator posts</div><div class="big num" data-count data-to="2210" data-dec="0">2,210</div><p>what works for Berlin food creators</p></div>
+    <div class="tile"><div class="lab">your own posts</div><div class="big num" data-count data-to="471" data-dec="0">471</div><p>with how each performed</p></div>
+    <div class="tile"><div class="lab">search speed</div><div class="big num">140<small>ms</small></div><p>per query on a laptop CPU, 1,024-dimension vectors</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h3>Hybrid search</h3><p style="color:var(--ink-2)">Meaning (vectors) and exact words together, then a second model re-reads the best candidates. Runs locally: no search subscription.</p></div>
+    <div class="card"><h3>Personal data masked</h3><p style="color:var(--ink-2)">Emails, handles, links and phone numbers are removed before anything is stored (2 emails, 395 handles, 143 links, 99 phones in the last build).</p></div>
+    <div class="card"><h3>Facts come from one owner</h3><p style="color:var(--ink-2)">Prices, hours and claims exist in a single confirmed file. A caption that quotes anything else is blocked.</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · knowledge</span><span>Sheet 7 of 12 · pack kp-20261013T134253</span></div>
+</section>
+
+<!-- 8 TRUST -->
+<section class="slide" data-title="Trust and safety">
+  <div class="head"><div class="eyebrow">Control</div><h2>Built so it cannot embarrass you.</h2>
+  <p class="lead">Automation without control is a risk. Every layer below is enforced in code, not requested in a prompt.</p></div>
+  <div class="layers">
+    <div class="lay"><b>HUMAN GATE</b><span>Everything it makes is a draft. A person approves each post on a review page; nothing is published or scheduled without that click.</span></div>
+    <div class="lay"><b>BRAND CHECK</b><span>Blocked words, no unverified claims, no items you do not sell, prices only from the confirmed file. In the measured run 3 of 30 ideas were stopped here.</span></div>
+    <div class="lay"><b>JUDGE GATES</b><span>A new model is deployed only after seven gates, including no leakage of future information and no platform made worse.</span></div>
+    <div class="lay"><b>BUDGET CAP</b><span>A hard token limit per run (4 million) with a warning at 80%. A runaway cannot happen.</span></div>
+    <div class="lay"><b>LEAST POWER</b><span>Each agent sees only its own tools, runs in an empty folder, has no memory between calls and a turn limit. Secrets never reach an agent.</span></div>
+    <div class="lay"><b>FAIR BY DESIGN</b><span>Audiences are areas and interests, never ethnicity or religion; religious ritual words are blocked in copy.</span></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · controls</span><span>Sheet 8 of 12</span></div>
+</section>
+
+<!-- 9 RELIABILITY -->
+<section class="slide" data-title="Reliability">
+  <div class="head"><div class="eyebrow">Engineering for the real world</div><h2>Close the laptop. Pull the plug. It finishes the job.</h2>
+  <p class="lead">A real run was started, then killed in the middle of a render with a hard SIGKILL, as a power cut would. The next scheduled check noticed and finished it. Press the button to replay it.</p></div>
+  <div class="res"><svg id="ressvg" viewBox="0 0 1000 190" role="img" aria-label="A run is cut off and finished by the next check"></svg></div>
+  <div style="margin-top:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap"><button class="btn" id="cutbtn" type="button">Replay the power cut</button><span class="note" id="cutnote">Resting state: finished.</span></div>
+  <div class="grid g4" style="margin-top:16px">
+    <div class="tile hot"><div class="lab">work saved at the cut</div><div class="big num">71.1<small>k tokens</small></div><p>10 finished agent calls kept</p></div>
+    <div class="tile ok"><div class="lab">finished calls repeated</div><div class="big">0</div><p>only what was in flight was redone</p></div>
+    <div class="tile cool"><div class="lab">time to finish the rest</div><div class="big num">35<small>s</small></div><p>3 of 3 ideas, 12 of 12 posts</p></div>
+    <div class="tile"><div class="lab">a deliberate stop takes</div><div class="big num">2.5<small>s</small></div><p>and keeps everything finished</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · recovery</span><span>Sheet 9 of 12 · catch-up every 30 minutes the machine is on</span></div>
+</section>
+
+<!-- 10 COST -->
+<section class="slide" data-title="Why it is cheap">
+  <div class="head"><div class="eyebrow">Cost</div><h2>Powerful and cheap come from the same design.</h2>
+  <p class="lead">The expensive part of AI is tokens. The studio spends them only where judgment is needed, and does everything else in code or on small local models.</p></div>
+  <div class="grid g2">
+    <div class="card"><h3>Where the 659,047 tokens went</h3><p class="note" style="margin:6px 0 14px">One real 10-day run.</p><div class="bars" id="tokbars"></div></div>
+    <div class="card"><h3>Six reasons the bill stays small</h3>
+      <div class="step"><div class="n">1</div><div><b>Code does the checking</b><span>17 of 23 tool calls are plain code. Zero tokens.</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>Search and scoring are local</b><span>Open models on a CPU: 140 ms per query, 12 ms per post scored.</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>The model size is measured, not guessed</b><span>The designer was tried on a cheaper model: 2.6 times the tokens and slower. It stayed where it was.</span></div></div>
+      <div class="step"><div class="n">4</div><div><b>Small prompts, one job each</b><span>About 7,600 tokens per idea including the design.</span></div></div>
+      <div class="step"><div class="n">5</div><div><b>Hard caps</b><span>4M tokens per run, 6 agent calls per idea at most.</span></div></div>
+      <div class="step"><div class="n">6</div><div><b>Plain infrastructure</b><span>One laptop and one small server. Postgres, open-source models, no paid AI services.</span></div></div></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · cost</span><span>Sheet 10 of 12</span></div>
+</section>
+
+<!-- 11 ROI -->
+<section class="slide" data-title="Your numbers">
+  <div class="head"><div class="eyebrow">Try it with your own figures</div><h2>What it would mean for your team.</h2>
+  <p class="lead">Defaults are examples, not promises. Move the sliders to your own volume and prices. The token figure is measured; the price per million tokens is whatever your chosen model costs.</p></div>
+  <div class="card calc">
+    <div>
+      <div class="fld"><label for="c_posts">Posts per month <output id="o_posts"></output></label><input id="c_posts" type="range" min="30" max="900" step="10" value="300"></div>
+      <div class="fld"><label for="c_min">Minutes by hand per post (idea, caption, design, format, schedule) <output id="o_min"></output></label><input id="c_min" type="range" min="10" max="120" step="5" value="45"></div>
+      <div class="fld"><label for="c_rate">Hourly cost of the person doing it (€) <output id="o_rate"></output></label><input id="c_rate" type="range" min="10" max="120" step="1" value="35"></div>
+      <div class="fld"><label for="c_appr">Seconds to approve one post <output id="o_appr"></output></label><input id="c_appr" type="range" min="10" max="180" step="5" value="45"></div>
+      <div class="fld"><label for="c_tok">Tokens per post (measured: 6,400) <output id="o_tok"></output></label><input id="c_tok" type="range" min="3000" max="20000" step="100" value="6400"></div>
+      <div class="fld"><label for="c_price">Your model's price per million tokens (€, example) <output id="o_price"></output></label><input id="c_price" type="range" min="0" max="30" step="0.5" value="6"></div>
+      <div class="fld"><label for="c_host">Hosting and tools per month (€, example) <output id="o_host"></output></label><input id="c_host" type="range" min="0" max="200" step="5" value="25"></div>
+    </div>
+    <div class="res-out">
+      <div class="row"><span>By hand: hours per month</span><b id="r_hand_h"></b></div>
+      <div class="row"><span>By hand: cost per month</span><b id="r_hand_c"></b></div>
+      <div class="row"><span>With the studio: AI tokens</span><b id="r_ai"></b></div>
+      <div class="row"><span>With the studio: hosting</span><b id="r_host"></b></div>
+      <div class="row"><span>With the studio: your approval time</span><b id="r_appr"></b></div>
+      <div class="row"><span>Cost per finished post</span><b id="r_pp"></b></div>
+      <div class="row total"><span>Estimated saving per month</span><b id="r_save"></b></div>
+      <div class="row"><span>Hours given back per month</span><b id="r_hours"></b></div>
+      <p class="note">Illustrative estimate from your inputs. Results depend on your brand, volume and approval habits.</p>
+    </div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · estimator</span><span>Sheet 11 of 12</span></div>
+</section>
+
+<!-- 12 PROOF AND OFFER -->
+<section class="slide" data-title="Proof and next step">
+  <div class="head"><div class="eyebrow">Built like production software</div><h2>Not a prototype: tested, monitored, documented.</h2></div>
+  <div class="wall">
+    <div><b><span data-count data-to="630" data-dec="0">630</span>+</b><span>automated tests, green on every change</span></div>
+    <div><b data-count data-to="42" data-dec="0">42</b><span>design decisions written down</span></div>
+    <div><b>7</b><span>models retrained weekly</span></div>
+    <div><b>5</b><span>platforms, 5 post formats</span></div>
+    <div><b>7</b><span>animated video and slide templates</span></div>
+    <div><b>15</b><span>steps in the weekly learning run</span></div>
+    <div><b data-count data-to="13871" data-dec="0">13,871</b><span>rows of business data in the last pull</span></div>
+    <div><b data-count data-to="16289" data-dec="0">16,289</b><span>searchable knowledge chunks</span></div>
+    <div><b>2.1×</b><span>reach of reels vs. other formats on Instagram (own data)</span></div>
+    <div><b>24/7</b><span>monitoring, nightly backups, alerts, auto clean-up</span></div>
+  </div>
+  <div class="offer" style="margin-top:20px">
+    <div class="card"><h3>A pilot, in three steps</h3><ul><li>Week 1: connect your brand book, facts, footage and accounts.</li><li>Week 2: the first plan, reviewed post by post by you.</li><li>Week 3 onward: it tops up your calendar by itself; you approve.</li></ul></div>
+    <div class="card"><h3>What we need from you</h3><ul><li>Brand book, voice and confirmed facts (prices, hours).</li><li>Your footage and photos, and platform access.</li><li>One person to approve, a few minutes a day.</li></ul></div>
+    <div class="card"><h3>What you keep</h3><ul><li>Full control: nothing goes out without your approval.</li><li>Your data stays in your accounts and servers.</li><li>Every decision of the system is logged and explainable.</li></ul></div>
+  </div>
+  <div class="cta"><div><h3>Want to see it run on your brand?</h3><p>Results depend on your content and audience. We show the numbers on your own data in the pilot, and you decide after.</p></div><div class="who">Shadman Arko · Dhaka Kacchi Berlin<br>contact details here</div></div>
+  <div class="titleblock"><span>AI-Native Marketing Department · summary</span><span>Sheet 12 of 12 · all figures measured on real runs, 13 Oct 2026, unless marked as an example</span></div>
+</section>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var NS='http://www.w3.org/2000/svg';
+function el(tag,attrs,parent,text){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e}
+function fmt(n,d){return Number(n).toLocaleString('en-US',{minimumFractionDigits:d||0,maximumFractionDigits:d||0})}
+function mmss(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+
+/* ---------- navigation ---------- */
+var slides=$$('.slide'),dots=$('#dots'),cur=0;
+slides.forEach(function(s,i){var b=document.createElement('button');b.type='button';b.title=s.dataset.title;b.setAttribute('aria-label','Slide '+(i+1)+': '+s.dataset.title);b.onclick=function(){go(i)};dots.appendChild(b)});
+function mark(i){cur=i;$$('#dots button').forEach(function(b,k){b.classList.toggle('on',k===i)});$('#sheetno').textContent='SHEET '+(i+1)+' / '+slides.length}
+function go(i){i=Math.max(0,Math.min(slides.length-1,i));slides[i].scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});mark(i)}
+mark(0);
+document.addEventListener('keydown',function(e){
+  var tag=(e.target||{}).tagName||'';
+  if(/INPUT|TEXTAREA|SELECT/.test(tag))return;
+  if((e.key===' '||e.key==='Enter')&&tag==='BUTTON')return;   // a focused button keeps its own space and enter
+  if(['ArrowRight','ArrowDown','PageDown',' '].indexOf(e.key)>-1){e.preventDefault();go(cur+1)}
+  else if(['ArrowLeft','ArrowUp','PageUp'].indexOf(e.key)>-1){e.preventDefault();go(cur-1)}
+  else if(e.key==='Home'){go(0)}else if(e.key==='End'){go(slides.length-1)}});
+$('#present').onclick=function(){try{var d=document.documentElement;if(document.fullscreenElement){document.exitFullscreen()}else if(d.requestFullscreen){d.requestFullscreen().catch(function(){})}}catch(e){}go(cur)};
+var seen=new Set();
+if('IntersectionObserver' in window){
+  var io=new IntersectionObserver(function(es){es.forEach(function(en){
+    if(en.isIntersecting){var i=slides.indexOf(en.target);if(en.intersectionRatio>=.3)mark(i);
+      if(!seen.has(i)){seen.add(i);enter(en.target)}}})},{threshold:[.3,.6]});
+  slides.forEach(function(s){io.observe(s)});
+}
+function enter(s){
+  if(slides.indexOf(s)>0)$$('[data-count]',s).forEach(countUp);   // the first sheet is final at load: nothing counts up there
+  $$('.fill',s).forEach(function(f){var w=f.dataset.w;f.style.width='0';requestAnimationFrame(function(){requestAnimationFrame(function(){f.style.width=w})})});
+  if(s.id==='simslide')runSim(true);
+}
+function countUp(e){
+  if(reduce)return;var to=parseFloat(e.dataset.to),dec=parseInt(e.dataset.dec||'0',10),t0=null,dur=1300;
+  function f(t){if(t0===null)t0=t;var p=Math.min(1,(t-t0)/dur),v=to*(1-Math.pow(1-p,3));e.textContent=fmt(v,dec);if(p<1)requestAnimationFrame(f);else e.textContent=fmt(to,dec)}
+  requestAnimationFrame(f);
+}
+
+/* ---------- hero pipeline ---------- */
+(function(){
+  var names=[['Data','your posts, reviews, market'],['Learn','7 models, a playbook'],['Plan','angles, look, timing'],['Create','write, design, render'],['Check','brand, facts, scores'],['Approve','one click, by you'],['Publish','5 platforms']];
+  var g=$('#pipenodes'),x0=70,dx=160;
+  names.forEach(function(n,i){var x=x0+i*dx,hot=i===5;
+    el('circle',{cx:x,cy:70,r:16,fill:hot?'#FBE8DB':'#FFFFFF',stroke:hot?'#C2531A':'#1D5CC4','stroke-width':2.5},g);
+    el('text',{x:x,y:75,'text-anchor':'middle','font-size':12,fill:hot?'#C2531A':'#1D5CC4','font-weight':500},g,String(i+1));
+    el('text',{x:x,y:40,'text-anchor':'middle','font-size':15,fill:'#0E1A2B','font-weight':500},g,n[0].toUpperCase());
+    el('text',{x:x,y:112,'text-anchor':'middle','font-size':11,fill:'#465671'},g,n[1])});
+  el('text',{x:x0+5*dx,y:136,'text-anchor':'middle','font-size':10,fill:'#C2531A'},g,'the only human step');
+})();
+
+/* ---------- simulation of a real run ---------- */
+var LANES=['strategist','director','copywriter','adapter','designer','render','upload'];
+var COL={strategist:'#7B4FBF',director:'#1D5CC4',copywriter:'#C2531A',adapter:'#B77900',designer:'#14855A',render:'#D9622B',upload:'#2B8FB5'};
+var TOK={strategist:10800,director:6900,copywriter:4200,adapter:3800,designer:11700};
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function makePlan(n){
+  var r=rng(11),bars=[],t=11,i;
+  function add(lane,s,d,idea,tok){bars.push({lane:lane,s:s,e:s+d,idea:idea,tok:tok||0})}
+  var chunks=Math.ceil(n/10);for(i=0;i<chunks;i++){add('strategist',t,52,'plan '+(i+1),TOK.strategist);t+=52}
+  var days=Math.ceil(n/3);for(i=0;i<days;i++){add('director',t,20,'day '+(i+1),TOK.director);t+=20}
+  var workers=[t,t,t],renderFree=t,prodStart=t,done=[],held=[];
+  for(i=0;i<n;i++){
+    var w=workers.indexOf(Math.min.apply(null,workers)),s=workers[w],id='d'+String(1+Math.floor(i/3)).padStart(2,'0')+'i'+(1+i%3);
+    var isHeld=(i%10===6);
+    add('copywriter',s,11+r()*3,id,TOK.copywriter);s+=12;
+    add('adapter',s,9+r()*2,id,TOK.adapter*(isHeld?1.3:1));s+=10;
+    if(isHeld){held.push({id:id,at:s});workers[w]=s;continue}
+    add('designer',s,14+r()*4,id,TOK.designer);s+=16;
+    var rs=Math.max(s,renderFree),rd=13+r()*3;add('render',rs,rd,id,0);renderFree=rs+rd;
+    add('upload',renderFree,2,id,0);done.push({id:id,at:renderFree+2});workers[w]=s;
+  }
+  var end=Math.max(renderFree+2,t)+13;
+  return {bars:bars,done:done,held:held,end:end,prodStart:prodStart,n:n};
+}
+var plans={30:makePlan(30),15:makePlan(15)},curN=30,simT=null,raf=0,runTok={};
+var G={w:1000,h:250,l:84,r:10,top:8,row:28};
+function drawGantt(now){
+  var p=plans[curN],svg=$('#gantt');svg.innerHTML='';
+  var span=p.end,sx=function(t){return G.l+(t/span)*(G.w-G.l-G.r)};
+  for(var k=0;k<=span;k+=Math.ceil(span/8/60)*60){el('line',{x1:sx(k),x2:sx(k),y1:G.top,y2:G.top+LANES.length*G.row,stroke:'#DDE5EE'},svg);el('text',{x:sx(k)+3,y:G.top+LANES.length*G.row+16,'font-size':10,fill:'#7A889D'},svg,mmss(k))}
+  LANES.forEach(function(l,i){var y=G.top+i*G.row;el('text',{x:4,y:y+18,'font-size':11,fill:'#465671'},svg,l);el('line',{x1:G.l,x2:G.w-G.r,y1:y+G.row,y2:y+G.row,stroke:'#E8EDF4'},svg)});
+  p.bars.forEach(function(b){
+    if(b.s>now)return;var e=Math.min(b.e,now),i=LANES.indexOf(b.lane);
+    var rows=b.lane==='copywriter'||b.lane==='adapter'||b.lane==='designer'?3:1,sub=rows>1?(Math.floor(parseInt(b.idea.slice(-1),10)||1)-1)%3:0;
+    var y=G.top+i*G.row+3+sub*(rows>1?7:0),h=rows>1?6:20;
+    el('rect',{x:sx(b.s),y:y,width:Math.max(1.5,sx(e)-sx(b.s)),height:h,rx:1.5,fill:COL[b.lane],opacity:b.e>now?1:.85},svg)});
+  el('line',{x1:sx(Math.min(now,span)),x2:sx(Math.min(now,span)),y1:G.top,y2:G.top+LANES.length*G.row,stroke:'#C2531A','stroke-width':1.5,'stroke-dasharray':'3 3'},svg);
+}
+function simState(now){
+  var p=plans[curN],tok=0,calls=0,log=[];
+  p.bars.forEach(function(b){if(b.s<=now){var f=b.e<=now?1:(now-b.s)/(b.e-b.s);tok+=b.tok*f;if(b.e<=now&&b.lane!=='render'&&b.lane!=='upload')calls++;
+    if(b.e<=now)log.push({t:b.e,txt:b.lane==='render'?'render finished '+b.idea:b.lane==='upload'?'uploaded '+b.idea:b.lane+' finished '+(b.idea)+' · '+Math.round(b.e-b.s)+' s'+(b.tok?' · '+fmt(b.tok)+' tokens':'')})}});
+  var ideas=p.done.filter(function(d){return d.at<=now}).length;
+  log.sort(function(a,b){return a.t-b.t});
+  return {tok:tok,calls:calls,ideas:ideas,posts:Math.round(ideas*3.815),held:p.held.filter(function(h){return h.at<=now}).length,log:log.slice(-6)};
+}
+function paintSim(now){
+  var p=plans[curN],st=simState(now);
+  if(curN===30&&now>=p.end){st.tok=659047;st.calls=101;st.ideas=27;st.posts=103;st.held=3}   // the finished state shows the exact measured figures
+  $('#sIdeas').textContent=st.ideas;$('#sPosts').textContent=st.posts;$('#sTok').textContent=fmt(st.tok/1000)+'k';$('#sCalls').textContent=st.calls;
+  $('#sHeld').textContent=st.held+' held back by the brand check';
+  $('#simclock').textContent=mmss(curN===30&&now>=p.end?808:Math.min(now,p.end));   // the measured run took 13:28$('#simprog').style.width=Math.min(100,100*now/p.end)+'%';
+  $('#simlog').innerHTML=st.log.map(function(l){return '<div>'+mmss(l.t)+'  '+l.txt+'</div>'}).join('')||'<div>starting…</div>';
+  drawGantt(now);
+}
+function runSim(auto){
+  cancelAnimationFrame(raf);var p=plans[curN];
+  if(reduce){paintSim(p.end);return}
+  var D=24,t0=null;
+  function f(ts){if(t0===null)t0=ts;var k=Math.min(1,(ts-t0)/(D*1000)),now=k*p.end;paintSim(now);if(k<1)raf=requestAnimationFrame(f);else paintSim(p.end)}
+  paintSim(0);raf=requestAnimationFrame(f);
+}
+$('#replay').onclick=function(){runSim(false)};
+$$('#scn button').forEach(function(b){b.onclick=function(){$$('#scn button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');curN=parseInt(b.dataset.n,10);runSim(false)}});
+paintSim(plans[30].end);
+
+/* ---------- architecture map ---------- */
+var ARCH={
+  orch:{t:'Orchestrator',p:'Plain Python. Runs five phases in order: inputs, strategist, director, production, handover. Saves state after every step, enforces the budget, runs the code checks, and decides what happens next. An agent never does.',l:['Resumes after a crash without repeating finished work','Stops cleanly in 2.5 seconds','Records every call it makes']},
+  strat:{t:'Strategist agent',p:'Reads the retrieved evidence and the playbook, and proposes an angle for each planned post with the sources it rests on. No tools.',l:['One call per 10 ideas','Unsupported sources are dropped by code']},
+  dir:{t:'Creative director agent',p:'Chooses the template, variant, pace and music hint for each idea, one call per day. Code then enforces variety: no template twice in a row, none over 40% of the plan.',l:['7 templates, 5 formats','Variety is a rule, not a hope']},
+  copy:{t:'Copywriter agent',p:'Writes the core message in your voice and checks it with the brand and scoring tool before answering.',l:['One tool: evaluate_drafts','Facts only from the confirmed file']},
+  adapt:{t:'Platform adapter agent',p:'Turns the core message into a native caption and options per platform, within each platform’s own length and rules. One repair round if the checker objects.',l:['No tools','Code clips to the publisher’s limits']},
+  design:{t:'Designer agent',p:'Builds the visual spec: template, footage, music, text. Previews it against the render engine before handing it on.',l:['3 tools: search footage, search music, preview','The spec is validated twice']},
+  planner:{t:'MCP server: planner',p:'The studio’s read-only brain for planning: the grounding pack (retrieval), occasions, complaints, community areas, brand rules and facts, platform playbook.',l:['Read-only','Profiles decide which tools a client sees']},
+  writer:{t:'MCP server: writer',p:'Brand and fact checks, and the production scorer that predicts engagement before posting. Never returns third-party text to a judge.',l:['evaluate_drafts: checks and score in one call','12 ms per post']},
+  reels:{t:'MCP server: reels engine',p:'Templates, footage and music search, spec preview and the render engine itself, running on the studio machine.',l:['One master render, many native posts','Renders one at a time']},
+  rag:{t:'Knowledge base (RAG)',p:'Rebuilt every week and shipped only if its quality gate passes: 13,589 reviews, 2,210 creator posts, 471 own posts, brand files and rules. Hybrid search plus a re-reader, all local.',l:['Personal data masked before storing','Every quote carries a citation id']},
+  pub:{t:'Publisher',p:'Receives finished drafts into your calendar through its API. It makes drafts only. A person approves; the publisher then schedules and posts.',l:['Drafts only','Daily media clean-up']},
+  render:{t:'Renderer',p:'Turns a spec into the video or the slides, with quality checks, on the studio machine. A failed check holds the post instead of shipping it.',l:['Automatic quality checks','Thumbnails for the review page']}
+};
+(function(){
+  var svg=$('#archsvg');
+  function box(id,x,y,w,h,label,sub,cls){
+    var g=el('g',{class:'node',tabindex:0,role:'button','data-id':id,'aria-label':ARCH[id].t},svg);
+    el('rect',{x:x,y:y,width:w,height:h,rx:8,fill:cls==='code'?'#E2EBF9':'#FFFFFF',stroke:cls==='code'?'#1D5CC4':'#C7D1DE','stroke-width':1.6},g);
+    el('text',{x:x+10,y:y+(sub?21:h/2+4),'font-size':13.5,'font-weight':500,fill:'#0E1A2B'},g,label);
+    if(sub)el('text',{x:x+10,y:y+39,'font-size':10.5,fill:'#465671'},g,sub);
+    g.onclick=function(){pick(id)};g.onkeydown=function(e){if(e.key==='Enter')pick(id)};return g}
+  function line(x1,y1,x2,y2,dash){el('path',{d:'M'+x1+' '+y1+' C'+(x1+(x2-x1)/2)+' '+y1+' '+(x1+(x2-x1)/2)+' '+y2+' '+x2+' '+y2,fill:'none',stroke:'#9FB0C6','stroke-width':1.5,'stroke-dasharray':dash||''},svg)}
+  [['COLUMN',10,'ORCHESTRATOR (CODE)'],['',230,'AGENTS (JUDGMENT)'],['',470,'TOOL SERVERS (MCP)'],['',680,'OUTPUTS']].forEach(function(h){el('text',{x:h[1],y:14,'font-size':10.5,fill:'#7A889D','letter-spacing':1},svg,h[2])});
+  var ag=[['strat','strategist','angles + sources'],['dir','creative director','look, per day'],['copy','copywriter','core message'],['adapt','adapter','per platform'],['design','designer','visual spec']];
+  ag.forEach(function(a,i){var y=30+i*62;line(190,235,230,y+25);box(a[0],230,y,190,50,a[1],a[2])});
+  box('orch',10,60,180,350,'Orchestrator','5 phases · state · checks','code');
+  box('rag',470,30,190,64,'Knowledge base (RAG)','13.6k reviews · 2.2k posts','');
+  box('planner',470,110,190,50,'planner server','retrieval · facts · rules','');
+  box('writer',470,176,190,50,'writer server','brand check · scorer','');
+  box('reels',470,242,190,50,'reels engine','templates · footage · music','');
+  box('render',680,170,170,56,'Renderer','video and slides, QA','');
+  box('pub',680,250,170,56,'Publisher','drafts into calendar','');
+  line(420,55,470,135);line(420,117,470,135);line(420,179,470,201);line(420,303,470,267);
+  line(565,110,565,94);line(565,176,565,160,'3 3');
+  line(660,267,680,198);line(660,267,680,278);line(190,330,470,267,'4 3');
+  el('text',{x:230,y:372,'font-size':10,fill:'#465671'},svg,'agents call only their own tools;');
+  el('text',{x:230,y:386,'font-size':10,fill:'#465671'},svg,'the code calls servers directly, 0 tokens.');
+  el('text',{x:10,y:440,'font-size':10,fill:'#C2531A'},svg,'a person approves in the publisher');
+  function pick(id){$$('.node',svg).forEach(function(n){n.classList.toggle('on',n.dataset.id===id)});var a=ARCH[id];
+    $('#detail').innerHTML='<h3>'+a.t+'</h3><p>'+a.p+'</p><ul>'+a.l.map(function(x){return '<li>'+x+'</li>'}).join('')+'</ul>'}
+  pick('orch');
+})();
+
+/* ---------- platforms and templates ---------- */
+var PLAT={
+  Instagram:{ratio:'',fmts:['Reels 9:16','Carousel','Stories','Feed image'],cap:'So kommt deine Kacchi-Schale in Berlin an.\nThis is exactly the Kacchi you see, sealed and ready.',note:'Reels are the default; carousels, stories and images rotate in. Caption, hashtags and limits per surface.'},
+  Facebook:{ratio:'sq',fmts:['Video','Carousel','Image'],cap:'Heute frisch gekocht, morgen bei dir.\nOrder by Friday 18:00 for Saturday delivery.',note:'Longer, warmer captions and a different time slot than Instagram.'},
+  TikTok:{ratio:'',fmts:['Vertical video'],cap:'Deckel auf. Dampf. Fertig.',note:'Vertical video only. Posting is assisted today (a ready-to-post card with video, caption and settings) until the platform API is approved.'},
+  YouTube:{ratio:'wide',fmts:['Shorts 9:16','Landscape video'],cap:'Title and description written separately, within YouTube’s own limits.',note:'Shorts for reels, a 16:9 cut for longer pieces; title and description are their own fields.'},
+  Threads:{ratio:'sq',fmts:['Image with short text'],cap:'One line, one picture.',note:'Short text and a single image, nothing forced into a video.'}
+};
+(function(){
+  var tabs=$('#ptabs'),body=$('#pbody');
+  Object.keys(PLAT).forEach(function(k,i){var b=document.createElement('button');b.type='button';b.textContent=k;b.setAttribute('role','tab');b.onclick=function(){show(k)};tabs.appendChild(b)});
+  function show(k){$$('button',tabs).forEach(function(b){b.classList.toggle('on',b.textContent===k)});var p=PLAT[k];
+    body.innerHTML='<div class="phone '+p.ratio+'"><span class="pill tag">'+k+'</span><div class="steam"></div><div class="cap">'+p.cap.replace(/\n/g,'<br>')+'</div></div><div><h3 style="margin-bottom:8px">'+k+'</h3><p class="lead" style="font-size:16px">'+p.note+'</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:14px">'+p.fmts.map(function(f){return '<span class="pill hot">'+f+'</span>'}).join('')+'</div><p class="note" style="margin-top:14px">Sample caption shown. Real posts are written per idea and checked before approval.</p></div>'}
+  show('Instagram');
+  var T=[['kinetic-text','k1','Words land on the beat','<span class="w">Deckel</span><span class="w">auf.</span><span class="w">Berlin</span>'],['photo-motion','k2','Slow, cinematic move',''],['one-take','k3','One continuous moment',''],['collage','k4','Tiles that shuffle','<i></i><i></i><i></i><i></i>'],['steps','k5','How it is made','<span class="w">1 marinate</span><span class="w">2 dum</span><span class="w">3 serve</span>'],['split','k6','Two halves, one story',''],['statement','k7','One big idea','<span class="w">Kacchi</span>']];
+  $('#tpl').innerHTML=T.map(function(t){return '<div class="t"><div class="scr '+t[1]+'">'+t[3]+'</div><b>'+t[0]+'</b><span>'+t[2]+'</span></div>'}).join('');
+})();
+
+/* ---------- learning bars, gates, token bars ---------- */
+function bars(target,rows){$(target).innerHTML=rows.map(function(r){return '<div class="bar"><span>'+r.l+'</span><div class="trk"><div class="fill '+(r.c||'')+'" data-w="'+r.w+'%" style="width:'+r.w+'%"></div></div><b>'+r.v+'</b></div>'}).join('')}
+bars('#learnbars',[
+  {l:'Emoji-free captions, before the playbook',w:38,v:'38%'},
+  {l:'Emoji-free captions, after',w:84,v:'84%',c:'g'},
+  {l:'Reach of Instagram reels vs. other formats',w:70,v:'2.1×',c:'c'},
+  {l:'Reach of captions without emoji',w:80,v:'2.4×',c:'c'}]);
+$('#gates').innerHTML=[['p','data','post counts match the previous pull'],['p','no leakage','only information available before posting'],['p','better','beats the current model on unseen posts'],['p','no platform worse','Facebook −0.007, Instagram +0.075'],['p','calibrated','probabilities match reality (Brier 0.2125)'],['w','live evidence','needs 30 posts with 7-day results'],['p','works','10 KB, 12 ms per post']].map(function(g){return '<div class="gate '+g[0]+'"><div class="ic">'+(g[0]==='p'?'✓':g[0]==='w'?'…':'✗')+'</div><div><b>'+g[1]+'</b> <span>'+g[2]+'</span></div></div>'}).join('');
+(function(){var rows=[['designer',315756],['adapter',126626],['copywriter',121884],['director',62400],['strategist',32381]],tot=659047;
+  bars('#tokbars',rows.map(function(r){return {l:r[0],w:Math.round(100*r[1]/315756),v:Math.round(100*r[1]/tot)+'%',c:r[0]==='designer'?'c':''}}));
+  $('#tokbars').insertAdjacentHTML('beforeend','<p class="note">The designer is about half the bill because it reads the footage catalogue. It was measured against a cheaper model and kept.</p>')})();
+
+/* ---------- resilience replay ---------- */
+(function(){
+  var svg=$('#ressvg'),tm=null;
+  function draw(stage){svg.innerHTML='';
+    el('line',{x1:30,x2:970,y1:100,y2:100,stroke:'#DDE5EE','stroke-width':2},svg);
+    var cutX=420;
+    el('rect',{x:30,y:78,width:stage>=1?cutX-30:(cutX-30),height:44,rx:4,fill:'#14855A',opacity:.9},svg);
+    el('text',{x:40,y:105,'font-size':12,fill:'#fff'},svg,'10 calls finished · 71,127 tokens kept');
+    el('rect',{x:cutX,y:78,width:60,height:44,rx:4,fill:'#C0392B'},svg);el('text',{x:cutX+6,y:105,'font-size':11,fill:'#fff'},svg,'in flight');
+    el('path',{d:'M'+(cutX+60)+' 60 L'+(cutX+60)+' 140',stroke:'#C0392B','stroke-width':3},svg);
+    el('text',{x:cutX+68,y:56,'font-size':12,fill:'#C0392B','font-weight':500},svg,'power cut at 1:35 (SIGKILL, mid-render)');
+    if(stage>=1){el('rect',{x:cutX+60,y:78,width:230,height:44,rx:4,fill:'#F3F6FA',stroke:'#C7D1DE','stroke-dasharray':'4 4'},svg);el('text',{x:cutX+72,y:104,'font-size':11,fill:'#7A889D'},svg,'machine off / asleep')}
+    if(stage>=2){el('circle',{cx:cutX+330,cy:100,r:15,fill:'#FBE8DB',stroke:'#C2531A','stroke-width':2.5},svg);el('text',{x:cutX+330,y:105,'text-anchor':'middle','font-size':12,fill:'#C2531A'},svg,'30');
+      el('text',{x:cutX+330,y:150,'text-anchor':'middle','font-size':11,fill:'#C2531A'},svg,'next check (every 30 min)');
+      el('text',{x:cutX+330,y:166,'text-anchor':'middle','font-size':10,fill:'#465671'},svg,'log has no end, lock is dead → resume')}
+    if(stage>=3){el('rect',{x:cutX+360,y:78,width:150,height:44,rx:4,fill:'#1D5CC4'},svg);el('text',{x:cutX+370,y:105,'font-size':11,fill:'#fff'},svg,'finished in 35 s');
+      el('text',{x:cutX+360,y:140,'font-size':11,fill:'#14855A'},svg,'3 of 3 ideas · 12 of 12 posts · 0 repeated')}
+  }
+  function play(){draw(0);var i=0;clearInterval(tm);if(reduce){draw(3);return}
+    $('#cutnote').textContent='Replaying…';tm=setInterval(function(){i++;draw(i);if(i>=3){clearInterval(tm);$('#cutnote').textContent='Finished: nothing lost, nothing paid twice.'}},1100)}
+  draw(3);$('#cutbtn').onclick=play;
+})();
+
+/* ---------- calculator ---------- */
+(function(){
+  var ids=['posts','min','rate','appr','tok','price','host'];
+  function g(k){return parseFloat($('#c_'+k).value)}
+  function eur(n){return '€'+fmt(n,n<100?2:0)}
+  function calc(){
+    var posts=g('posts'),min=g('min'),rate=g('rate'),appr=g('appr'),tok=g('tok'),price=g('price'),host=g('host');
+    ids.forEach(function(k){var v=g(k);$('#o_'+k).textContent=k==='rate'||k==='price'||k==='host'?'€'+fmt(v,k==='price'?1:0):k==='tok'?fmt(v):k==='min'?v+' min':k==='appr'?v+' s':fmt(v)});
+    var handH=posts*min/60,handC=handH*rate,ai=posts*tok/1e6*price,apprH=posts*appr/3600,apprC=apprH*rate,total=ai+host+apprC;
+    $('#r_hand_h').textContent=fmt(handH,0)+' h';$('#r_hand_c').textContent=eur(handC);$('#r_ai').textContent=eur(ai);$('#r_host').textContent=eur(host);
+    $('#r_appr').textContent=eur(apprC)+' ('+fmt(apprH,1)+' h)';$('#r_pp').textContent=eur(total/posts);
+    var save=handC-total;$('#r_save').textContent=(save<0?'−':'')+eur(Math.abs(save));$('#r_hours').textContent=fmt(handH-apprH,0)+' h';
+  }
+  ids.forEach(function(k){$('#c_'+k).addEventListener('input',calc)});calc();
+})();
+})();
+</script>
