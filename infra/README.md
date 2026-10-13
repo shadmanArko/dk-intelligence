@@ -23,6 +23,13 @@ Edit `group_vars/all.yml` (or `site.yml`) in git → push → on the VPS `git pu
 with `--check --diff`, then apply. Tested in CI on a fresh Ubuntu 24.04 container (`tests/test_infra.py`): it converges,
 a second run changes nothing, hand-made cron lines are adopted (not duplicated) and the harness's cron line is kept.
 
+## What keeps the disk from filling (ADR 0042)
+Two layers, both automatic. Each good deploy removes its own old images (`deploy/deploy.sh`, `tidy_images`). A weekly cron
+job (Sunday 05:30, `deploy/tidy-disk.sh`, managed here under `cron_jobs`) removes Docker images no container uses, stopped
+containers and build cache older than 3 days, and our own database dumps older than 14 days (off-site copies keep 30). It
+never touches Docker volumes or running containers, and writes `intel_disk_tidy_*` metrics and `disk-tidy.log`. After a pull of
+this change, apply once with the commands above (`--check --diff` first); it then runs by itself.
+
 ## Rebuild a lost VPS
 1. New Ubuntu machine with Docker and Tailscale (the harness's setup), user `deploy` with sudo.
 2. Clone this repo and the data platform (read-only deploy keys, deploy/README.md step 1).

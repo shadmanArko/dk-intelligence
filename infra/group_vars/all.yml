@@ -34,6 +34,11 @@ cron_jobs:                 # all on the deploy user's crontab; existing hand-mad
     minute: "50"
     hour: "2"
     job: /opt/dhaka-kacchi/dk-intelligence/deploy/backup.sh >> /opt/dhaka-kacchi/logs/intel-backup.log 2>&1
+  - name: weekly disk tidy
+    minute: "30"
+    hour: "5"
+    weekday: "0"
+    job: /opt/dhaka-kacchi/dk-intelligence/deploy/tidy-disk.sh >> /opt/dhaka-kacchi/logs/disk-tidy.log 2>&1
   - name: intel restore drill
     minute: "30"
     hour: "4"
