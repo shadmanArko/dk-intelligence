@@ -122,7 +122,7 @@ postmortem (`docs/postmortems/`). Plans are written as a doc for the owner's app
   - `serve/` (intel-api on the VPS: app, registry, measure, monitor, guardrail, lifecycle, telegram, views,
     `migrations/`);
   - `control.py` (Mac Control Room);
-  - Phase 5: `studio/director.py` + `config/studio/craft.yaml` (S5: the creative director), `studio/curator.py`, `performance/` (S4: results per post, the playbook, `uv run intel performance build|join|analyst`), `studio/` (the Content Studio: ports, settings, strategist, crews, render and upload pipeline, console), settings in `config/studio/*.yaml`, run it with `uv run intel studio run` ([STUDIO.md](docs/STUDIO.md)); `lab/agentic-slice/` is the older lab (demo mode), it imports `media` and `handover` from `studio/`;
+  - Phase 5: `studio/today.py` + `studio/web/` (the owner's Today page and the living pipeline picture; guide: `docs/OWNER_GUIDE.md`), `studio/director.py` + `config/studio/craft.yaml` (S5: the creative director), `studio/curator.py`, `performance/` (S4: results per post, the playbook, `uv run intel performance build|join|analyst`), `studio/` (the Content Studio: ports, settings, strategist, crews, render and upload pipeline, console), settings in `config/studio/*.yaml`, run it with `uv run intel studio run` ([STUDIO.md](docs/STUDIO.md)); `lab/agentic-slice/` is the older lab (demo mode), it imports `media` and `handover` from `studio/`;
   - Phase 4: `capabilities/` (plain-Python tool logic), `adapters/` (intel-api, packs, pgvector), `rag/` (knowledge
     packs: clean, chunk, embed, rerank, store, gate, ship), `mcp_server/` (the dk_intel gateway, servers, kit,
     prompts, profiles, budgets, HTTP + tokens). Docs: `docs/mcp/` (catalog, clients, threat model, Phase 5 hand-over),

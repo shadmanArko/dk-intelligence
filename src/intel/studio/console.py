@@ -8,6 +8,7 @@ command line the schedule uses. A run that creates drafts in the owner's Calenda
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import subprocess
@@ -19,6 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
+from intel.studio import today
 from intel.studio.config import REPO
 from intel.studio.runlog import read_events
 
@@ -59,6 +61,7 @@ def run_view(folder: Path) -> dict[str, Any]:
         idea = row["idea"]
         ideas.append({
             "id": idea_id, "date": idea["date"], "format": idea["format"], "window": idea["window"],
+            "template": (row.get("treatment") or {}).get("template"),
             "platforms": sorted(idea["slots"]), "slots": idea["slots"], "angle": row.get("angle"),
             "pillar": row.get("pillar"), "playbook_note": row.get("playbook_note"), "stage": row["stage"],
             "captions": row.get("captions", {}),
@@ -137,9 +140,162 @@ def start(body: Start) -> dict[str, Any]:
     return {"started": True}
 
 
+# ---------- Today: everything that waits for the owner, and the living picture of a run ----------
+
+WEB = Path(__file__).parent / "web"
+ID = re.compile(r"^[a-z0-9][a-z0-9_-]{1,60}$")
+
+
+def _reels() -> Path:
+    from intel.studio import media
+
+    return media.REELS
+
+
+def _readers() -> today.Readers:
+    from intel.studio import handover
+    from intel.studio import schedule as schedule_mod
+
+    env = handover.load_env()
+    client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"]) if len(env) == 2 else None
+    summary = DATA / "last-summary.md"
+    return today.Readers(
+        calendar=lambda: today.calendar_from(client) if client else None,
+        pending_proposals=lambda: today.pending_proposals(_reels()),
+        unlabelled_footage=lambda: today.unlabelled_footage(_reels()),
+        last_summary=lambda: summary.read_text() if summary.exists() else None,
+        running=_running,
+        schedule_installed=lambda: schedule_mod.PLIST.exists(),
+        now=lambda: dt.datetime.now(dt.UTC),
+    )
+
+
+@app.get("/api/today")
+def api_today() -> dict[str, Any]:
+    from intel.studio import config as studio_config
+
+    cfg = studio_config.load()
+    return today.build(_readers(), cfg.schedule, today.owner_decisions())
+
+
+@app.get("/api/live")
+def api_live() -> dict[str, Any]:
+    """The scene of the run that is working, else the newest one."""
+    running = _running()
+    folders = sorted((p for p in (DATA / "runs").glob("*") if (p / "state.json").exists()), reverse=True)
+    folder = (DATA / "runs" / running) if running and (DATA / "runs" / running / "state.json").exists() else (
+        folders[0] if folders else None)  # fmt: skip
+    if folder is None:
+        return today.scene({"id": None, "status": "idle", "ideas": []})
+    view = run_view(folder)
+    if not running and view["status"] != "running":
+        view = {**view, "status": "idle"}  # an old run is a resting picture: its drafts stay in the pool
+    return today.scene(view)
+
+
+@app.get("/api/live/demo")
+def api_live_demo(tick: int = 0) -> dict[str, Any]:
+    return today.demo_scene(max(0, tick))
+
+
+def _run_npm(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["npm", "run", "-s", "curate", "--", *args], cwd=_reels(), capture_output=True, text=True,  # noqa: S603, S607
+                          timeout=300)  # fmt: skip
+
+
+@app.post("/api/curate/accept-all")
+def curate_accept_all() -> dict[str, Any]:
+    pending = today.pending_proposals(_reels())
+    if not pending:
+        raise HTTPException(409, "nothing is waiting")
+    out = _run_npm("--accept-all")
+    if out.returncode != 0:
+        raise HTTPException(500, out.stderr[-200:] or "the accept failed")
+    return {"message": f"accepted {len(pending)} proposals"}
+
+
+@app.post("/api/curate/reject-all")
+def curate_reject_all() -> dict[str, Any]:
+    ids = [str(p.get("id")) for p in today.pending_proposals(_reels())]
+    for i in ids:
+        if not ID.match(i):
+            continue  # only plain ids ever reach the command line
+        _run_npm("--reject", i)
+    return {"message": f"rejected {len(ids)} proposals"}
+
+
+@app.post("/api/curate/enrich")
+def curate_enrich() -> dict[str, Any]:
+    if _running():
+        raise HTTPException(409, "a run is in progress: wait for it")
+    cmd = [
+        sys.executable,
+        "-c",
+        "from intel.cli import app; app()",
+        "studio",
+        "curate",
+        "--scope",
+        "enrich",
+        "--limit",
+        "20",
+    ]
+    subprocess.Popen(cmd, cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)  # noqa: S603
+    return {"message": "the curator is looking at 20 clips; proposals appear here in a few minutes"}
+
+
+@app.post("/api/schedule/install")
+def schedule_install() -> dict[str, Any]:
+    import shutil
+
+    from intel.studio import config as studio_config
+    from intel.studio import schedule as schedule_mod
+
+    uv = shutil.which("uv")
+    if uv is None:
+        raise HTTPException(500, "uv is not on the PATH")
+    cfg = studio_config.load().schedule
+    schedule_mod.install(cfg, uv, f"{Path(uv).parent}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+    return {"message": f"installed: a check every day at {cfg.run_at}"}
+
+
+@app.post("/api/performance/analyst")
+def performance_analyst() -> dict[str, Any]:
+    cmd = [sys.executable, "-c", "from intel.cli import app; app()", "performance", "analyst"]
+    subprocess.Popen(cmd, cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)  # noqa: S603
+    return {"message": "writing the note: data/performance/<latest>/analyst.md"}
+
+
+@app.get("/static/live.js")
+def live_js() -> FileResponse:
+    return FileResponse(WEB / "live.js", media_type="text/javascript")
+
+
+@app.get("/guide", response_class=HTMLResponse)
+def guide() -> str:
+    text = (
+        (REPO / "docs" / "OWNER_GUIDE.md").read_text()
+        if (REPO / "docs" / "OWNER_GUIDE.md").exists()
+        else "no guide yet"
+    )
+    esc = text.replace("&", "&amp;").replace("<", "&lt;")
+    style = "font:15px/1.6 system-ui;max-width:760px;margin:24px auto;padding:0 16px"
+    head = "<!doctype html><meta charset=utf-8><title>Studio guide</title>"
+    return f"{head}<body style='{style}'><pre style='white-space:pre-wrap'>{esc}</pre></body>"
+
+
+@app.get("/live", response_class=HTMLResponse)
+def live_page() -> str:
+    return (WEB / "live.html").read_text()
+
+
+@app.get("/runs", response_class=HTMLResponse)
+def runs_page() -> str:
+    return (WEB / "runs.html").read_text()
+
+
 @app.get("/", response_class=HTMLResponse)
 def page() -> str:
-    return (Path(__file__).parent / "console.html").read_text()
+    return (WEB / "today.html").read_text()
 
 
 if __name__ == "__main__":

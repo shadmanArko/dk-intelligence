@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio: Today</title>
+<style>
+:root{--bg:#1a0a0b;--card:#2b1013;--ink:#f3e9d8;--mute:#b8a894;--line:#4a2a2c;--acc:#f4b02e;--ok:#7fc59a;--todo:#f4b02e}
+@media(prefers-color-scheme:light){:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b16;--mute:#7a756a;--line:#e4dfd3;--acc:#b8642a;--ok:#2f7d4f;--todo:#b8642a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 18px}h1{font-size:19px;margin:0;font-weight:700}
+.grow{flex:1}a{color:var(--acc)}
+.sky{height:300px;border-radius:16px;margin:0 18px;overflow:hidden;border:1px solid var(--line);position:relative}
+.sky canvas{width:100%;height:100%;display:block}
+.sound{position:absolute;right:12px;bottom:10px;background:rgba(0,0,0,.35);color:#f3e9d8;border:1px solid rgba(255,255,255,.2);border-radius:99px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12px}
+main{max-width:920px;margin:18px auto;padding:0 18px;display:grid;gap:10px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:6px}
+.item.todo{border-left:5px solid var(--todo)}.item.ok{opacity:.7}.item h2{font-size:16px;margin:0}.item p{margin:0;color:var(--mute);font-size:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}button.act{background:var(--acc);color:#1a0a0b;border:0;border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+button.act:disabled{opacity:.5}.badge{font-size:12px;border-radius:99px;padding:2px 10px;background:var(--line)}
+.head{display:flex;align-items:center;gap:10px}.msg{color:var(--ok);font-size:13px}
+</style></head><body>
+<header><h1>Today</h1><span class="badge" id="open">…</span><span class="grow"></span>
+<a href="/live" target="_blank">full-screen picture</a> · <a href="/runs">runs and history</a> · <a href="/guide">how it works</a></header>
+<div class="sky"><canvas id="c"></canvas><button class="sound" id="snd">sound: off</button></div>
+<main id="list"><div class="item"><p>Loading…</p></div></main>
+<script src="/static/live.js"></script>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const demo=new URLSearchParams(location.search).get('demo')==='1';
+startLive($('c'),{demo});
+$('snd').onclick=()=>{$('snd').textContent='sound: '+(toggleLiveSound()?'on':'off')};
+async function act(a,btn){if(a.confirm&&!confirm(a.confirm))return;btn.disabled=true;
+ const body=a.body?JSON.stringify(a.body):undefined;const r=await fetch(a.api,{method:'POST',headers:{'Content-Type':'application/json'},body});
+ const j=await r.json().catch(()=>({}));$('open').textContent=r.ok?(j.message||'done'):(j.detail||'failed');setTimeout(load,1200)}
+async function load(){const t=await (await fetch('/api/today')).json();
+ $('open').textContent=t.open?`${t.open} for you`:'all clear';
+ $('list').innerHTML=t.items.map((i,k)=>`<div class="item ${i.level}"><div class="head"><h2>${esc(i.title)}</h2></div><p>${esc(i.detail)}</p>${i.actions.length?`<div class="row">${i.actions.map((a,j)=>`<button class="act" data-i="${k}" data-j="${j}">${esc(a.label)}</button>`).join('')}</div>`:''}</div>`).join('');
+ document.querySelectorAll('button.act').forEach(b=>b.onclick=()=>act(t.items[b.dataset.i].actions[b.dataset.j],b))}
+load();setInterval(load,15000);
+</script></body></html>

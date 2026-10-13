@@ -114,8 +114,9 @@ class ScheduleCfg(_Strict):
     min_days_between: int = Field(ge=1, le=30)
     max_awaiting: int = Field(ge=1, le=500)
     notify: bool
+    remind_at: str
 
-    @field_validator("run_at")
+    @field_validator("run_at", "remind_at")
     @classmethod
     def _clock(cls, v: str) -> str:
         if not HHMM.match(v):

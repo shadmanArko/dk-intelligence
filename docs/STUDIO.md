@@ -40,6 +40,15 @@ uv run intel studio eval run --label v2 --publish render
 uv run intel studio eval show                     # posts made, tokens, minutes per version
 ```
 
+## One page for you: Today (start here)
+```bash
+uv run python -m intel.studio.console      # then open http://127.0.0.1:8771
+```
+**Today** lists everything that waits for you (drafts to approve, footage proposals with Accept / Reject buttons, decisions,
+schedule) above a calm moving picture of the studio working (`/live` is the full-screen version; add `?demo=1` to watch it
+without a run). The daily check also sets a 9:00 reminder that appears only when something waits. Plain-words guide:
+[OWNER_GUIDE.md](OWNER_GUIDE.md).
+
 ## Running without you (S6)
 ```bash
 uv run intel studio schedule check      # would a run start now? (reads the calendar, no AI)

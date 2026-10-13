@@ -20,6 +20,8 @@ from intel.studio.config import REPO, ScheduleCfg
 
 LABEL = "com.dhakakacchi.studio"
 PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+REMIND_LABEL = "com.dhakakacchi.studio.reminder"
+REMIND_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{REMIND_LABEL}.plist"
 
 
 def agent_plan_ends(calendar_rows: list[dict[str, Any]]) -> str | None:
@@ -102,19 +104,45 @@ def plist_for(cfg: ScheduleCfg, uv: str, path_env: str) -> dict[str, Any]:
     }
 
 
-def install(cfg: ScheduleCfg, uv: str, path_env: str, plist_path: Path = PLIST) -> Path:
+def reminder_plist_for(cfg: ScheduleCfg, uv: str, path_env: str) -> dict[str, Any]:
+    """The reminder: every day at `remind_at`, `intel studio remind`, which notifies only when something waits."""
+    hour, minute = (int(x) for x in cfg.remind_at.split(":"))
+    log = REPO / "data" / "studio" / "schedule.log"
+    return {
+        "Label": REMIND_LABEL,
+        "ProgramArguments": [uv, "run", "--quiet", "--directory", str(REPO), "intel", "studio", "remind"],
+        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "WorkingDirectory": str(REPO),
+        "EnvironmentVariables": {"PATH": path_env},
+        "StandardOutPath": str(log),
+        "StandardErrorPath": str(log),
+        "RunAtLoad": False,
+    }
+
+
+def install(
+    cfg: ScheduleCfg, uv: str, path_env: str, plist_path: Path = PLIST, remind_path: Path | None = None
+) -> Path:
+    """The daily check, and the daily reminder next to it (`remind_path`, default beside the check's file)."""
+    remind = remind_path or plist_path.with_name(f"{REMIND_LABEL}.plist")
     plist_path.parent.mkdir(parents=True, exist_ok=True)
     plist_path.write_bytes(plistlib.dumps(plist_for(cfg, uv, path_env)))
+    remind.write_bytes(plistlib.dumps(reminder_plist_for(cfg, uv, path_env)))
     if sys.platform == "darwin":
-        subprocess.run(["launchctl", "unload", str(plist_path)], check=False, capture_output=True)  # noqa: S603, S607
-        subprocess.run(["launchctl", "load", str(plist_path)], check=True, capture_output=True)  # noqa: S603, S607
+        for p in (plist_path, remind):
+            subprocess.run(["launchctl", "unload", str(p)], check=False, capture_output=True)  # noqa: S603, S607
+            subprocess.run(["launchctl", "load", str(p)], check=True, capture_output=True)  # noqa: S603, S607
     return plist_path
 
 
 def uninstall(plist_path: Path = PLIST) -> bool:
-    if not plist_path.exists():
-        return False
-    if sys.platform == "darwin":
-        subprocess.run(["launchctl", "unload", str(plist_path)], check=False, capture_output=True)  # noqa: S603, S607
-    plist_path.unlink()
-    return True
+    remind = plist_path.with_name(f"{REMIND_LABEL}.plist")
+    found = False
+    for p in (plist_path, remind):
+        if not p.exists():
+            continue
+        found = True
+        if sys.platform == "darwin":
+            subprocess.run(["launchctl", "unload", str(p)], check=False, capture_output=True)  # noqa: S603, S607
+        p.unlink()
+    return found

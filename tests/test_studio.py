@@ -520,7 +520,7 @@ def test_the_console_shows_a_run_idea_by_idea_and_never_starts_drafts_without_co
     assert c.post("/api/run", json={"publish": "post-now"}).status_code == 422
     (world.data / ".running").write_text("1 20261012T180000Z")
     assert c.post("/api/run", json={"publish": "render"}).status_code == 409 and c.get("/api/status").json()["running"]
-    assert "Run now" in c.get("/").text
+    assert "Run now" in c.get("/runs").text
 
 
 # ---------- what the first real runs taught ----------
@@ -1005,3 +1005,152 @@ def test_only_the_studios_own_posts_say_whether_its_plan_runs_out():
         {"source": "api", "slot": "2026-10-30T10:00:00+00:00", "state": "cancelled"},
     ]  # rejected: no longer planned
     assert schedule.agent_plan_ends(rows) == "2026-10-16T10:00:00+00:00" and schedule.agent_plan_ends([]) is None
+
+
+# ---------- the Today page and the living picture ----------
+
+
+def _readers(**over: Any):
+    from intel.studio import today
+
+    base = dict(
+        calendar=lambda: [],
+        pending_proposals=lambda: [],
+        unlabelled_footage=lambda: 0,
+        last_summary=lambda: None,
+        running=lambda: None,
+        schedule_installed=lambda: False,
+        now=lambda: dt.datetime(2026, 10, 14, 9, 0, tzinfo=dt.UTC),
+    )
+    return today.Readers(**{**base, **over})
+
+
+def test_today_lists_what_waits_for_the_owner_most_pressing_first():
+    from intel.studio import today
+
+    rows = [
+        {"source": "api", "state": "awaiting_approval", "slot": f"2026-10-1{4 + i % 2}T15:00:00+00:00"}
+        for i in range(5)
+    ]
+    rows += [{"source": "sheet", "state": "awaiting_approval", "slot": "2026-10-14T15:00:00+00:00"}]  # not the studio's
+    pending = [{"id": "c0001", "moments": [{"description": "A spatula places meat onto a plate"}]}]
+    r = _readers(calendar=lambda: rows, pending_proposals=lambda: pending, unlabelled_footage=lambda: 92,
+                 last_summary=lambda: "# Studio run 1 (manual, drafts)\n\nIdeas: 26 of 26 made")  # fmt: skip
+    data = today.build(r, SHIPPED.schedule, [{"id": "rotation", "title": "All reels, or a mix?", "detail": "d"}])
+    by = {i["id"]: i for i in data["items"]}
+    assert (
+        by["drafts"]["title"] == "Approve 5 drafts"
+        and "10-14: 3" in by["drafts"]["detail"]
+        and "10-15: 2" in by["drafts"]["detail"]
+    )
+    assert [a["label"] for a in by["curator"]["actions"]] == ["Accept all", "Reject all"] and "spatula" in by[
+        "curator"
+    ]["detail"]
+    assert (
+        by["enrich"]["count"] == 92 and "160,000 tokens" in by["enrich"]["actions"][0]["confirm"]
+    )  # the cost is said first
+    assert by["schedule"]["level"] == "info" and by["decision-rotation"]["level"] == "todo"
+    assert by["start"]["actions"][0]["body"] == {"publish": "drafts", "confirm": True}
+    levels = [i["level"] for i in data["items"]]
+    assert (
+        levels == sorted(levels, key=["todo", "info", "ok"].index) and data["open"] == 3
+    )  # drafts, proposals, a decision
+
+
+def test_today_says_so_when_nothing_waits_or_the_publisher_cannot_be_reached():
+    from intel.studio import today
+
+    clear = today.build(_readers(schedule_installed=lambda: True), SHIPPED.schedule, [])
+    assert clear["open"] == 0 and {i["id"]: i["level"] for i in clear["items"]}["drafts"] == "ok"
+    assert today.reminder_text(clear) is None  # nothing waits: no reminder, no interruption
+    down = today.build(_readers(calendar=lambda: None), SHIPPED.schedule, [])
+    assert "Cannot reach the publisher" in {i["id"]: i for i in down["items"]}["drafts"]["detail"]
+    busy = today.build(
+        _readers(calendar=lambda: [{"source": "api", "state": "awaiting_approval", "slot": "2026-10-14"}] * 3),
+        SHIPPED.schedule,
+        [],
+    )
+    assert today.reminder_text(busy) == ("Studio: waiting for you", "Approve 3 drafts")
+    sunday = today.build(_readers(now=lambda: dt.datetime(2026, 10, 18, 9, 0, tzinfo=dt.UTC)), SHIPPED.schedule, [])
+    assert "analyst" in {i["id"] for i in sunday["items"]} and "analyst" not in {
+        i["id"] for i in clear["items"]
+    }  # Sundays only
+
+
+def test_the_living_picture_places_every_idea_by_what_it_is_doing_and_never_shows_failure_loudly():
+    from intel.studio import today
+
+    ideas = [
+        {"id": "a", "stage": "planned", "holds": {}, "outcome": None, "template": "one-take"},
+        {"id": "b", "stage": "adapted", "holds": {}, "outcome": None, "template": "photo-motion"},
+        {"id": "c", "stage": "prepared", "holds": {}, "outcome": None, "template": "beat-reel"},
+        {"id": "d", "stage": "rendered", "holds": {}, "outcome": None, "template": "beat-reel"},
+        {"id": "e", "stage": "final", "holds": {}, "outcome": {"state": "drafted"}, "template": "split"},
+        {"id": "f", "stage": "final", "holds": {"*": {"code": "x"}}, "outcome": None, "template": None},
+    ]
+    s = today.scene({"id": "r", "status": "running", "ideas": ideas, "tokens": 1000, "cap": 4_000_000, "seconds": 90,
+                     "phases": [{"phase": "production", "status": "start"}]})  # fmt: skip
+    where = {p["id"]: p["station"] for p in s["particles"]}
+    assert where == {"a": "plan", "b": "design", "c": "render", "d": "upload", "e": "drafts", "f": "held"}
+    assert s["drafts"] == 1 and s["held"] == 1 and s["phase"] == "production" and s["running"] is True
+    assert [st["id"] for st in s["stations"]] == ["plan", "director", "write", "design", "render", "upload", "drafts"]
+    assert {st["id"]: st["active"] for st in s["stations"]}["render"] is True and {
+        st["id"]: st["active"] for st in s["stations"]
+    }["plan"] is False
+    idle = today.scene({"id": None, "status": "idle", "ideas": []})
+    assert idle["running"] is False and idle["particles"] == []
+    assert today.demo_scene(0)["running"] and len(today.demo_scene(40)["particles"]) == 12  # watchable without a run
+
+
+def test_the_console_serves_today_the_live_picture_and_only_plain_ids_reach_the_curate_command(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from intel.studio import console
+
+    reels = tmp_path / "reels"
+    (reels / "index" / "curation" / "pending").mkdir(parents=True)
+    (reels / "index" / "curation" / "pending" / "c1.json").write_text(json.dumps({"id": "c1", "moments": []}))
+    (reels / "index" / "curation" / "pending" / "bad.json").write_text(json.dumps({"id": "x; rm -rf ~", "moments": []}))
+    (reels / "index" / "assets.json").write_text(
+        json.dumps({"assets": [{"type": "video"}, {"type": "photo", "mood": ["warm"]}]})
+    )
+    monkeypatch.setattr(console, "_reels", lambda: reels)
+    monkeypatch.setattr(console, "DATA", tmp_path / "data")
+    seen: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        console, "_run_npm", lambda *a: (seen.append(a), type("R", (), {"returncode": 0, "stderr": ""})())[1]
+    )
+    c = TestClient(console.app)
+    assert "living" in c.get("/static/live.js").text or "startLive" in c.get("/static/live.js").text
+    assert (
+        "Studio: Today" in c.get("/").text and "startLive" in c.get("/live").text and "Run now" in c.get("/runs").text
+    )
+    assert c.get("/api/live").json()["status"] == "idle" and c.get("/api/live/demo?tick=5").json()["run"] == "demo"
+    assert today_unlabelled(reels) == 1
+    assert c.post("/api/curate/reject-all").json()["message"] == "rejected 2 proposals"
+    assert seen == [("--reject", "c1")]  # the odd id was never passed to a command line
+    assert c.post("/api/curate/accept-all").status_code == 200 and seen[-1] == ("--accept-all",)
+
+
+def today_unlabelled(reels: Path) -> int:
+    from intel.studio import today
+
+    return today.unlabelled_footage(reels)
+
+
+def test_the_reminder_job_runs_the_remind_command_and_installing_adds_it_beside_the_check(tmp_path, monkeypatch):
+    import plistlib
+
+    from intel.studio import schedule
+
+    plist = schedule.reminder_plist_for(SHIPPED.schedule, "/opt/homebrew/bin/uv", "/usr/bin")
+    assert plist["ProgramArguments"][-3:] == ["intel", "studio", "remind"] and plist["StartCalendarInterval"] == {
+        "Hour": 9,
+        "Minute": 0,
+    }
+    monkeypatch.setattr(schedule.subprocess, "run", lambda cmd, **kw: None)
+    schedule.install(SHIPPED.schedule, "/opt/homebrew/bin/uv", "/usr/bin", tmp_path / "check.plist")
+    assert plistlib.loads((tmp_path / "com.dhakakacchi.studio.reminder.plist").read_bytes())["Label"].endswith(
+        "reminder"
+    )
+    assert schedule.uninstall(tmp_path / "check.plist") and not list(tmp_path.glob("*.plist"))

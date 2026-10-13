@@ -105,6 +105,11 @@ that is part of S2.
   541k tokens (4.2k per post), 14 minutes.** The scorer ruled out 4 of 30 slots (decision for the owner, in the results).
 - **First real drafts (2026-10-13):** `--publish drafts --days 1` made 3 ideas, 15 drafts for 14 Oct (71.8k tokens, 152 s); the owner approved/rejected on the review page. No 10-day drafts run yet: that is the owner's go.
 
+**Owner desk (after S6):** a **Today** page (`uv run python -m intel.studio.console`, port 8771) lists everything that waits for
+the owner and has buttons for the safe actions (accept footage proposals, curator batch, run, schedule install, analyst note), a
+living animated picture of a run (`/live`, `?demo=1`), and a 9:00 reminder that appears only when something waits. The guide for
+the owner is [OWNER_GUIDE.md](OWNER_GUIDE.md); open decisions live in `config/studio/owner-todo.yaml`.
+
 **What S6 did** (`uv run intel studio schedule check|install|status|uninstall`, `autonomy`):
 - A daily launchd check (`--if-due`) that runs the studio only when its own plan runs out and the owner is not backed up; always
   drafts. Local notifications + `data/studio/last-summary.md` (the Telegram token stays on the VPS). Autonomy is measured only,

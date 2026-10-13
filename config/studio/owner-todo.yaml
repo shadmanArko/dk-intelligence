@@ -1,0 +1,20 @@
+# Decisions that wait for YOU. They show on the Today page until you delete the line (or set done: true).
+# Plain words; nothing here is read by the studio itself.
+
+decisions:
+  - id: rotation
+    title: "All reels, or a mix of surfaces?"
+    detail: "The default mixes reels with a carousel, a story, an image and a landscape video (about 124 posts per 10 days). Set format_rotation: [] in config/studio/plan.yaml for all reels (150 posts)."
+    done: false
+  - id: facts
+    title: "Confirm two menu facts"
+    detail: "The mutton box price, and whether the lamb box and the taster box are still sold (docs/brand/facts.yaml in the data-platform repo). Until then the checker blocks any mention of those two boxes."
+    done: false
+  - id: telegram
+    title: "A Telegram message from the Mac?"
+    detail: "Needs a new endpoint on the server (the bot token cannot leave it). Today you get a Mac notification and the morning digest."
+    done: false
+  - id: tiktok
+    title: "TikTok privacy"
+    detail: "TikTok posts are 'only me' until you trust the output. Change privacy_level in config/studio/routes.yaml to public when you do."
+    done: false
