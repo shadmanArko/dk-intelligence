@@ -157,7 +157,9 @@ def build(r: Readers, cfg: ScheduleCfg, decisions: list[dict[str, Any]],
                 "schedule",
                 "ok",
                 "Daily check is installed",
-                f"It looks every day at {cfg.run_at} and makes a plan only when yours is running out.",
+                f"While your Mac is on it checks every {cfg.check_every_minutes} minutes. It finishes a run that "
+                f"was cut off, and after {cfg.run_at} it makes a plan only when yours is running out. A Mac that "
+                "was off catches up when it is on.",
             )
         )
     else:

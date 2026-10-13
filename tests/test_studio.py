@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -891,13 +892,150 @@ def test_the_last_scheduled_run_is_found_from_the_run_folders(tmp_path):
     assert schedule.last_scheduled_run(tmp_path / "none") is None
 
 
+def _events_file(folder: Path, *lines: dict[str, Any]) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "events.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+
+def _o(kind: str, **kw: Any) -> dict[str, Any]:
+    return {
+        "t": kw.pop("t", "2026-10-13T08:00:00+00:00"),
+        "ms": kw.pop("ms", 1),
+        "node": "orchestrator",
+        "kind": kind,
+        **kw,
+    }
+
+
+def test_a_check_finishes_a_cut_off_run_before_it_plans_anything_new(tmp_path):
+    from intel.studio import schedule
+
+    cfg = SHIPPED.schedule
+    runs, lock = tmp_path / "runs", tmp_path / ".running"
+    now = dt.datetime(2026, 10, 13, 12, 0, tzinfo=dt.UTC)
+    local = dt.datetime(2026, 10, 13, 14, 0, tzinfo=dt.UTC)
+    near = {"awaiting_approval": []}
+    cut_at = "2026-10-13T07:50:00+00:00"
+    _events_file(runs / "20261013T073000Z", _o("start", trigger="schedule", publish="drafts", resume=False),
+                 _o("phase", t=cut_at, phase="production", status="start"))  # fmt: skip
+    d = schedule.decide(cfg, runs, lock, near, None, now, local)
+    assert (d.action, d.run_id, d.publish) == ("resume", "20261013T073000Z", "drafts") and "try 1 of 3" in d.reason
+    # a run that is working right now is left alone; a lock left by a crash is not a working run
+    lock.write_text(f"{os.getpid()} 20261013T073000Z")
+    assert schedule.decide(cfg, runs, lock, near, None, now, local).action == "skip"
+    lock.write_text("999999 20261013T073000Z")  # a process that no longer exists
+    assert (
+        schedule.live_run(lock) is None and schedule.decide(cfg, runs, lock, near, None, now, local).action == "resume"
+    )
+    # tried three times already: stop and say so instead of looping
+    _events_file(runs / "20261013T073000Z", _o("start", trigger="schedule", publish="drafts", resume=False),
+                 *[_o("start", resume=True) for _ in range(3)])  # fmt: skip
+    assert schedule.decide(cfg, runs, lock, near, None, now, local).action == "giveup"
+    # a run cut off long ago is dropped: its slots have passed, and it no longer holds back a new one
+    _events_file(runs / "20261013T073000Z", _o("start", trigger="schedule", publish="drafts", resume=False),
+                 _o("phase", t="2026-10-10T07:50:00+00:00", phase="production", status="start"))  # fmt: skip
+    d = schedule.decide(cfg, runs, lock, {"awaiting_approval": []}, None, now, local)
+    assert d.action == "run" and "dropped" in d.reason
+    # a finished run is never resumed, even a failed one
+    _events_file(runs / "20261013T073000Z", _o("start", trigger="schedule", publish="drafts", resume=False),
+                 _o("end", status="failed"))  # fmt: skip
+    assert (
+        schedule.decide(cfg, runs, lock, {"awaiting_approval": []}, "2026-10-14T15:00:00+00:00", now, local).action
+        == "skip"
+    )
+
+
+def test_a_new_run_waits_for_the_morning_and_a_mac_that_was_off_catches_up_when_it_is_on(tmp_path):
+    from intel.studio import schedule
+
+    cfg = SHIPPED.schedule
+    assert cfg.run_at == "09:30"
+    runs, lock = tmp_path / "runs", tmp_path / ".running"
+    short = {"awaiting_approval": []}
+    night = dt.datetime(2026, 10, 13, 3, 0, tzinfo=dt.UTC)
+    early = schedule.decide(cfg, runs, lock, short, None, night, night)
+    assert early.action == "skip" and "does not start before 09:30" in early.reason
+    # the Mac was off at 09:30 and comes on at 17:10: the first check after that starts the run
+    evening = dt.datetime(2026, 10, 13, 17, 10, tzinfo=dt.UTC)
+    assert schedule.decide(cfg, runs, lock, short, None, evening, evening).action == "run"
+    # and not a second run the same week
+    _events_file(runs / "20261013T171100Z", _o("start", trigger="schedule", publish="drafts", resume=False),
+                 _o("end", status="done"))  # fmt: skip
+    again = evening + dt.timedelta(hours=1)
+    assert schedule.decide(cfg, runs, lock, short, None, again, again).action == "skip"
+    off = sc.ScheduleCfg.model_validate({**cfg.model_dump(), "enabled": False})
+    assert schedule.decide(off, runs, lock, short, None, evening, evening).action == "skip"
+
+
+def test_a_run_that_lost_power_is_finished_by_the_next_check_without_paying_twice(tmp_path):
+    from intel.studio import schedule
+
+    class Crash(BaseException):
+        pass
+
+    w = World(tmp_path)
+    original = w.runner.run
+    count = {"n": 0}
+
+    def dying(node: str, agent: str, task: str, files: Any = None) -> Any:
+        count["n"] += 1
+        if count["n"] > 40:
+            raise Crash
+        return original(node, agent, task, files)
+
+    w.runner.run = dying  # type: ignore[method-assign]
+    with pytest.raises(Crash):
+        w.go("drafts", trigger="schedule")
+    run_id = w.folder.name
+    info = schedule.run_info(w.folder)
+    assert info is not None and not info.finished and info.trigger == "schedule" and info.resumes == 0
+    (w.data / ".running").write_text(f"999999 {run_id}")  # the power cut left its lock behind
+    cut_ms = max(json.loads(x)["ms"] for x in (w.folder / "events.jsonl").read_text().splitlines())
+    w.runner.run = original  # type: ignore[method-assign]
+    now = dt.datetime.now(dt.UTC)
+    d = schedule.decide(SHIPPED.schedule, w.data / "runs", w.data / ".running", {}, None, now, now)
+    assert (d.action, d.run_id) == ("resume", run_id)
+    assert w.studio.run(Options(publish=d.publish or "drafts", resume=d.run_id, trigger="schedule")) == 0
+    after = schedule.run_info(w.folder)
+    assert after is not None and after.finished and after.resumes == 1
+    assert (
+        min(e["ms"] for e in w.events() if e["kind"] == "start" and e.get("resume")) >= cut_ms
+    )  # one clock, no restart
+    assert (
+        schedule.decide(
+            SHIPPED.schedule, w.data / "runs", w.data / ".running", {}, "2026-12-01T00:00:00+00:00", now, now
+        ).action
+        == "skip"
+    )
+
+
+def test_a_half_written_last_line_and_cut_off_calls_never_break_the_pages(tmp_path):
+    from intel.studio import telemetry
+    from intel.studio.runlog import RunLog, read_events
+
+    log = RunLog(tmp_path / "r", "r")
+    log.emit("orchestrator", "start", trigger="schedule", publish="drafts", resume=False)
+    log.emit("copywriter:d01i1", "start", agent="copywriter", model="sonnet")
+    with (tmp_path / "r" / "events.jsonl").open("a") as f:
+        f.write('{"t": "2026-10-13T08:00:00+00:00", "ms": 99, "no')  # the Mac lost power mid-line
+    assert [e["kind"] for e in read_events(tmp_path / "r" / "events.jsonl")] == ["start", "start"]
+    again = RunLog(tmp_path / "r", "r")  # picked up again: its clock continues
+    again.emit("orchestrator", "start", trigger="schedule", publish="drafts", resume=True)
+    ev = read_events(tmp_path / "r" / "events.jsonl")
+    assert ev[-1]["ms"] >= ev[1]["ms"]
+    bars = telemetry.calls(ev, ev[-1]["ms"], live=True)
+    assert [b["running"] for b in bars] == [False] and bars[0]["ok"] is False  # what was open when it was cut is closed
+    idle = telemetry.calls(ev[:2], 500, live=False)
+    assert idle[0]["running"] is False and idle[0]["ok"] is False
+
+
 def test_the_launchd_job_runs_the_daily_check_and_installing_it_is_explicit(tmp_path, monkeypatch):
     import plistlib
 
     from intel.studio import schedule
 
     plist = schedule.plist_for(SHIPPED.schedule, "/opt/homebrew/bin/uv", "/usr/bin")
-    assert plist["StartCalendarInterval"] == {"Hour": 3, "Minute": 30} and plist["RunAtLoad"] is False
+    assert plist["StartInterval"] == 1800 and plist["RunAtLoad"] is True  # at login and every 30 minutes
     assert plist["ProgramArguments"][-3:] == ["--if-due", "--trigger", "schedule"]  # the cheap check, not a blind run
     calls: list[list[str]] = []
     monkeypatch.setattr(schedule.subprocess, "run", lambda cmd, **kw: calls.append(cmd))  # no real launchctl in tests

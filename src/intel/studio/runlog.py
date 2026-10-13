@@ -23,13 +23,32 @@ class RunLog:
         self.path = directory / "events.jsonl"
         self._lock = threading.Lock()
         self._t0 = time.monotonic()
+        self._base = (
+            self._last_ms()
+        )  # a resumed run goes on from where its clock stopped (the time it was off is not counted)
+
+    def _last_ms(self) -> int:
+        if not self.path.exists():
+            return 0
+        raw = self.path.read_bytes()
+        if raw and not raw.endswith(b"\n"):  # a line cut off by a power loss: the next event starts on a fresh line
+            with self.path.open("ab") as f:
+                f.write(b"\n")
+        for line in reversed(self.path.read_text().splitlines()):
+            if line.strip():
+                try:
+                    return int(json.loads(line).get("ms") or 0)
+                except ValueError:  # a line cut off by a crash: the one before it will do
+                    continue
+        return 0
 
     def emit(self, node: str, kind: str, **data: Any) -> None:
         if {"t", "ms", "node", "kind"} & data.keys():
             raise ValueError("event data must not overwrite the timeline fields")
         with self._lock, self.path.open("a") as f:  # stamped under the lock: the file is in time order
-            event = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds"),
-                     "ms": round((time.monotonic() - self._t0) * 1000), "node": node, "kind": kind, **data}  # fmt: skip
+            ms = self._base + round((time.monotonic() - self._t0) * 1000)
+            event = {"t": dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds"), "ms": ms, "node": node,
+                     "kind": kind, **data}  # fmt: skip
             f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
     def phase(self, name: str, status: str, **data: Any) -> None:
@@ -40,4 +59,11 @@ class RunLog:
 def read_events(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    out = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            try:
+                out.append(json.loads(line))
+            except ValueError:  # the last line can be half written when the Mac lost power: skip it, never crash
+                continue
+    return out

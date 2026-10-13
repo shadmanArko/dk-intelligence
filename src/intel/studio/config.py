@@ -115,6 +115,13 @@ class ScheduleCfg(_Strict):
     max_awaiting: int = Field(ge=1, le=500)
     notify: bool
     remind_at: str
+    check_every_minutes: int = Field(default=30, ge=5, le=240)  # how often launchd asks "is a run due?" (cheap, no AI)
+    max_resumes: int = Field(
+        default=3, ge=0, le=10
+    )  # tries to finish a run that was cut off, then it gives up and tells you
+    resume_within_hours: int = Field(
+        default=36, ge=1, le=168
+    )  # a cut-off run older than this is dropped: its slots passed
 
     @field_validator("run_at", "remind_at")
     @classmethod

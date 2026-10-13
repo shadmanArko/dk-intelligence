@@ -29,7 +29,9 @@ That is all. You never need the terminal for this.
 - **Let the curator learn more footage** (button): it looks at 20 clips and proposes descriptions; you accept them. Do it a few
   times until the "no shot knowledge yet" number is small.
 - **Install the daily check** (button) once you have approved a day or two: from then on the studio tops the calendar up by
-  itself (drafts only). Remove it any time.
+  itself (drafts only). Remove it any time. It does not matter if your Mac is closed: the studio checks whenever the Mac is on
+  (at login and every 30 minutes) and starts a plan after 09:30 when yours is running out. If your Mac shuts down or crashes
+  in the middle of a plan, the next check finishes it from where it stopped (up to 3 tries; then you get a notification).
 - **Sundays:** a button writes "what worked" in plain words from your posts' numbers.
 
 ## A reminder, so you do not have to remember
