@@ -755,3 +755,29 @@ frames at 7.8k tokens a clip and changed nothing until a person accepts.
 access should come after the registry has run for weeks. Instead the director and designer log what no template could do,
 counted, so the next template is chosen from evidence and built by a person under the engine's tests. I also let the
 scorer rank but not veto non-reel surfaces: it was trained on reels, and the owner wants the variety.
+
+## S6 · Letting a system run without me, and refusing to let it approve its own work
+
+**Situation.** The studio made a 10-day plan on demand. The owner did not want to be its scheduler, and did not want an
+unattended system filling their calendar with drafts they then have to wade through.
+
+**Task.** Make it run by itself, safely: no runaway, no backlog, no secrets on the laptop, and no way for it to approve or post.
+
+**Action.**
+- **A cheap daily check instead of a timer:** a launchd job runs a check every day that reads the publisher's calendar (no AI)
+  and starts a run only if the studio's own plan is about to run out, nothing ran recently, and not too many drafts already wait.
+  The first version asked the publisher for the last planned slot and got "49 days ahead", because it counted the owner's own
+  hand-planned posts: it would never have run. I only found it by running the check against the real calendar.
+- **Notifications without a secret:** the Telegram bot token must stay on the server, so a run tells the owner by a local
+  notification and a summary file, and the publisher's own morning digest already says when drafts wait.
+- **Autonomy measured, never built:** a report of which kinds of post the owner approves (with a minimum number of decisions),
+  switched off; acting on it would need a dedicated key enforced in code, and the owner's decision.
+- **Models by measurement:** I moved the most expensive step (the designer) to a cheaper model on the same frozen inputs.
+
+**Result.** The cheaper model was 2.6x the tokens and 2-5x slower per call with no gain, so the designer stays where it is: the
+measured answer, not the assumed one. The schedule check works against the real calendar today (it would run: the studio's posts
+end in 1.3 days) and is installed only on the owner's say-so.
+
+**Trade-off I would defend.** I did not build auto-approval even though the owner's goal is fewer clicks: there are 2 decisions
+to learn from, and approval is the one thing that makes this a system the owner can trust. The report says when a kind has earned
+it; the switch stays theirs.

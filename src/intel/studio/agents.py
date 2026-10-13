@@ -62,9 +62,11 @@ def json_from(text: str) -> dict[str, Any]:
 
 class ClaudeRunner:
     def __init__(self, log: RunLog, tools: ToolPort, servers: dict[str, dict[str, Any]], max_turns: dict[str, int],
-                 timeout_s: int, claude_bin: str | None = None, directory: Path = AGENTS_DIR) -> None:  # fmt: skip
+                 timeout_s: int, claude_bin: str | None = None, directory: Path = AGENTS_DIR,
+                 models: dict[str, str] | None = None) -> None:  # fmt: skip
         self.log, self.tools, self.servers = log, tools, servers
         self.max_turns, self.timeout_s, self.directory = max_turns, timeout_s, directory
+        self.models = models or {}  # agent → model, from models.yaml (or --model on the command line)
         self.claude = claude_bin or os.environ.get("CLAUDE_BIN", "claude")
 
     def _hidden(self, allowed: list[str]) -> list[str]:
@@ -77,6 +79,7 @@ class ClaudeRunner:
         """`files` (name → path) are copied into the agent's empty working folder, so an agent with the Read tool can
         look at exactly those pictures and at nothing else."""
         spec = agent_spec(agent, self.directory)
+        spec["model"] = self.models.get(agent, spec["model"])
         cfg = self.log.dir / f"{node.replace(':', '_')}.mcp.json"
         cfg.write_text(
             json.dumps({"mcpServers": {s: {"type": "stdio", **self.servers[s]} for s in servers_for(spec["tools"])}})

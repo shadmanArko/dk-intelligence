@@ -106,12 +106,44 @@ class CraftCfg(_Strict):
     platforms: dict[str, dict[str, Any]]  # per platform: how each kind of post is made there (craft, not rules)
 
 
+class ScheduleCfg(_Strict):
+    enabled: bool
+    run_at: str
+    publish: Literal["drafts", "dry-run", "render"]
+    lead_days: int = Field(ge=1, le=30)
+    min_days_between: int = Field(ge=1, le=30)
+    max_awaiting: int = Field(ge=1, le=500)
+    notify: bool
+
+    @field_validator("run_at")
+    @classmethod
+    def _clock(cls, v: str) -> str:
+        if not HHMM.match(v):
+            raise ValueError(f"run_at {v!r} is not HH:MM")
+        return v
+
+
+class AutonomyCfg(_Strict):
+    enabled: bool
+    approval_rate: float = Field(gt=0, le=1)
+    window_days: int = Field(ge=1, le=90)
+    min_posts: int = Field(ge=1)
+    kinds: list[Literal["pillar", "format", "template"]] = Field(min_length=1)
+
+
+class ModelsCfg(_Strict):
+    agents: dict[str, Literal["sonnet", "haiku", "opus"]]
+
+
 class StudioConfig(_Strict):
     plan: PlanCfg
     slots: SlotsCfg
     routes: RoutesCfg
     budgets: BudgetsCfg
     craft: CraftCfg
+    schedule: ScheduleCfg
+    autonomy: AutonomyCfg
+    models: ModelsCfg
 
     @model_validator(mode="after")
     def _consistent(self) -> StudioConfig:
@@ -174,7 +206,7 @@ class StudioConfig(_Strict):
 
 def load(directory: Path = CONFIG_DIR) -> StudioConfig:
     parts: dict[str, Any] = {}
-    for name in ("plan", "slots", "routes", "budgets", "craft"):
+    for name in ("plan", "slots", "routes", "budgets", "craft", "schedule", "autonomy", "models"):
         path = directory / f"{name}.yaml"
         if not path.exists():
             raise StudioConfigError(f"{path} is missing")

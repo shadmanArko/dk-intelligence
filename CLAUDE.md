@@ -23,7 +23,7 @@ for the owner, and the next task (Phase 5: agents). Then the [architecture](docs
 | 3 (H0–H11) | MLOps hardening ([plan](docs/PHASE3_MLOPS_PLAN.md)) | done, except **H10 (GDPR) on PR #4, unmerged by the owner's choice** |
 | 4 (P4.0–P4.7) | MCP + RAG ([architecture](docs/PHASE4_MCP_ARCHITECTURE.md), ADR 0025–0030) | done; dk_intel live on the VPS since 2026-10-12 |
 | **M8** | the lab makes the media: designer agent → render → drafts at dk-publishing ([results](docs/results/M8_media_pipeline.md), ADR 0031) | done (merged; first live draft 2026-10-12) |
-| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | S0–S5 done (S2: [how to run](docs/STUDIO.md); S3 live in dk-publishing; S4: [results](docs/results/S4_performance_learning.md); S5: [results](docs/results/S5_creative_director.md)); **S6 next** ([build guide](docs/PHASE5_BUILD_GUIDE.md)) |
+| **5** | **the Content Studio**: one agent system across 4 repos, 150 posts per 10 days ([plan](docs/PHASE5_CONTENT_STUDIO_PLAN.md), approved 2026-10-12): S0–S6 | **S0–S6 done** ([how to run](docs/STUDIO.md); S3 live in dk-publishing; results: [S2](docs/results/S2_studio.md), [S4](docs/results/S4_performance_learning.md), [S5](docs/results/S5_creative_director.md), [S6](docs/results/S6_unattended.md)); what is left is the owner's: install the schedule, approve drafts, accept curator proposals ([build guide](docs/PHASE5_BUILD_GUIDE.md)) |
 
 Older docs (PHASE1_PLAN.md, PHASE2_PLAN.md) say "MCP is Phase 3". That was renumbered on 2026-10-08: Phase 3 became
 MLOps hardening.
@@ -69,7 +69,7 @@ and `tests/test_restore_drill.py`. Monitoring as code: `bash deploy/monitoring/c
     origin or citizenship data anywhere else without asking.
 11. **€0 running cost, no paid AI APIs** (ADR 0012), unless the owner decides otherwise for Phase 4; ask.
 12. **Migrations are additive** (ADR 0015, `tests/test_migration_policy.py`). Accepted ADRs are never edited; a
-    changed decision gets a new ADR. Next free ADR number: **0037** (0024 is on the H10 branch).
+    changed decision gets a new ADR. Next free ADR number: **0038** (0024 is on the H10 branch).
 13. **Ratchets only move one way** (ADR 0010): the strict-mypy module list only grows; the coverage floor
     (`fail_under = 80`, precision 2) only rises; 0 fixable HIGH/CRITICAL vulnerabilities.
 14. **Never touch harness PR #2** ("RAG System…", by another contributor): the owner said "DO not accept the rag

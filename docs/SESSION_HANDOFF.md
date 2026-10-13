@@ -75,7 +75,7 @@ https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc.
 | **S3** the daily review page (dk-publishing) | **done, deployed 2026-10-13, working** (dk-publishing PR #2 and the Chrome fix PR #3: a `no-referrer` policy made Chrome send `Origin: null` and every button was refused) | dk-publishing ADR 0025, `docs/runbooks/review-page.md` |
 | **S4** the learning loop | **done** (PR to `main`) | ADR 0035, [results](results/S4_performance_learning.md), [STUDIO.md](STUDIO.md) |
 | **S5** production breadth: template registry, 7 new templates, creative director, footage curator | **done** (reels `main` + PR here); template-writing agent deliberately not built | ADR 0036, [results](results/S5_creative_director.md) |
-| S6 unattended (schedule, earned autonomy, model choice) | to do | build guide §4 S6 |
+| **S6** unattended: daily check, notifications, measured autonomy, models by measurement | **done** (PR to `main`); the schedule is built but **not installed** (owner's go) | ADR 0037, [results](results/S6_unattended.md) |
 
 **What S0 did:**
 - reels got a private remote;
@@ -104,6 +104,12 @@ that is part of S2.
 - Three real 10-day dry runs on frozen inputs: **26 of 26 plannable ideas, 128 of 130 posts valid at the real publisher,
   541k tokens (4.2k per post), 14 minutes.** The scorer ruled out 4 of 30 slots (decision for the owner, in the results).
 - **First real drafts (2026-10-13):** `--publish drafts --days 1` made 3 ideas, 15 drafts for 14 Oct (71.8k tokens, 152 s); the owner approved/rejected on the review page. No 10-day drafts run yet: that is the owner's go.
+
+**What S6 did** (`uv run intel studio schedule check|install|status|uninstall`, `autonomy`):
+- A daily launchd check (`--if-due`) that runs the studio only when its own plan runs out and the owner is not backed up; always
+  drafts. Local notifications + `data/studio/last-summary.md` (the Telegram token stays on the VPS). Autonomy is measured only,
+  switched off, not built. Model per agent in `models.yaml`; the designer on Haiku was 2.6x the tokens, so it stays on Sonnet.
+- Owner decisions: install the schedule (after approving a day or two), a Mac-to-Telegram path (needs a VPS endpoint).
 
 **What S5 did** (reels repo, merged to its `main`; dk-intelligence PR):
 - reels: a template registry (`src/templates/`, `meta.json` each) with kinetic-text, photo-motion, one-take, collage, steps,

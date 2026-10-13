@@ -243,7 +243,7 @@ API's `approve_post`, `cancel_post`, `review_drafts`).
 - **Footage reuse:** the `AssetLedger` window becomes horizon-aware (the 10-day plan avoids repeats across all 30
   ideas), with a measured repeat count in the results.
 
-### S6: unattended (next)
+### S6: unattended (DONE 2026-10-13: ADR 0037, [results](results/S6_unattended.md))
 - **The schedule:** a Claude Code scheduled task, or launchd on the Mac (the line is in the lab README), running
   `intel studio run --publish drafts --trigger schedule` every 10 days, plus the console button.
 - **Earned autonomy** (only if the owner allows it, as policy data): a kind of post (e.g. "reel from the meat

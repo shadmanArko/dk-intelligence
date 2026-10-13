@@ -40,6 +40,18 @@ uv run intel studio eval run --label v2 --publish render
 uv run intel studio eval show                     # posts made, tokens, minutes per version
 ```
 
+## Running without you (S6)
+```bash
+uv run intel studio schedule check      # would a run start now? (reads the calendar, no AI)
+uv run intel studio schedule install    # a daily check on this Mac at 03:30 (launchd); makes DRAFTS only
+uv run intel studio schedule status     # installed? what did it last do?
+uv run intel studio schedule uninstall
+uv run intel studio autonomy            # which kinds of post you approve most (measurement only; nothing is auto-approved)
+uv run intel studio run --model designer=haiku --inputs data/studio/eval/inputs.json   # try a step on another model
+```
+Settings: `config/studio/schedule.yaml` (when, how far ahead, the backlog limit), `autonomy.yaml`, `models.yaml`. The newest
+run's report is always `data/studio/last-summary.md`. See [ADR 0037](adr/0037-running-unattended.md).
+
 ## The look of each post (S5)
 A creative-director agent chooses each idea's template, variant, music hint and pace, one call per day; code makes it valid
 and varied. `config/studio/craft.yaml` holds how each platform's native post is made (edit a line to change the director's

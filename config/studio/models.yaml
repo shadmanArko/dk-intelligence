@@ -1,0 +1,12 @@
+# Which model each agent runs on. Changing a line here is how a step moves to a cheaper model, and it is measured first on
+# frozen inputs (`uv run intel studio run --model designer=haiku --inputs ...`): see docs/results/S6_unattended.md.
+# Allowed: sonnet | haiku | opus (Claude Code's own names).
+
+agents:
+  strategist: sonnet
+  director: sonnet
+  copywriter: sonnet
+  adapter: sonnet
+  designer: sonnet
+  curator: sonnet
+  analyst: sonnet
