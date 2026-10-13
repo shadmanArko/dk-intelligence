@@ -74,6 +74,7 @@ class FormatRoute(_Strict):
     render: tuple[str, str]
     content_type: Literal["image", "video", "reel", "carousel", "short"]
     targets: dict[str, str]
+    gate: bool = True  # False: the scorer ranks the windows but never rules the slot out (not trained on stories)
 
 
 class RoutesCfg(_Strict):

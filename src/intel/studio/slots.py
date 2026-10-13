@@ -173,6 +173,7 @@ def assign(
         best = max(itertools.permutations(windows, len(formats)), key=rank)
         for (n, fmt), window in zip(formats, best, strict=True):
             prob, ok = scores.get((day, fmt, window), (None, True))
+            ok = ok or not cfg.routes.formats[fmt].gate
             idea_id = f"d{d_index:02d}i{n}"
             if not ok:
                 pct = round((prob or 0) * 100)

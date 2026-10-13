@@ -824,3 +824,14 @@ def test_the_curator_looks_at_the_sheet_proposes_and_fixes_a_refused_word_once(t
     assert all(f == {"sheet.jpg": sheet} for f in files_seen)  # the agent is given the picture and nothing else
     assert [c[1] for c in tools.calls] == ["list_unindexed", "propose_asset_entry", "propose_asset_entry"]
     assert not any(c[1] in ("accept", "write_index") for c in tools.calls)  # it only ever proposes
+
+
+def test_the_scorer_ranks_every_surface_but_only_gates_reels():
+    cfg = SHIPPED.with_plan(horizon_days=2)  # day 1: reel, reel, carousel
+    days = slots.plan_days(cfg, TODAY)
+    items = slots.probes(cfg, days)
+    low = [{"ref": slots.probe_ref(p), "verdict": "rewrite",
+            "scores": {"content_scorer": {"probability": 0.3}}} for p in items]  # fmt: skip
+    ideas, dropped = slots.assign(cfg, days, slots.read_scores(items, low))
+    assert {d.format for d in dropped} == {"reel"}  # a weak reel slot is ruled out
+    assert any(i.format in ("carousel", "story") for i in ideas)  # a weak carousel or story is kept: the owner wants it

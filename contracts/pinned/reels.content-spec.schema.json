@@ -24,189 +24,604 @@
     "content": {
       "oneOf": [
         {
-          "properties": {
-            "formats": {
-              "default": [
-                "9:16"
-              ],
-              "items": {
-                "enum": [
-                  "9:16",
-                  "4:5"
-                ],
-                "type": "string"
-              },
-              "minItems": 1,
-              "type": "array"
-            },
-            "hook": {
-              "description": "First words on screen; the first 2 seconds decide retention",
-              "maxLength": 80,
-              "minLength": 1,
-              "type": "string"
-            },
-            "hook_sub": {
-              "maxLength": 120,
-              "minLength": 1,
-              "type": "string"
-            },
-            "kind": {
-              "const": "video",
-              "type": "string"
-            },
-            "look": {
-              "default": "none",
-              "enum": [
-                "none",
-                "soft",
-                "warm"
-              ],
-              "type": "string"
-            },
-            "music": {
-              "default": {
-                "mood": [],
-                "pre_drop_beats": 8,
-                "track": "auto",
-                "volume": 1
-              },
+          "oneOf": [
+            {
               "properties": {
-                "culture": {
+                "formats": {
+                  "default": [
+                    "9:16"
+                  ],
+                  "description": "Output formats; one file per format. 9:16 reel/short/story · 4:5 feed · 1:1 square · 16:9 landscape",
+                  "items": {
+                    "enum": [
+                      "9:16",
+                      "4:5",
+                      "1:1",
+                      "16:9"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "hook": {
+                  "description": "First words on screen; the first 2 seconds decide retention",
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "hook_sub": {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "video",
+                  "type": "string"
+                },
+                "look": {
+                  "default": "none",
                   "enum": [
-                    "desi",
-                    "arabic",
-                    "turkish",
-                    "balkan",
-                    "ukrainian",
-                    "celtic"
+                    "none",
+                    "soft",
+                    "warm"
                   ],
                   "type": "string"
                 },
-                "mood": {
-                  "default": [],
-                  "description": "Mood tags to match, e.g. [\"tension\",\"build-up\"], [\"happy\",\"playful\"]",
-                  "items": {
-                    "type": "string"
+                "music": {
+                  "default": {
+                    "mood": [],
+                    "pre_drop_beats": 8,
+                    "track": "auto",
+                    "volume": 1
                   },
+                  "properties": {
+                    "culture": {
+                      "enum": [
+                        "desi",
+                        "arabic",
+                        "turkish",
+                        "balkan",
+                        "ukrainian",
+                        "celtic"
+                      ],
+                      "type": "string"
+                    },
+                    "mood": {
+                      "default": [],
+                      "description": "Mood tags to match, e.g. [\"tension\",\"build-up\"], [\"happy\",\"playful\"]",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "pre_drop_beats": {
+                      "default": 8,
+                      "description": "Beats of build-up before the drop (the hook time)",
+                      "maximum": 32,
+                      "minimum": 2,
+                      "type": "integer"
+                    },
+                    "track": {
+                      "default": "auto",
+                      "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                      "type": "string"
+                    },
+                    "volume": {
+                      "default": 1,
+                      "maximum": 1.5,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "shots": {
+                  "items": {
+                    "properties": {
+                      "asset": {
+                        "default": "auto",
+                        "description": "Asset id from search_assets, or \"auto\" to pick by category",
+                        "type": "string"
+                      },
+                      "beats": {
+                        "description": "Shot length in beats; omit to let the resolver decide",
+                        "maximum": 32,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "caption": {
+                        "maxLength": 80,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "caption_top": {
+                        "description": "Caption position, % from the top",
+                        "maximum": 80,
+                        "minimum": 5,
+                        "type": "number"
+                      },
+                      "category": {
+                        "description": "Footage category when asset is \"auto\", e.g. \"Pot opening\", \"Eating\", \"Saffron\"",
+                        "type": "string"
+                      },
+                      "min_rating": {
+                        "default": 0,
+                        "description": "0 any, 1 = ★ best takes, 2 = ★★ key moments only",
+                        "maximum": 2,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "on": {
+                        "description": "\"drop\" = this shot starts exactly on the music drop (max one shot)",
+                        "enum": [
+                          "drop"
+                        ],
+                        "type": "string"
+                      },
+                      "slow": {
+                        "default": "auto",
+                        "description": "Slow motion: auto uses what the clip allows, none = real time",
+                        "enum": [
+                          "auto",
+                          "none",
+                          "max"
+                        ],
+                        "type": "string"
+                      },
+                      "speed": {
+                        "default": "ramp",
+                        "description": "flow = steady, rise = speeds into the next cut, ramp = whoosh into every bass hit",
+                        "enum": [
+                          "flow",
+                          "rise",
+                          "ramp"
+                        ],
+                        "type": "string"
+                      },
+                      "style": {
+                        "default": "caption",
+                        "enum": [
+                          "caption",
+                          "slam"
+                        ],
+                        "type": "string"
+                      },
+                      "sub": {
+                        "description": "Smaller second-language line under the caption",
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "maxItems": 14,
+                  "minItems": 2,
                   "type": "array"
                 },
-                "pre_drop_beats": {
-                  "default": 8,
-                  "description": "Beats of build-up before the drop (the hook time)",
-                  "maximum": 32,
-                  "minimum": 2,
-                  "type": "integer"
-                },
-                "track": {
-                  "default": "auto",
-                  "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                "template": {
+                  "const": "beat-reel",
                   "type": "string"
-                },
-                "volume": {
-                  "default": 1,
-                  "maximum": 1.5,
-                  "minimum": 0,
-                  "type": "number"
                 }
               },
+              "required": [
+                "kind",
+                "template",
+                "hook",
+                "shots"
+              ],
               "type": "object"
             },
-            "shots": {
-              "items": {
-                "properties": {
-                  "asset": {
-                    "default": "auto",
-                    "description": "Asset id from search_assets, or \"auto\" to pick by category",
-                    "type": "string"
+            {
+              "properties": {
+                "background": {
+                  "description": "Footage or photo behind the text (a slow push under a dark scrim). Default: graded footage picked by job_id",
+                  "properties": {
+                    "asset": {
+                      "default": "auto",
+                      "description": "Asset id from search_assets or \"auto\"",
+                      "type": "string"
+                    },
+                    "category": {
+                      "description": "Footage / photo category when asset is \"auto\"",
+                      "type": "string"
+                    },
+                    "min_rating": {
+                      "default": 0,
+                      "maximum": 2,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "type": {
+                      "default": "video",
+                      "description": "\"none\" = brand-colour background only",
+                      "enum": [
+                        "video",
+                        "photo",
+                        "none"
+                      ],
+                      "type": "string"
+                    }
                   },
-                  "beats": {
-                    "description": "Shot length in beats; omit to let the resolver decide",
-                    "maximum": 32,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "caption": {
-                    "maxLength": 80,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "caption_top": {
-                    "description": "Caption position, % from the top",
-                    "maximum": 80,
-                    "minimum": 5,
-                    "type": "number"
-                  },
-                  "category": {
-                    "description": "Footage category when asset is \"auto\", e.g. \"Pot opening\", \"Eating\", \"Saffron\"",
-                    "type": "string"
-                  },
-                  "min_rating": {
-                    "default": 0,
-                    "description": "0 any, 1 = ★ best takes, 2 = ★★ key moments only",
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "on": {
-                    "description": "\"drop\" = this shot starts exactly on the music drop (max one shot)",
-                    "enum": [
-                      "drop"
-                    ],
-                    "type": "string"
-                  },
-                  "slow": {
-                    "default": "auto",
-                    "description": "Slow motion: auto uses what the clip allows, none = real time",
-                    "enum": [
-                      "auto",
-                      "none",
-                      "max"
-                    ],
-                    "type": "string"
-                  },
-                  "speed": {
-                    "default": "ramp",
-                    "description": "flow = steady, rise = speeds into the next cut, ramp = whoosh into every bass hit",
-                    "enum": [
-                      "flow",
-                      "rise",
-                      "ramp"
-                    ],
-                    "type": "string"
-                  },
-                  "style": {
-                    "default": "caption",
-                    "enum": [
-                      "caption",
-                      "slam"
-                    ],
-                    "type": "string"
-                  },
-                  "sub": {
-                    "description": "Smaller second-language line under the caption",
-                    "maxLength": 120,
-                    "minLength": 1,
-                    "type": "string"
-                  }
+                  "type": "object"
                 },
-                "type": "object"
+                "formats": {
+                  "default": [
+                    "9:16"
+                  ],
+                  "description": "Output formats; one file per format. 9:16 reel/short/story · 4:5 feed · 1:1 square · 16:9 landscape",
+                  "items": {
+                    "enum": [
+                      "9:16",
+                      "4:5",
+                      "1:1",
+                      "16:9"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "video",
+                  "type": "string"
+                },
+                "lines": {
+                  "items": {
+                    "properties": {
+                      "emphasis": {
+                        "description": "A word of the line to highlight (must appear in the line)",
+                        "maxLength": 30,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "text": {
+                        "description": "One short line (≤ 60 characters), any language",
+                        "maxLength": 60,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 6,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "music": {
+                  "description": "Optional quiet bed; no music when omitted",
+                  "properties": {
+                    "culture": {
+                      "enum": [
+                        "desi",
+                        "arabic",
+                        "turkish",
+                        "balkan",
+                        "ukrainian",
+                        "celtic"
+                      ],
+                      "type": "string"
+                    },
+                    "mood": {
+                      "default": [],
+                      "description": "Mood tags to match, e.g. [\"calm\"], [\"happy\",\"playful\"]",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "track": {
+                      "default": "auto",
+                      "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                      "type": "string"
+                    },
+                    "volume": {
+                      "description": "Relative trim on top of the −14 LUFS normalisation. Quiet bed ≈ 0.3",
+                      "maximum": 1.5,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "outro": {
+                  "default": "tag",
+                  "description": "\"tag\" = a 2 s logo + website end card (counted in seconds); \"none\" = no end card",
+                  "enum": [
+                    "tag",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                "seconds": {
+                  "description": "Total length including the end card; default from the number of lines",
+                  "maximum": 15,
+                  "minimum": 6,
+                  "type": "number"
+                },
+                "template": {
+                  "const": "kinetic-text",
+                  "type": "string"
+                },
+                "variant": {
+                  "description": "stack · one-by-one · ribbon (default: picked by job_id)",
+                  "type": "string"
+                }
               },
-              "maxItems": 14,
-              "minItems": 2,
-              "type": "array"
+              "required": [
+                "kind",
+                "template",
+                "lines"
+              ],
+              "type": "object"
             },
-            "template": {
-              "const": "beat-reel",
-              "type": "string"
+            {
+              "properties": {
+                "formats": {
+                  "default": [
+                    "9:16"
+                  ],
+                  "description": "Output formats; one file per format. 9:16 reel/short/story · 4:5 feed · 1:1 square · 16:9 landscape",
+                  "items": {
+                    "enum": [
+                      "9:16",
+                      "4:5",
+                      "1:1",
+                      "16:9"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "video",
+                  "type": "string"
+                },
+                "music": {
+                  "description": "Optional. With music the cuts snap to its beats when it has them; without, timing is even",
+                  "properties": {
+                    "culture": {
+                      "enum": [
+                        "desi",
+                        "arabic",
+                        "turkish",
+                        "balkan",
+                        "ukrainian",
+                        "celtic"
+                      ],
+                      "type": "string"
+                    },
+                    "mood": {
+                      "default": [],
+                      "description": "Mood tags to match, e.g. [\"calm\"], [\"happy\",\"playful\"]",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "track": {
+                      "default": "auto",
+                      "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                      "type": "string"
+                    },
+                    "volume": {
+                      "description": "Relative trim on top of the −14 LUFS normalisation. Quiet bed ≈ 0.3",
+                      "maximum": 1.5,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "outro": {
+                  "default": "tag",
+                  "description": "\"tag\" = a 2 s logo + website end card (counted in seconds); \"none\" = no end card",
+                  "enum": [
+                    "tag",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                "photos": {
+                  "items": {
+                    "properties": {
+                      "asset": {
+                        "default": "auto",
+                        "description": "Photo id from search_assets, or \"auto\" to pick by category",
+                        "type": "string"
+                      },
+                      "caption": {
+                        "description": "Optional line shown over this photo",
+                        "maxLength": 70,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "category": {
+                        "description": "Photo category when asset is \"auto\"",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "maxItems": 8,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "seconds": {
+                  "description": "Total length including the end card; default about 3 s per photo",
+                  "maximum": 30,
+                  "minimum": 6,
+                  "type": "number"
+                },
+                "template": {
+                  "const": "photo-motion",
+                  "type": "string"
+                },
+                "variant": {
+                  "description": "ken-burns · parallax · zoom-through (default: picked by job_id)",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "template",
+                "photos"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "asset": {
+                  "default": "auto",
+                  "description": "Footage id from search_assets, or \"auto\" to pick by category",
+                  "type": "string"
+                },
+                "category": {
+                  "description": "Footage category when asset is \"auto\", e.g. \"Pot opening\"",
+                  "type": "string"
+                },
+                "closing": {
+                  "description": "One closing line near the end",
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "formats": {
+                  "default": [
+                    "9:16"
+                  ],
+                  "description": "Output formats; one file per format. 9:16 reel/short/story · 4:5 feed · 1:1 square · 16:9 landscape",
+                  "items": {
+                    "enum": [
+                      "9:16",
+                      "4:5",
+                      "1:1",
+                      "16:9"
+                    ],
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "kind": {
+                  "const": "video",
+                  "type": "string"
+                },
+                "lower_third": {
+                  "description": "Caption that slides in near the start",
+                  "properties": {
+                    "sub": {
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "title": {
+                      "maxLength": 50,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ],
+                  "type": "object"
+                },
+                "min_rating": {
+                  "default": 1,
+                  "description": "1 = ★ best takes (default), 2 = ★★ key moments only",
+                  "maximum": 2,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "music": {
+                  "description": "Optional very quiet bed under the clip's sound (volume ≈ 0.2)",
+                  "properties": {
+                    "culture": {
+                      "enum": [
+                        "desi",
+                        "arabic",
+                        "turkish",
+                        "balkan",
+                        "ukrainian",
+                        "celtic"
+                      ],
+                      "type": "string"
+                    },
+                    "mood": {
+                      "default": [],
+                      "description": "Mood tags to match, e.g. [\"calm\"], [\"happy\",\"playful\"]",
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "track": {
+                      "default": "auto",
+                      "description": "Track id (M01…M104) from search_music, or \"auto\"",
+                      "type": "string"
+                    },
+                    "volume": {
+                      "description": "Relative trim on top of the −14 LUFS normalisation. Quiet bed ≈ 0.3",
+                      "maximum": 1.5,
+                      "minimum": 0,
+                      "type": "number"
+                    }
+                  },
+                  "type": "object"
+                },
+                "outro": {
+                  "default": "tag",
+                  "description": "\"tag\" = a 2 s logo + website end card (counted in seconds); \"none\" = no end card",
+                  "enum": [
+                    "tag",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                "seconds": {
+                  "default": 10,
+                  "description": "Total length including the end card",
+                  "maximum": 20,
+                  "minimum": 8,
+                  "type": "number"
+                },
+                "sound": {
+                  "default": 1,
+                  "description": "The clip's own sound, 0..1",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "speed": {
+                  "default": "real",
+                  "description": "\"slow\" = half speed when the clip was shot in high frame rate (the clip's sound is muted then)",
+                  "enum": [
+                    "real",
+                    "slow"
+                  ],
+                  "type": "string"
+                },
+                "template": {
+                  "const": "one-take",
+                  "type": "string"
+                },
+                "variant": {
+                  "description": "clean · cinema · frame (default: picked by job_id)",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "template"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "kind",
-            "template",
-            "hook",
-            "shots"
-          ],
-          "type": "object"
+          ]
         },
         {
           "properties": {
@@ -295,6 +710,25 @@
                     ],
                     "type": "object"
                   },
+                  "photos": {
+                    "description": "collage: 2-4 photos, each an asset id or a category",
+                    "items": {
+                      "properties": {
+                        "asset": {
+                          "default": "auto",
+                          "description": "Photo id from search_assets, or \"auto\" to pick by category",
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 4,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "right": {
                     "properties": {
                       "lines": {
@@ -318,17 +752,46 @@
                     ],
                     "type": "object"
                   },
+                  "steps": {
+                    "description": "steps: 2-4 numbered steps",
+                    "items": {
+                      "properties": {
+                        "body": {
+                          "maxLength": 100,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "title": {
+                          "maxLength": 50,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 4,
+                    "minItems": 2,
+                    "type": "array"
+                  },
                   "sub": {
                     "maxLength": 160,
                     "minLength": 1,
                     "type": "string"
                   },
                   "template": {
+                    "description": "see list_templates → template_registry for what each needs",
                     "enum": [
                       "photo",
                       "card",
                       "price",
-                      "compare"
+                      "compare",
+                      "collage",
+                      "steps",
+                      "split",
+                      "statement"
                     ],
                     "type": "string"
                   },
@@ -336,6 +799,16 @@
                     "enum": [
                       "top",
                       "bottom"
+                    ],
+                    "type": "string"
+                  },
+                  "theme": {
+                    "description": "Colour theme of the new templates (collage, steps, split, statement; card): brand palette only. Default: picked by job_id",
+                    "enum": [
+                      "maroon",
+                      "saffron",
+                      "cream",
+                      "ink"
                     ],
                     "type": "string"
                   },
@@ -348,6 +821,10 @@
                     "maximum": 160,
                     "minimum": 50,
                     "type": "number"
+                  },
+                  "variant": {
+                    "description": "Visual variant of the template (names in list_templates → template_registry[name].variants). Default: picked by job_id",
+                    "type": "string"
                   }
                 },
                 "required": [

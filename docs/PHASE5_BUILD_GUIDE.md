@@ -214,7 +214,7 @@ API's `approve_post`, `cancel_post`, `review_drafts`).
 
 **Done when:** a plan cites what worked last time; every platform has performance rows.
 
-### S5: production breadth (next)
+### S5: production breadth (DONE 2026-10-13: ADR 0036, [results](results/S5_creative_director.md))
 **Goal:** 10 days without heavy clip repeats; new looks without code per post.
 - **reels:** a **template registry**, one folder per template: schema, composition, resolver, `meta.json`. The
   `list_templates` tool reads it. Then add templates:
@@ -243,7 +243,7 @@ API's `approve_post`, `cancel_post`, `review_drafts`).
 - **Footage reuse:** the `AssetLedger` window becomes horizon-aware (the 10-day plan avoids repeats across all 30
   ideas), with a measured repeat count in the results.
 
-### S6: unattended
+### S6: unattended (next)
 - **The schedule:** a Claude Code scheduled task, or launchd on the Mac (the line is in the lab README), running
   `intel studio run --publish drafts --trigger schedule` every 10 days, plus the console button.
 - **Earned autonomy** (only if the owner allows it, as policy data): a kind of post (e.g. "reel from the meat

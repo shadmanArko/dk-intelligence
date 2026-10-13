@@ -80,7 +80,10 @@ class Crew:
         if res.answer is None or not caption:
             self._fail(idea, res.error or "no caption", "the copywriter failed")
             return False
-        if a.get("verdict") != "keep":
+        # a weak slot score is not a reason to drop a surface the owner wants in the mix (gate: false); the words are
+        # re-checked per platform below either way, so a 'rewrite' caused by wording still cannot go out
+        scored_only = not self.cfg.routes.formats[idea.format].gate and a.get("verdict") == "rewrite"
+        if a.get("verdict") != "keep" and not scored_only:
             why = f"the copywriter's best caption was '{a.get('verdict')}' (score {a.get('score')})"
             self.state.hold(idea.idea_id, why, code="caption_not_kept")
             return False
