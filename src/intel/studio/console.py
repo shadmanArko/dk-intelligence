@@ -20,7 +20,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-from intel.studio import today
+from intel.studio import config as studio_config
+from intel.studio import coverage, handover, telemetry, today
 from intel.studio.config import REPO
 from intel.studio.runlog import read_events
 
@@ -116,6 +117,7 @@ def status() -> dict[str, Any]:
 class Start(BaseModel):
     publish: str = "render"
     days: int | None = None
+    start: str | None = None  # the first day to plan, YYYY-MM-DD (default: the day after what is already scheduled)
     resume: str | None = None
     confirm: bool = False
 
@@ -132,6 +134,12 @@ def start(body: Start) -> dict[str, Any]:
            "--trigger", "button"]  # fmt: skip
     if body.days:
         cmd += ["--days", str(min(max(body.days, 1), 30))]
+    if body.start:
+        try:
+            dt.date.fromisoformat(body.start)
+        except ValueError:
+            raise HTTPException(422, "start must be a date like 2026-10-24") from None
+        cmd += ["--from", body.start]
     if body.resume:
         if not RUN_ID.match(body.resume):
             raise HTTPException(422, "bad run id")
@@ -152,15 +160,22 @@ def _reels() -> Path:
     return media.REELS
 
 
-def _readers() -> today.Readers:
-    from intel.studio import handover
+def _client() -> handover.PublishClient | None:
+    env = handover.load_env()
+    return handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"]) if len(env) == 2 else None
+
+
+def _rows() -> list[dict[str, Any]] | None:
+    client = _client()
+    return coverage.fetch_rows(client, dt.datetime.now(dt.UTC)) if client else None
+
+
+def _readers(rows: list[dict[str, Any]] | None) -> today.Readers:
     from intel.studio import schedule as schedule_mod
 
-    env = handover.load_env()
-    client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"]) if len(env) == 2 else None
     summary = DATA / "last-summary.md"
     return today.Readers(
-        calendar=lambda: today.calendar_from(client) if client else None,
+        calendar=lambda: rows,
         pending_proposals=lambda: today.pending_proposals(_reels()),
         unlabelled_footage=lambda: today.unlabelled_footage(_reels()),
         last_summary=lambda: summary.read_text() if summary.exists() else None,
@@ -172,30 +187,48 @@ def _readers() -> today.Readers:
 
 @app.get("/api/today")
 def api_today() -> dict[str, Any]:
-    from intel.studio import config as studio_config
-
     cfg = studio_config.load()
-    return today.build(_readers(), cfg.schedule, today.owner_decisions())
+    rows = _rows()
+    cov = coverage.coverage(cfg, rows, dt.datetime.now(dt.UTC))
+    return today.build(_readers(rows), cfg.schedule, today.owner_decisions(), cov)
 
 
-@app.get("/api/live")
-def api_live() -> dict[str, Any]:
-    """The scene of the run that is working, else the newest one."""
+@app.get("/api/coverage")
+def api_coverage() -> dict[str, Any]:
+    """How far ahead the studio's posts are scheduled and where a new plan would start (no tokens)."""
+    return coverage.coverage(studio_config.load(), _rows(), dt.datetime.now(dt.UTC))
+
+
+def _latest_folder() -> Path | None:
     running = _running()
+    if running and (DATA / "runs" / running / "state.json").exists():
+        return DATA / "runs" / running
     folders = sorted((p for p in (DATA / "runs").glob("*") if (p / "state.json").exists()), reverse=True)
-    folder = (DATA / "runs" / running) if running and (DATA / "runs" / running / "state.json").exists() else (
-        folders[0] if folders else None)  # fmt: skip
+    return folders[0] if folders else None
+
+
+@app.get("/api/telemetry")
+def api_telemetry() -> dict[str, Any]:
+    """Mission control: the run that is working, else the newest one, as numbers (see telemetry.py)."""
+    folder = _latest_folder()
     if folder is None:
-        return today.scene({"id": None, "status": "idle", "ideas": []})
+        return {"run": None, "status": "idle", "running": False, "percent": 0, "stages": [], "matrix": [], "bars": [],
+                "roles": {}, "lanes": list(telemetry.LANES), "phases": [], "series": [], "log": [], "working": [],
+                "elapsed_s": 0, "eta_s": None, "now_ms": 0, "ideas": 0, "ideas_done": 0, "ideas_held": 0,
+                "tokens": 0, "cap": None, "tokens_in": 0, "tokens_out": 0, "tokens_cached": 0, "retries": 0,
+                "tool_calls": 0}  # fmt: skip
     view = run_view(folder)
-    if not running and view["status"] != "running":
-        view = {**view, "status": "idle"}  # an old run is a resting picture: its drafts stay in the pool
-    return today.scene(view)
+    events = read_events(folder / "events.jsonl")
+    began = telemetry.started_at(events)
+    now_ms = (
+        int((dt.datetime.now(dt.UTC) - began).total_seconds() * 1000) if began and view["status"] == "running" else None
+    )
+    return telemetry.telemetry(view, events, now_ms)
 
 
-@app.get("/api/live/demo")
-def api_live_demo(tick: int = 0) -> dict[str, Any]:
-    return today.demo_scene(max(0, tick))
+@app.get("/api/telemetry/demo")
+def api_telemetry_demo(tick: int = 0) -> dict[str, Any]:
+    return telemetry.demo(max(0, tick))
 
 
 def _run_npm(*args: str) -> subprocess.CompletedProcess[str]:
@@ -265,37 +298,53 @@ def performance_analyst() -> dict[str, Any]:
     return {"message": "writing the note: data/performance/<latest>/analyst.md"}
 
 
-@app.get("/static/live.js")
-def live_js() -> FileResponse:
-    return FileResponse(WEB / "live.js", media_type="text/javascript")
+NAV = (("/", "Today"), ("/live", "Mission control"), ("/runs", "Runs"), ("/guide", "Guide"))
+
+
+def _nav(active: str) -> str:
+    """The top bar every page shares. The review page lives on the publisher: it opens in a new tab."""
+    client_url = handover.load_env().get("DK_PUBLISH_URL", "").rstrip("/")
+    links = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in NAV)
+    review = f'<a href="{client_url}/review" target="_blank" rel="noopener">Review drafts ↗</a>' if client_url else ""
+    return (
+        "<nav id=topbar><b>Dhaka Kacchi · Studio</b>" + links + "<span class=sp></span>" + review + "</nav>"
+        "<style>#topbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:8px 16px;background:#120708;"
+        "border-bottom:1px solid #3a1f21;position:sticky;top:0;z-index:50;font:14px system-ui,sans-serif}"
+        "#topbar b{color:#f4b02e;margin-right:14px;letter-spacing:.02em}"
+        "#topbar a{color:#d9c9b0;text-decoration:none;padding:6px 12px;border-radius:8px}"
+        "#topbar a:hover{background:#2b1013;color:#fff}#topbar a.on{background:#f4b02e;color:#1a0a0b;font-weight:600}"
+        "#topbar .sp{flex:1}</style>"
+    )
+
+
+def _page(name: str, active: str) -> str:
+    return (WEB / name).read_text().replace("<!--NAV-->", _nav(active))
 
 
 @app.get("/guide", response_class=HTMLResponse)
 def guide() -> str:
-    text = (
-        (REPO / "docs" / "OWNER_GUIDE.md").read_text()
-        if (REPO / "docs" / "OWNER_GUIDE.md").exists()
-        else "no guide yet"
-    )
+    path = REPO / "docs" / "OWNER_GUIDE.md"
+    text = path.read_text() if path.exists() else "no guide yet"
     esc = text.replace("&", "&amp;").replace("<", "&lt;")
     style = "font:15px/1.6 system-ui;max-width:760px;margin:24px auto;padding:0 16px"
     head = "<!doctype html><meta charset=utf-8><title>Studio guide</title>"
-    return f"{head}<body style='{style}'><pre style='white-space:pre-wrap'>{esc}</pre></body>"
+    body = f"<body style='margin:0;background:#f6f4ef;color:#1d1b16'>{_nav('/guide')}"
+    return f"{head}{body}<main style='{style}'><pre style='white-space:pre-wrap;font:inherit'>{esc}</pre></main></body>"
 
 
 @app.get("/live", response_class=HTMLResponse)
 def live_page() -> str:
-    return (WEB / "live.html").read_text()
+    return _page("mission.html", "/live")
 
 
 @app.get("/runs", response_class=HTMLResponse)
 def runs_page() -> str:
-    return (WEB / "runs.html").read_text()
+    return _page("runs.html", "/runs")
 
 
 @app.get("/", response_class=HTMLResponse)
 def page() -> str:
-    return (WEB / "today.html").read_text()
+    return _page("today.html", "/")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from typing import Any
 import typer
 
 from intel.studio import config as studio_config
+from intel.studio import coverage as coverage_mod
 from intel.studio import handover, media
 from intel.studio import schedule as schedule_mod
 from intel.studio.agents import ClaudeRunner
@@ -95,6 +96,12 @@ def run(
     model: list[str] = typer.Option(
         [], "--model", help="run an agent on another model, e.g. designer=haiku (an experiment)"
     ),
+    start_from: str | None = typer.Option(
+        None,
+        "--from",
+        help="first day to plan, YYYY-MM-DD. Default: the day after what the studio has already scheduled "
+        "(it reads your Calendar); a date in the past moves to the first possible day",
+    ),
     if_due: bool = typer.Option(
         False,
         "--if-due",
@@ -119,12 +126,48 @@ def run(
         if not ok:
             hub.close()
             raise typer.Exit(0)
+    start = _start_day(cfg, studio, start_from, resume)
     try:
         code = studio.run(Options(publish=publish, trigger=trigger, inputs=inputs, save_inputs=save_inputs,
-                                  resume=resume, suffix=suffix))  # fmt: skip
+                                  resume=resume, suffix=suffix, start=start))  # fmt: skip
     finally:
         hub.close()
     raise typer.Exit(code)
+
+
+def _start_day(cfg: StudioConfig, studio: Studio, start_from: str | None, resume: str | None) -> dt.date | None:
+    """The first day to plan: the owner's `--from`, else the day after what is already scheduled (read from the
+    Calendar). None keeps the plan's own default (tomorrow). A resumed run keeps the days it already planned."""
+    if resume:
+        return None
+    try:
+        wanted = dt.date.fromisoformat(start_from) if start_from else None
+    except ValueError:
+        typer.echo("--from must be a date like 2026-10-24", err=True)
+        raise typer.Exit(2) from None
+    if studio.publisher is None:
+        return wanted
+    now = dt.datetime.now(dt.UTC)
+    cov = coverage_mod.coverage(cfg, coverage_mod.fetch_rows(studio.publisher, now), now)
+    day, why = coverage_mod.resolve_start(cfg, cov, wanted)
+    typer.echo(f"{cov['sentence']} Planning {why}.")
+    return day
+
+
+@studio_app.command("coverage")
+def coverage_cmd() -> None:
+    """How far ahead the studio's posts are already scheduled, and where the next plan would start (no tokens)."""
+    cfg = studio_config.load()
+    env = handover.load_env()
+    if "DK_PUBLISH_URL" not in env or "DK_PUBLISH_KEY" not in env:
+        typer.echo("set DK_PUBLISH_URL and DK_PUBLISH_KEY in .env", err=True)
+        raise typer.Exit(1)
+    now = dt.datetime.now(dt.UTC)
+    rows = coverage_mod.fetch_rows(handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"]), now)
+    cov = coverage_mod.coverage(cfg, rows, now)
+    typer.echo(cov["sentence"])
+    for d in cov["days"]:
+        typer.echo(f"  {d['date']}  {d['posts']:>3} posts  ({d['waiting']} waiting for you)")
 
 
 def _runs() -> list[Path]:
@@ -231,7 +274,9 @@ def remind_cmd(show: bool = typer.Option(False, "--show", help="print what is wa
     from intel.studio import console, today
 
     cfg = _load(None, None, None, None)
-    data = today.build(console._readers(), cfg.schedule, today.owner_decisions())  # noqa: SLF001
+    rows = console._rows()  # noqa: SLF001
+    cov = coverage_mod.coverage(cfg, rows, dt.datetime.now(dt.UTC))
+    data = today.build(console._readers(rows), cfg.schedule, today.owner_decisions(), cov)  # noqa: SLF001
     message = today.reminder_text(data)
     if show or message is None:
         typer.echo("\n".join(f"[{i['level']}] {i['title']}" for i in data["items"]))

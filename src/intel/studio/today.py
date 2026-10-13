@@ -1,4 +1,4 @@
-"""The Today page: everything that waits for the owner, in one list, and the calm picture of a run in motion.
+"""The Today page: everything that waits for the owner, in one list.
 
 Pure functions over injected readers (what the publisher says, what sits in the reels folder, what the run folders
 hold), so
@@ -18,26 +18,6 @@ from typing import Any
 import yaml
 
 from intel.studio.config import REPO, ScheduleCfg
-
-STATIONS = (
-    ("plan", "Plan"),
-    ("director", "Director"),
-    ("write", "Write"),
-    ("design", "Design"),
-    ("render", "Render"),
-    ("upload", "Upload"),
-    ("drafts", "Drafts"),
-)
-STAGE_STATION = {
-    "planned": "plan",
-    "angled": "director",
-    "written": "write",
-    "adapted": "design",
-    "designed": "render",
-    "prepared": "render",
-    "rendered": "upload",
-    "final": "drafts",
-}
 
 
 @dataclass
@@ -65,7 +45,8 @@ def owner_decisions(path: Path | None = None) -> list[dict[str, Any]]:
     return [d for d in (data or {}).get("decisions", []) if not d.get("done")]
 
 
-def build(r: Readers, cfg: ScheduleCfg, decisions: list[dict[str, Any]]) -> dict[str, Any]:
+def build(r: Readers, cfg: ScheduleCfg, decisions: list[dict[str, Any]],
+          cov: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
     """The checklist, most pressing first. level: todo (needs you), info (good to know), ok (nothing to do)."""
     items: list[dict[str, Any]] = []
     rows = r.calendar()
@@ -137,19 +118,35 @@ def build(r: Readers, cfg: ScheduleCfg, decisions: list[dict[str, Any]]) -> dict
         items.append(
             _item("run", "info", "Last run", first.lstrip("# ") + " (full report: data/studio/last-summary.md)")
         )
+    start_body: dict[str, Any] = {"publish": "drafts", "confirm": True}
+    if cov and cov.get("known"):
+        start_body["start"] = cov["next_start"]
+        short = cov["days_ahead"] < cfg.lead_days
+        items.append(
+            _item(
+                "coverage",
+                "todo" if short else "ok",
+                "Plan the next days" if short else "The calendar is planned ahead",
+                cov["sentence"],
+                [{"label": "Open the Runs page", "href": "/runs"}] if short else [],
+            )
+        )
     items.append(
         _item(
             "start",
             "info",
             "Make a new plan",
-            "Creates drafts for the next days (about 15 minutes, about 550,000 "
-            "tokens). They wait for your approval; nothing posts by itself.",
+            "Creates drafts for the next days (about 15 minutes, about 550,000 tokens). "
+            + ("It starts the day after what is already scheduled. " if cov and cov.get("known") else "")
+            + "They wait for your approval; nothing posts by itself.",
             [
                 {
                     "label": "Run now (drafts)",
                     "api": "/api/run",
-                    "body": {"publish": "drafts", "confirm": True},
-                    "confirm": "This creates drafts in your Calendar. Continue?",
+                    "body": start_body,
+                    "confirm": "This creates drafts in your Calendar"
+                    + (f", starting {cov['next_start']}" if cov and cov.get("known") else "")
+                    + ". Continue?",
                 }
             ],
         )
@@ -207,85 +204,6 @@ def reminder_text(today: dict[str, Any]) -> tuple[str, str] | None:
     if not todo:
         return None
     return "Studio: waiting for you", "; ".join(i["title"] for i in todo[:4])
-
-
-def scene(view: dict[str, Any]) -> dict[str, Any]:
-    """The living pipeline: where every idea is right now, from a run's view (console.run_view): one particle each."""
-    counts: Counter[str] = Counter()
-    particles = []
-    for idea in view.get("ideas", []):
-        held = "*" in (idea.get("holds") or {})
-        station = "drafts" if idea.get("outcome") else STAGE_STATION.get(str(idea.get("stage")), "plan")
-        if held:
-            station = "held"
-        counts[station] += 1
-        particles.append(
-            {
-                "id": idea["id"],
-                "station": station,
-                "template": idea.get("template") or "?",
-                "held": held,
-                "format": idea.get("format"),
-            }
-        )
-    running = view.get("status") == "running"
-    return {
-        "run": view.get("id"),
-        "running": running,
-        "status": view.get("status"),
-        "stations": [
-            {
-                "id": s,
-                "label": label,
-                "count": counts[s],
-                "active": running and s not in ("plan", "drafts") and counts[s] > 0,
-            }
-            for s, label in STATIONS
-        ],
-        "held": counts["held"],
-        "particles": particles,
-        "drafts": counts["drafts"],
-        "tokens": view.get("tokens", 0),
-        "cap": view.get("cap"),
-        "seconds": view.get("seconds", 0),
-        "phase": _phase(view),
-    }
-
-
-def _phase(view: dict[str, Any]) -> str:
-    phases = [p for p in view.get("phases", []) if p.get("status") == "start"]
-    return str(phases[-1]["phase"]) if phases else ""
-
-
-def demo_scene(tick: int) -> dict[str, Any]:
-    """A made-up run that plays forever, so the animation can be watched without spending a token."""
-    names = [s for s, _ in STATIONS]
-    templates = ["one-take", "kinetic-text", "photo-motion", "beat-reel", "collage", "split"]
-    ideas = []
-    for i in range(12):
-        pos = (tick // 3 - i * 2) % (len(names) * 3)
-        station = names[min(pos // 3, len(names) - 1)] if pos < len(names) * 3 - 3 else "drafts"
-        ideas.append(
-            {
-                "id": f"d{i // 3 + 1:02d}i{i % 3 + 1}",
-                "stage": next((k for k, v in STAGE_STATION.items() if v == station), "planned"),
-                "outcome": {"state": "valid"} if station == "drafts" else None,
-                "template": templates[i % len(templates)],
-                "holds": {"*": {"code": "x"}} if i == 7 and station != "drafts" else {},
-                "format": "reel",
-            }
-        )
-    return scene(
-        {
-            "id": "demo",
-            "status": "running",
-            "ideas": ideas,
-            "tokens": 90_000 + tick * 300,
-            "cap": 4_000_000,
-            "seconds": tick,
-            "phases": [{"phase": "production", "status": "start"}],
-        }
-    )
 
 
 def pending_proposals(reels: Path) -> list[dict[str, Any]]:

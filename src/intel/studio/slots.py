@@ -71,11 +71,14 @@ class Dropped:
         return {"slot_id": self.idea_id, "date": self.date.isoformat(), "format": self.format, "why": self.why}
 
 
-def plan_days(cfg: StudioConfig, today: dt.date) -> list[dt.date]:
-    """The real dates of the plan, cut so that days × ideas_per_day stays within max_ideas_per_run."""
+def plan_days(cfg: StudioConfig, today: dt.date, start: dt.date | None = None) -> list[dt.date]:
+    """The real dates of the plan, cut so that days × ideas_per_day stays within max_ideas_per_run. `start` is the
+    first day wanted (the day after what is already scheduled, or the owner's date); never earlier than the plan's own
+    first day (today plus first_day_offset), because a slot in the past cannot be handed over."""
     p = cfg.plan
     n_days = min(p.horizon_days, max(1, p.max_ideas_per_run // p.ideas_per_day))
-    start = today + dt.timedelta(days=p.first_day_offset)
+    earliest = today + dt.timedelta(days=p.first_day_offset)
+    start = max(start, earliest) if start else earliest
     return [start + dt.timedelta(days=i) for i in range(n_days)]
 
 

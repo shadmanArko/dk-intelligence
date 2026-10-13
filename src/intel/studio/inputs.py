@@ -44,9 +44,13 @@ def evaluate(tools: ToolPort, drafts: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def fetch_inputs(
-    tools: ToolPort, cfg: StudioConfig, today: dt.date, performance_root: Path | None = None
+    tools: ToolPort,
+    cfg: StudioConfig,
+    today: dt.date,
+    performance_root: Path | None = None,
+    start: dt.date | None = None,
 ) -> dict[str, Any]:
-    days = slots.plan_days(cfg, today)
+    days = slots.plan_days(cfg, today, start)
     items = slots.probes(cfg, days)
     primary = cfg.plan.primary_platform
 
@@ -108,9 +112,9 @@ def fetch_inputs(
         (price_rows, unavailable), tags = f_menu.result(), f_tags.result()
         shown = examples(pack_)
     performance = performance_for_prompts(cfg, performance_root)
-    return {"today": today.isoformat(), "pack": pack_, "probe_results": probe, "vocab": vocab, "inventory": inventory,
-            "prices": price_rows, "unavailable": unavailable, "hashtags": tags, "examples": shown,
-            "performance": performance}  # fmt: skip
+    return {"today": today.isoformat(), "start": days[0].isoformat(), "pack": pack_, "probe_results": probe,
+            "vocab": vocab, "inventory": inventory, "prices": price_rows,
+            "unavailable": unavailable, "hashtags": tags, "examples": shown, "performance": performance}  # fmt: skip
 
 
 def performance_for_prompts(cfg: StudioConfig, root: Path | None = None) -> dict[str, Any]:

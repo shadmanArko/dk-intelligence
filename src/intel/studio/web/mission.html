@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio: Mission control</title>
+<style>
+:root{--bg:#140809;--card:#1f0f11;--card2:#271416;--ink:#f3e9d8;--mute:#a8987f;--line:#3a1f21;--acc:#f4b02e;--ok:#7fc59a;--warn:#f4b02e;--bad:#e0715f;
+--strategist:#c792ea;--director:#82aaff;--copywriter:#f4b02e;--adapter:#ffcb6b;--designer:#7fc59a;--render:#f78c6c;--upload:#89ddff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+.wrap{max-width:1500px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+h2{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.hero .top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.hero h1{margin:0;font-size:18px}.pill{padding:2px 12px;border-radius:99px;border:1px solid var(--line);font-size:12px;color:var(--mute)}
+.pill.run{border-color:var(--acc);color:var(--acc)}.pill.run:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--acc);margin-right:7px;animation:blink 1.2s infinite}
+.pill.done{border-color:var(--ok);color:var(--ok)}.pill.demo{border-color:#82aaff;color:#82aaff}
+.grow{flex:1}.btn{background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none}
+.btn:hover{background:var(--card2)}
+.bar{position:relative;height:26px;border-radius:13px;background:#0e0506;border:1px solid var(--line);overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:13px;background:linear-gradient(90deg,#b8642a,#f4b02e);transition:width 1.2s ease}
+.bar.on i{background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.18) 0 10px,transparent 10px 20px),linear-gradient(90deg,#b8642a,#f4b02e);background-size:40px 100%,100% 100%;animation:slide 1.2s linear infinite}
+.bar b{position:absolute;right:12px;top:0;line-height:24px;font-size:13px;color:var(--ink);text-shadow:0 0 4px #000}
+.bar.thin{height:8px;border-radius:4px;margin-top:6px}.bar.thin i{border-radius:4px}
+.stats{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:12px}.stat span{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.stat b{font-size:19px;font-weight:600}
+svg text{font-family:system-ui,sans-serif}
+.node rect.box{fill:var(--card2);stroke:var(--line);stroke-width:1.5}.node.act rect.box{stroke:var(--acc)}
+.node .ring{fill:none;stroke:var(--acc);stroke-width:2;opacity:0}.node.act .ring{animation:ring 1.6s ease-out infinite}
+.edge{stroke:var(--line);stroke-width:2}.flow{stroke:var(--acc);stroke-width:2;stroke-dasharray:5 9;animation:dash .8s linear infinite}
+.grid2{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(280px,1fr);gap:14px}
+@media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+.lane{font-size:11px;fill:var(--mute)}.axis{stroke:var(--line);stroke-width:1}.tick{font-size:10px;fill:var(--mute)}
+.gb{rx:2}.gb.run{animation:blink 1s infinite}
+.nowline{stroke:var(--acc);stroke-width:1.5;stroke-dasharray:3 3}
+table{width:100%;border-collapse:collapse;font-size:13px}th{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;text-align:left;font-weight:600}
+td,th{padding:4px 6px;border-bottom:1px solid var(--line)}td.n,th.n{text-align:right}
+.dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}
+.work div{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
+.work .sp{width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:spin .9s linear infinite}
+.matrix{overflow-x:auto}.matrix table{min-width:640px}
+.cell{display:inline-block;width:100%;height:16px;border-radius:4px;background:#0e0506;border:1px solid var(--line)}
+.cell.done{background:#2f6b4a;border-color:#3f8a60}.cell.active{background:var(--acc);border-color:var(--acc);animation:blink 1s infinite}
+.cell.held{background:#7a2f27;border-color:var(--bad)}.cell.skipped{background:repeating-linear-gradient(135deg,#1f0f11 0 4px,#2c1a1c 4px 8px)}
+td.id{white-space:nowrap}.meta{color:var(--mute);font-size:12px}.res{font-size:12px;white-space:nowrap}.res.ok{color:var(--ok)}.res.bad{color:var(--bad)}
+.log{max-height:230px;overflow:auto;font-size:12px;color:var(--mute)}.log div{padding:1px 0;white-space:pre-wrap}.log div:first-child{color:var(--ink)}
+.phases{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.ph{font-size:12px;padding:2px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.ph.start{border-color:var(--acc);color:var(--acc)}.ph.end{border-color:var(--ok);color:var(--ok)}
+.empty{padding:30px;text-align:center;color:var(--mute)}
+@keyframes blink{50%{opacity:.45}}@keyframes slide{to{background-position:40px 0,0 0}}@keyframes dash{to{stroke-dashoffset:-14}}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes ring{0%{opacity:.8;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
+.node .ring{transform-box:fill-box;transform-origin:center}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<!--NAV-->
+<div class="wrap">
+<section class="card hero">
+ <div class="top"><h1 id="title">Mission control</h1><span class="pill" id="status">…</span><span class="pill" id="mode"></span><span class="pill demo" id="demo" hidden>demo: a made-up run, drawn the same way</span>
+  <span class="grow"></span><a class="btn" id="demoLink" href="?demo=1">Show a demo</a><button class="btn" id="full">Full screen</button></div>
+ <div class="bar" id="pbar"><i style="width:0"></i><b id="ptext">0%</b></div>
+ <div class="stats">
+  <div class="stat"><span>Elapsed</span><b class="mono" id="el">0:00</b></div>
+  <div class="stat"><span>Time left (estimate)</span><b class="mono" id="eta">–</b></div>
+  <div class="stat"><span>Ideas finished</span><b id="ideas">0 / 0</b></div>
+  <div class="stat"><span>Held back</span><b id="held">0</b></div>
+  <div class="stat"><span>Tokens</span><b id="tok">0</b><div class="bar thin" style="width:160px"><i id="tokbar" style="width:0"></i></div></div>
+  <div class="stat"><span>Retries · tool calls</span><b id="rt">0 · 0</b></div>
+ </div>
+ <div class="phases" id="phases"></div>
+</section>
+
+<section class="card"><h2>Pipeline: where every idea is right now</h2><svg id="pipe" viewBox="0 0 1200 190" width="100%" role="img" aria-label="pipeline"></svg></section>
+
+<div class="grid2">
+ <section class="card"><h2>Timeline: every agent call, as it happened</h2><div id="gantt"></div></section>
+ <section class="card">
+  <h2>Working right now</h2><div class="work" id="work"></div>
+  <h2 style="margin-top:16px">Agents</h2>
+  <table><thead><tr><th>agent</th><th class="n">calls</th><th class="n">avg s</th><th class="n">tokens</th></tr></thead><tbody id="roles"></tbody></table>
+  <h2 style="margin-top:16px">Tokens over time</h2><svg id="spark" viewBox="0 0 300 70" width="100%"></svg>
+  <div class="meta" id="tokdetail"></div>
+ </section>
+</div>
+
+<section class="card matrix"><h2>Every idea against every stage</h2><div id="matrix"></div></section>
+<section class="card"><h2>Latest events</h2><div class="log mono" id="log"></div></section>
+</div>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const demo=new URLSearchParams(location.search).get('demo')==='1',POLL=demo?900:2000,SPEED=demo?6000/POLL:1;
+const COL={strategist:'#c792ea',director:'#82aaff',copywriter:'#f4b02e',adapter:'#ffcb6b',designer:'#7fc59a',render:'#f78c6c',upload:'#89ddff'};
+const k=n=>n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?Math.round(n/1e3)+'k':String(n||0);
+const mmss=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+let T=null,T0=0,tick=+(new URLSearchParams(location.search).get('tick')||0),prevDone={},packets=[];
+if(demo){$('demo').hidden=false;$('demoLink').textContent='Back to the live run';$('demoLink').href='/live'}
+$('full').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();
+const nowMs=()=>T?T.now_ms+(T.running?(performance.now()-T0)*SPEED:0):0;
+
+function head(){ if(!T)return;
+ const st=T.running?'run':(T.status==='done'||T.status==='partial')?'done':'';
+ $('status').className='pill '+st;$('status').textContent=T.run?(T.running?'running':T.status):'no run yet';
+ $('mode').textContent=T.publish?`mode: ${T.publish}`:'';$('mode').hidden=!T.publish;
+ $('title').textContent=T.run?`Run ${T.run}`:'Mission control';
+ $('pbar').className='bar'+(T.running?' on':'');$('pbar').firstChild.style.width=T.percent+'%';$('ptext').textContent=T.percent.toFixed(0)+'%';
+ $('ideas').textContent=`${T.ideas_done} / ${T.ideas}`;$('held').textContent=T.ideas_held;
+ $('tok').textContent=k(T.tokens)+(T.cap?' / '+k(T.cap):'');$('tokbar').style.width=T.cap?Math.min(100,T.tokens/T.cap*100)+'%':'0';
+ $('rt').textContent=`${T.retries} · ${T.tool_calls}`;
+ $('phases').innerHTML=T.phases.map(p=>`<span class="ph ${p.status}">${p.phase}</span>`).join('');
+ clock()}
+function clock(){ if(!T)return;const e=nowMs()/1000;$('el').textContent=mmss(e);
+ $('eta').textContent=T.running&&T.percent>=8?'about '+mmss(Math.max(0,e*(100-T.percent)/T.percent)):T.running?'measuring…':'–'}
+
+// ---- pipeline ----
+const NW=140,GAP=(1200-7*NW)/6,NY=44,NH=96;
+const nx=i=>i*(NW+GAP);
+function pipe(){ if(!T)return;
+ const flow=i=>T.running&&T.stages[i]&&(T.stages[i].active>0||(T.stages[i+1]&&T.stages[i+1].active>0));
+ let s='';
+ T.stages.forEach((st,i)=>{ if(i<6){const x1=nx(i)+NW,x2=nx(i+1),y=NY+NH/2;
+   s+=`<line class="edge" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"/>`+(flow(i)?`<line class="flow" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"/>`:'')}});
+ T.stages.forEach((st,i)=>{const x=nx(i),n=st.total||1,w=NW-24;
+   const dw=w*st.done/n,aw=w*st.active/n,hw=w*(st.held+0)/n;
+   s+=`<g class="node ${st.active?'act':''}"><rect class="ring" x="${x-3}" y="${NY-3}" width="${NW+6}" height="${NH+6}" rx="14"/>
+   <rect class="box" x="${x}" y="${NY}" width="${NW}" height="${NH}" rx="12"/>
+   <text x="${x+12}" y="${NY+22}" fill="#f3e9d8" font-size="14" font-weight="600">${st.label}</text>
+   <text x="${x+12}" y="${NY+38}" fill="#a8987f" font-size="11">${st.worker}</text>
+   <text x="${x+12}" y="${NY+66}" fill="#f3e9d8" font-size="22" font-weight="600">${st.done}<tspan fill="#a8987f" font-size="13"> / ${st.total}</tspan></text>
+   <rect x="${x+12}" y="${NY+78}" width="${w}" height="6" rx="3" fill="#0e0506"/>
+   <rect x="${x+12}" y="${NY+78}" width="${dw}" height="6" rx="3" fill="#3f8a60"/>
+   <rect x="${x+12+dw}" y="${NY+78}" width="${aw}" height="6" fill="#f4b02e"/>
+   <rect x="${x+12+dw+aw}" y="${NY+78}" width="${hw}" height="6" fill="#e0715f"/>
+   <text x="${x+NW/2}" y="${NY-14}" text-anchor="middle" fill="#a8987f" font-size="11">${st.waiting?st.waiting+' waiting':''}${st.active?(st.waiting?' · ':'')+'<tspan fill="#f4b02e">'+st.active+' working</tspan>':''}</text>
+   </g>`});
+ s+=`<g id="packets"></g>`;
+ $('pipe').innerHTML=s;
+ T.stages.forEach((st,i)=>{ if(i<6&&(prevDone[st.id]??st.done)<st.done)for(let j=0;j<Math.min(3,st.done-prevDone[st.id]);j++)packets.push({i,born:performance.now()+j*180});prevDone[st.id]=st.done})}
+function drawPackets(){const g=document.getElementById('packets');if(!g)return;const t=performance.now();packets=packets.filter(p=>t-p.born<1100);
+ g.innerHTML=packets.filter(p=>t>=p.born).map(p=>{const f=(t-p.born)/1100,x=nx(p.i)+NW+(nx(p.i+1)-nx(p.i)-NW)*f;return `<circle cx="${x}" cy="${NY+NH/2}" r="5" fill="#f4b02e" opacity="${1-f*.5}"/>`}).join('')}
+
+// ---- timeline ----
+function gantt(){ if(!T)return;const el=$('gantt');if(!T.bars.length){el.innerHTML='<div class="empty">No work yet.</div>';return}
+ const W=Math.max(520,el.clientWidth||900),L=88,R=12,now=Math.max(nowMs(),1),span=Math.max(now*1.02,60000),sx=ms=>L+(ms/span)*(W-L-R);
+ const bars=T.bars.map(b=>({...b,end:b.running?now:b.end}));let y=6,out='',axis='';
+ const step=[10,30,60,120,300,600,900].find(v=>span/1000/v<=9)||1800;
+ for(let t=0;t<=span/1000;t+=step)axis+=`<line class="axis" x1="${sx(t*1000)}" x2="${sx(t*1000)}" y1="0" y2="@H@"/>`+(sx(t*1000)<W-34?`<text class="tick" x="${sx(t*1000)+3}" y="@H2@">${mmss(t)}</text>`:'');
+ for(const lane of T.lanes){const mine=bars.filter(b=>b.lane===lane).sort((a,b)=>a.start-b.start),rows=[];
+   mine.forEach(b=>{let r=rows.findIndex(e=>e<=b.start);if(r<0){r=rows.length;rows.push(0)}rows[r]=b.end;b.row=r});
+   const h=Math.max(1,rows.length)*11+8;
+   out+=`<text class="lane" x="4" y="${y+14}">${lane}</text><line class="axis" x1="${L}" x2="${W-R}" y1="${y+h}" y2="${y+h}"/>`;
+   mine.forEach(b=>{const x=sx(b.start),w=Math.max(2,sx(b.end)-x);
+     out+=`<rect class="gb ${b.running?'run':''}" x="${x}" y="${y+4+b.row*11}" width="${w}" height="8" fill="${b.ok?COL[lane]:'#e0715f'}" opacity="${b.running?1:.85}"><title>${esc(lane)} ${esc(b.idea||'')} · ${((b.end-b.start)/1000).toFixed(0)} s${b.tokens?' · '+k(b.tokens)+' tokens':''}${b.ok?'':' · failed'}</title></rect>`});
+   y+=h}
+ const H=y+16;out=axis.replace(/@H@/g,y).replace(/@H2@/g,y+12)+out+`<line class="nowline" x1="${sx(now)}" x2="${sx(now)}" y1="0" y2="${y}"/>`;
+ el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${out}</svg>`}
+
+// ---- side panels, matrix, log ----
+function side(){ if(!T)return;
+ $('work').innerHTML=T.working.length?T.working.map(w=>`<div><span class="sp"></span><span class="dot" style="background:${COL[w.lane]}"></span>${esc(w.lane)} <span class="meta">${esc(w.idea||'')}</span><span class="grow"></span><span class="mono meta">${w.seconds}s</span></div>`).join(''):'<div class="meta">nothing is working at the moment</div>';
+ $('roles').innerHTML=T.lanes.filter(l=>T.roles[l]).map(l=>{const r=T.roles[l];return `<tr><td><span class="dot" style="background:${COL[l]}"></span>${l}</td><td class="n">${r.calls}</td><td class="n">${r.calls?(r.seconds/r.calls).toFixed(0):'–'}</td><td class="n">${k(r.tokens)}</td></tr>`}).join('');
+ $('tokdetail').textContent=`in ${k(T.tokens_in)} · out ${k(T.tokens_out)} · cached ${k(T.tokens_cached)}`;
+ const s=T.series;let d='';if(s.length>1){const mx=s[s.length-1][1],my=Math.max(T.now_ms,s[s.length-1][0],1);
+   d=s.map(([ms,v],i)=>`${i?'L':'M'}${(ms/my*296+2).toFixed(1)},${(66-v/mx*60).toFixed(1)}`).join(' ')}
+ $('spark').innerHTML=`<path d="${d}" fill="none" stroke="#f4b02e" stroke-width="2"/>`;
+ $('log').innerHTML=T.log.slice().reverse().map(l=>`<div>${esc(l)}</div>`).join('')||'<div>no events yet</div>'}
+const CELL={plan:'Plan',direct:'Direct',write:'Write',adapt:'Adapt',design:'Design',render:'Render',upload:'Upload'};
+function matrix(){ if(!T)return;if(!T.matrix.length){$('matrix').innerHTML='<div class="empty">The plan appears here when a run starts.</div>';return}
+ const ids=Object.keys(CELL);let lastDay='';
+ $('matrix').innerHTML=`<table><thead><tr><th>idea</th>${ids.map(i=>`<th>${CELL[i]}</th>`).join('')}<th>result</th></tr></thead><tbody>`+T.matrix.map(m=>{
+  const day=m.date!==lastDay?`<tr><td colspan="9" class="meta" style="padding-top:10px">${new Date(m.date+'T12:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</td></tr>`:'';lastDay=m.date;
+  const res=m.held?'<span class="res bad">held back</span>':m.outcome?'<span class="res ok">'+(m.outcome==='drafted'?'draft made':m.outcome)+'</span>':'';
+  return day+`<tr><td class="id" title="${esc(m.angle||'')}"><span class="mono">${esc(m.id)}</span> <span class="meta">${esc(m.format)}${m.template?' · '+esc(m.template):''}</span></td>`+
+   ids.map(i=>`<td><span class="cell ${m.cells[i]}" title="${CELL[i]}: ${m.cells[i]}"></span></td>`).join('')+`<td>${res}</td></tr>`}).join('')+'</tbody></table>'}
+
+function draw(){head();pipe();gantt();side();matrix()}
+async function poll(){try{const r=await fetch(demo?`/api/telemetry/demo?tick=${tick++}`:'/api/telemetry');T=await r.json();T0=performance.now();draw()}catch(e){}
+ setTimeout(poll,POLL)}
+setInterval(()=>{if(document.hidden||!T)return;clock();if(T.running)gantt()},250);
+(function loop(){if(!document.hidden)drawPackets();requestAnimationFrame(loop)})();
+addEventListener('resize',()=>gantt());
+poll();
+</script></body></html>
