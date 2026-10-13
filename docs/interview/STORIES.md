@@ -866,3 +866,28 @@ on the demo.
 **Trade-off I would defend.** I did not build a stop button, single-model runs or the market-data refresh button: each needs a change
 in another program, and a button that kills a run half way is the exact failure the resume logic exists to survive. I listed them
 instead of faking them.
+
+## S8 · A Stop button is a promise about what happens next
+
+**Situation.** The owner asked for two things that sound like buttons: stop a run, and retrain one model. Both reach into programs that
+were built to run to the end. A killed run leaves no ending, and my own scheduler (built the same day to finish cut-off runs) would
+have started it again within the hour: a Stop that undoes itself.
+
+**Task.** Make Stop mean "end now, keep the work, do not restart", and make one-model training safe to press.
+
+**Action.**
+- **Turned SIGTERM into a clean ending:** the run catches it, writes its own end ("stopped by the owner"), keeps its state and exits
+  130. A stopped studio run is final (the schedule skips it; Resume continues it). A stopped ML run counts as an attempt, not as the
+  week's training, so the weekly catch-up still does the week's work, later.
+- **Tested it for real, twice, and it failed the first time:** the first real stop took 26 seconds and wrote no ending. The log showed
+  why: the run waited for its in-flight agents, and when they were killed the retry logic started new ones, which ran to the end.
+  Fixes: end the run's own children at once, and start no agent, retry or render once a stop is requested. Second try: 2.5 seconds.
+- **Proved the resume on the same run:** 3 of 3 ideas, 12 of 12 posts, none of the finished calls made again.
+- **One model alone** reused the run's own plug-in list (`--only`), with `--no-upload`, a flag in its report so the weekly rule
+  ignores it, and a page that shows the other models' steps as "not part of this run".
+
+**Result.** Stop in 1.5 s on an ML run and 2.5 s on a studio run, no leftover processes, no idea marked failed because its agent was
+killed, resume at zero repeated calls. One model retrained in 33 seconds without touching what is deployed.
+
+**Trade-off I would defend.** A stop throws away the agent calls that were in flight (about 3 calls, a few cents of tokens) rather than
+waiting for them. Waiting is what made the first version take 26 seconds and start new work; the owner pressed Stop to stop.

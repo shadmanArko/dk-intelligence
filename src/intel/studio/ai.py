@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from intel.stopping import STOP
 from intel.studio.budget import Budget
 from intel.studio.ports import AgentResult, RunnerPort
 from intel.studio.runlog import RunLog
@@ -35,7 +36,7 @@ class AI:
         answer and the reason in `error` (it starts with 'budget:'), so the caller reports the idea, never loses it."""
         result = self._once(node, agent, task, idea_id, files)
         usable = result.answer is not None and (valid is None or valid(result.answer))
-        if not usable and not result.error.startswith("budget:"):
+        if not usable and not result.error.startswith("budget:") and not STOP.is_set():
             self.log.emit(node, "retry", reason=result.error or "the answer was not usable")
             result = self._once(f"{node}-retry", agent, task, idea_id, files)
         return result
@@ -43,6 +44,8 @@ class AI:
     def _once(
         self, node: str, agent: str, task: dict[str, Any], idea_id: str | None, files: dict[str, Path] | None = None
     ) -> AgentResult:
+        if STOP.is_set():  # the owner stopped the run: no new agent starts
+            return AgentResult(None, error="stopped by the owner")
         why = self.budget.allow(idea_id)
         if why:
             self.log.emit(node, "budget_stop", agent=agent, reason=why)

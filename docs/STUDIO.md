@@ -57,6 +57,13 @@ confusion matrix and every judge gate. *Demo* (`/demo`) plays a made-up whole ru
 tokens and no real data (`/system?demo=1`, `/ml?demo=1` show each half). The console now needs its own host and a session token
 for every button.
 
+**Stop, and one model alone (ADR 0041).** *Stop* (Operations, Runs, Mission control) asks the studio run and the ML run to end
+cleanly: they write "stopped by the owner", keep what is finished, and end their own agents and renderers; it takes seconds. A
+stopped studio run is never restarted by the schedule; *Resume* on the Runs page continues it without redoing finished calls. A
+stopped ML run counts as an attempt (the catch-up retries after 6 hours), not as the week's training. *One model alone*:
+`intel weekly --only funnel --no-upload` (or the buttons on Operations and in a model's view on the ML page) trains and judges one
+model on fresh data in about a minute; it uploads and deploys nothing and does not count as the week's training.
+
 **Today** lists everything that waits for you (drafts to approve, footage proposals with Accept / Reject buttons, how far
 ahead the calendar is planned, decisions, schedule) under a one-line progress strip of the current run.
 **Mission control** (`/live`, ADR 0038) shows a run as an engineer would: progress and an estimate of the time left, the

@@ -27,6 +27,11 @@ That is all. You never need the terminal for this.
   change. They wait for your approval.
 - **Show it to someone:** open **Demo** (a made-up whole run: the ML part, then the agents), full screen. Then open **Agent
   system** and **ML pipeline** on the real data and click into a box, a call, a model: that is where the depth is.
+- **Stop something:** the red **Stop** button (Operations, Runs, Mission control) ends what is running in a few seconds and keeps
+  what is finished. For a studio run, press **Resume** on the Runs page to continue it. An ML run you stopped starts again from
+  Operations (or by itself after 6 hours).
+- **Retrain one model:** on **Operations** ("One model at a time") or in a model's window on the **ML pipeline** page. About a
+  minute, no tokens, and it is a candidate only: nothing is uploaded or deployed. The full ML run deploys.
 - **Start things:** **Operations** has *Run everything*, *Run the ML part*, *Run the agent part*, and the small ones (pull,
   market snapshot). It always asks before it spends tokens. The run keeps going if you close the tab.
 - **Let the curator learn more footage** (button): it looks at 20 clips and proposes descriptions; you accept them. Do it a few

@@ -2,17 +2,18 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Studio: Operations</title>
 <link rel="stylesheet" href="/static/common.css">
-<style>.big{padding:18px 22px;font-size:17px}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+<style>.btn.stop{border-color:var(--bad);color:var(--bad)}.btn.stop:hover{background:rgba(224,113,95,.15)}.big{padding:18px 22px;font-size:17px}.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
 .act{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}.act:last-child{border:0}.act .t{flex:1}
 .stp{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.stp:last-child{border:0}
 .sp{width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--acc);border-radius:50%;animation:spin .9s linear infinite}</style></head><body>
 <!--NAV-->
 <div class="wrap">
 <section class="card">
- <div class="row"><h1>Operations</h1><span class="pill" id="state">…</span><span class="grow"></span><a class="btn" href="/ml">ML pipeline →</a><a class="btn" href="/system">Agent system →</a><a class="btn" href="/live">Mission control →</a></div>
+ <div class="row"><h1>Operations</h1><span class="pill" id="state">…</span><button class="btn stop" id="stopBtn" hidden>■ Stop</button><span class="grow"></span><a class="btn" href="/ml">ML pipeline →</a><a class="btn" href="/system">Agent system →</a><a class="btn" href="/live">Mission control →</a></div>
  <div class="meta" style="margin-top:6px">Start the whole machine, or one part of it. Each button runs the same command the schedule or you would run by hand; the programs keep their own locks, so nothing can run twice at once. Nothing here approves or posts anything.</div>
  <div id="everything" style="margin-top:14px"></div>
 </section>
+<section class="card"><h2>One model at a time</h2><div class="meta" style="margin-bottom:6px">Retrain a single model on fresh data and judge it. A candidate only: nothing is uploaded or deployed, and it does not count as this week's training. The full ML run (above) deploys.</div><div id="modelActs"></div></section>
 <section class="card" id="nowCard" hidden><h2>What is running now</h2><div id="now"></div></section>
 <div class="grid3">
  <section class="card"><h2>The ML part: data to deployment</h2><div id="mlActs"></div><div class="bar" id="mlBar" style="margin-top:10px"><i style="width:0"></i><b id="mlTxt"></b></div><div class="meta" id="mlLine"></div></section>
@@ -22,16 +23,23 @@
 <script src="/static/common.js"></script>
 <script>
 let O=null,msg='';
-const stCls={done:'ok',running:'run',failed:'bad',waiting:'',skipped:''};
+const stCls={done:'ok',running:'run',failed:'bad',stopped:'bad',waiting:'',skipped:''};
 async function start(a){
   const act=O.actions.find(x=>x.id===a);
   if(!confirm(`${act.label}\n\n${act.what}\n\nCost: ${act.cost}.\n\n${act.confirm?'This spends tokens and may write drafts to your Calendar. Nothing is posted without your approval.\n\n':''}Start?`))return;
   try{await post('/api/ops/start',{action:a,confirm:true});msg=act.label+' started'}catch(e){msg=e.message}
   draw();setTimeout(load,1000)}
+async function stopAll(){
+  if(!confirm('Stop what is running?\n\nWhat is finished is kept. A studio run can be continued with Resume on the Runs page; an ML run starts again from the Operations page.'))return;
+  msg='stopping… (up to half a minute)';draw();
+  try{const r=await post('/api/ops/stop',{});msg='stopped: '+r.stopped.join(', ')}catch(e){msg=e.message}
+  draw();setTimeout(load,1000)}
 function actHtml(a,primary){return `<div class="act"><div class="t"><b>${esc(a.label)}</b><div class="meta">${esc(a.what)}</div><div class="meta">cost: ${esc(a.cost)}</div></div><button class="btn ${primary?'primary':''}" data-act="${a.id}" ${busy()?'disabled':''}>Run</button></div>`}
 const busy=()=>O&&((O.current&&O.current.state==='running')||O.studio_running||O.ml_running);
 function draw(){if(!O)return;const all=O.actions.find(a=>a.id==='all');
  $('everything').innerHTML=`<div class="row"><button class="btn primary big" data-act="all" ${busy()?'disabled':''}>▶ Run everything</button><div class="grow"><b>${esc(all.what)}</b><div class="meta">cost: ${esc(all.cost)}. The studio part starts only if the ML part succeeds, and plans from the day after what is already scheduled.</div></div></div>`;
+ $('modelActs').innerHTML=O.actions.filter(a=>a.group==='model').map(a=>actHtml(a,false)).join('');
+ $('stopBtn').hidden=!busy();$('stopBtn').onclick=stopAll;
  $('mlActs').innerHTML=O.actions.filter(a=>a.group==='ml').map(a=>actHtml(a,a.id==='ml.weekly')).join('');
  $('agActs').innerHTML=O.actions.filter(a=>a.group==='agents').map(a=>actHtml(a,a.id==='agents.drafts')).join('');
  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>start(b.dataset.act));

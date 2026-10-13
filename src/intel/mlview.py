@@ -131,9 +131,12 @@ def _seconds(step: dict[str, Any]) -> float | None:
 def steps_view(progress: dict[str, Any] | None) -> list[dict[str, Any]]:
     """The pipeline's steps, in order, each with what it does and what it did (status, time, note, details)."""
     done = (progress or {}).get("steps") or {}
+    partial = bool((progress or {}).get("only"))
     out = []
     for s in definition()["steps"]:
         run = done.get(s["key"]) or {}
+        if partial and s["key"] not in done:  # a single-model run: the other models' steps are simply not part of it
+            run = {"status": "skipped", "note": "not part of this single-model run"}
         out.append({"key": s["key"], "label": s["label"], "desc": s["desc"], "status": run.get("status") or "pending",
                     "started_at": run.get("started_at"), "finished_at": run.get("finished_at"),
                     "seconds": _seconds(run), "note": run.get("note"),
@@ -166,6 +169,7 @@ def ml_state(weekly_dir: Path, runs_dir: Path, running: bool, history: list[dict
             "current_step": (prog or {}).get("current_step"),
             "running": running,
             "stalled": stalled,
+            "only": (prog or {}).get("only"),
         },  # fmt: skip
         "percent": round(100 * n_done / len(steps), 1) if steps else 0.0,
         "steps": steps,

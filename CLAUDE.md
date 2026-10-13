@@ -69,7 +69,7 @@ and `tests/test_restore_drill.py`. Monitoring as code: `bash deploy/monitoring/c
     origin or citizenship data anywhere else without asking.
 11. **€0 running cost, no paid AI APIs** (ADR 0012), unless the owner decides otherwise for Phase 4; ask.
 12. **Migrations are additive** (ADR 0015, `tests/test_migration_policy.py`). Accepted ADRs are never edited; a
-    changed decision gets a new ADR. Next free ADR number: **0041** (0024 is on the H10 branch).
+    changed decision gets a new ADR. Next free ADR number: **0042** (0024 is on the H10 branch).
 13. **Ratchets only move one way** (ADR 0010): the strict-mypy module list only grows; the coverage floor
     (`fail_under = 80`, precision 2) only rises; 0 fixable HIGH/CRITICAL vulnerabilities.
 14. **Never touch harness PR #2** ("RAG System…", by another contributor): the owner said "DO not accept the rag

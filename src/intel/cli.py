@@ -268,6 +268,12 @@ def weekly(
     if_due: bool = typer.Option(
         False, "--if-due", help="Only run if this week's training has not happened yet, or monitoring asks for it"
     ),
+    only: str = typer.Option(
+        None,
+        "--only",
+        help="Train only these models (comma-separated model names or step keys, e.g. funnel or train). Add "
+        "--no-upload to keep it a candidate; it never counts as this week's training",
+    ),
 ) -> None:
     """M7: the Sunday run. Pull, market snapshot, ledger, train + judge, package/upload if better, report."""
     from intel.weekly import drift_due, is_due, run_weekly
@@ -282,12 +288,16 @@ def weekly(
             typer.echo(f"not due: {why}")
             return
         typer.echo(why)
+    names = [x.strip() for x in only.split(",") if x.strip()] if only else None
     try:
-        r = run_weekly(s, upload=upload, wait_max_s=wait_hours * 3600)
+        r = run_weekly(s, upload=upload, wait_max_s=wait_hours * 3600, only=names)
+    except ValueError as e:  # an unknown model name
+        typer.secho(str(e), fg="red")
+        raise typer.Exit(2) from None
     except RuntimeError as e:  # lock held by a running run
         typer.secho(str(e), fg="yellow")
         return
-    color = {"pass": "green", "fail": "yellow", "baseline": "green"}.get(r["status"], "red")
+    color = {"pass": "green", "fail": "yellow", "baseline": "green", "stopped": "yellow"}.get(r["status"], "red")
     where = f" at {r['failed_step']}: {r['error']}" if r["status"] == "error" else ""
     typer.secho(f"weekly run {r['run_id']}: {r['status'].upper()}{where}", fg=color)
     if r.get("challenger") and r.get("champion"):
@@ -298,6 +308,8 @@ def weekly(
     typer.echo(f"  report uploaded: {r.get('report_uploaded', False)}")
     if r["status"] == "error":
         raise typer.Exit(1)
+    if r["status"] == "stopped":
+        raise typer.Exit(130)  # like the studio run: a stop is not a success
 
 
 @app.command()

@@ -166,6 +166,16 @@ def api_ops() -> dict[str, Any]:
             "ml_running": lock_alive(_ml_paths()[0])}  # fmt: skip
 
 
+@router.post("/api/ops/stop")
+def api_ops_stop() -> dict[str, Any]:
+    """Stop what is running: the studio run, the ML run and the operation that started them (see ops.stop_all)."""
+    weekly = _ml_paths()[0]
+    stopped = ops.stop_all(DATA / ".running", weekly / ".lock" / "pid", OPS_DIR)
+    if not stopped:
+        raise HTTPException(409, "nothing is running")
+    return {"stopped": stopped}
+
+
 @router.post("/api/ops/start")
 def api_ops_start(body: StartOp) -> dict[str, Any]:
     action = ops.ACTIONS.get(body.action)

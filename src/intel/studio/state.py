@@ -14,6 +14,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from intel.stopping import STOP
+
 STAGES = ("planned", "angled", "written", "adapted", "designed", "prepared", "rendered", "final")
 
 
@@ -48,6 +50,8 @@ class RunState:
 
     def hold(self, idea_id: str, why: str, platform: str | None = None, code: str = "held") -> None:
         """Something that did not go out, and why: for the whole idea, or one platform of it."""
+        if STOP.is_set():  # the owner stopped the run: an agent killed by that is not a failed idea
+            return
         with self._lock:
             row = self.data["ideas"][idea_id]
             row["holds"][platform or "*"] = {"code": code, "why": why}

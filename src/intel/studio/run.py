@@ -30,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from intel.stopping import STOP, Stopped, sigterm_stops_cleanly
 from intel.studio import checks, director, handover, media, slots
 from intel.studio.ai import AI
 from intel.studio.budget import Budget
@@ -96,7 +97,10 @@ class Studio:
             self.tools = LoggedTools(plain_tools, self.log)  # every call the code itself makes is noted (ADR 0040)
             self.publisher = LoggedPublisher(plain_publisher, self.log) if plain_publisher is not None else None
             try:
-                return self._run(folder, run_id)
+                with sigterm_stops_cleanly():
+                    return self._run(folder, run_id)
+            except Stopped:
+                return self._stopped()
             finally:
                 self.tools, self.publisher = plain_tools, plain_publisher
         finally:
@@ -126,6 +130,16 @@ class Studio:
 
     def _budget_alert(self, used: int, cap: int) -> None:
         self.notifier.notify("Studio: token budget", f"{used:,} of {cap:,} tokens used ({round(100 * used / cap)}%).")
+
+    def _stopped(self) -> int:
+        """The owner pressed Stop. The run says so in its own log and leaves its work in place: Resume continues it."""
+        self.log.emit("orchestrator", "end", status="stopped", note="stopped by the owner")
+        (self.data_dir / "last-summary.md").write_text(
+            f"# Studio run {self.log.id} STOPPED\n\nStopped by the owner. Everything finished so far is kept: "
+            "press Resume on the Runs page to continue it.\n"
+        )
+        print("stopped by the owner")
+        return 130
 
     def _fail(self, why: str) -> int:
         self.log.emit("orchestrator", "end", status="failed", error=short(why, 400))
@@ -383,6 +397,8 @@ class Studio:
     def _render_worker(self, todo: queue.Queue[str | None], upload: queue.Queue[str | None], folder: Path) -> None:
         state = self.state
         while (i := todo.get()) is not None:
+            if STOP.is_set():  # the owner stopped the run: no new render starts (the queue still drains)
+                continue
             try:
                 row = state.idea(i)
                 idea = slots.idea_from_dict(row["idea"])

@@ -33,7 +33,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 8px;b
 <label>mode <select id="mode"><option value="render">render (media only, nothing sent)</option><option value="dry-run">dry-run (check with the publisher)</option><option value="drafts">drafts (into your Calendar)</option></select></label>
 <label>days <input id="days" type="number" min="1" max="30" placeholder="10" style="width:64px"></label>
 <label>start on <input id="start" type="date" title="the first day to plan; filled in with the day after what is already scheduled"></label>
-<button id="go">▶ Run now</button><button id="resume" class="ghost" hidden>↻ Resume this run</button></header>
+<button id="go">▶ Run now</button><button id="stop" class="ghost" hidden style="border-color:var(--fail);color:var(--fail)">■ Stop</button><button id="resume" class="ghost" hidden>↻ Resume this run</button></header>
 <main>
 <section class="card"><h2>Already scheduled</h2><div class="cov"><b id="covline">Checking your Calendar…</b></div><div class="days" id="covdays"></div></section>
 <section class="card"><h2 id="rtitle">What it produced</h2><div class="stats" id="stats"></div><div class="bar" id="bar" hidden><i></i></div></section>
@@ -79,7 +79,7 @@ async function load(){if(!cur)return;const v=await (await fetch('/api/runs/'+cur
  for(const x of e.events){const d=document.createElement('div');const extra=Object.entries(x).filter(([a])=>!['t','ms','node','kind'].includes(a)).map(([a,b])=>a+'='+(typeof b==='object'?JSON.stringify(b).slice(0,80):b)).join(' ');
   d.textContent=`${(x.ms/1000).toFixed(0).padStart(5)}s ${x.node.padEnd(20)} ${x.kind} ${extra.slice(0,160)}`;$('feed').prepend(d)}}
 async function refresh(){const r=await (await fetch('/api/runs')).json(),s=await (await fetch('/api/status')).json();
- $('go').disabled=!!s.running;$('state').textContent=s.running?'running '+s.running:'idle';
+ $('go').disabled=!!s.running;$('stop').hidden=!s.running;$('state').textContent=s.running?'running '+s.running:'idle';
  $('hist').innerHTML=r.map(x=>`<tr class="row ${x.id===cur?'sel':''}" onclick="pick('${x.id}')"><td>${x.id}</td><td>${x.publish||''}</td><td>${x.status}</td><td>${x.ideas}</td><td>${(x.tokens||0).toLocaleString()}</td><td>${x.seconds}</td></tr>`).join('');
  if(s.running&&cur!==s.running)pick(s.running);else if(!cur&&r.length)pick(r[0].id);else load()}
 function pick(id){cur=id;after=0;$('feed').innerHTML='';open.clear();load()}
@@ -94,5 +94,8 @@ async function coverage(){try{const c=await (await fetch('/api/coverage')).json(
  $('covdays').innerHTML=(c.days||[]).map(d=>`<span class="dpill ${d.waiting?'w':''}" title="${d.waiting} waiting for you">${d.date.slice(5)} · ${d.posts}</span>`).join('')}catch(e){$('covline').textContent='Could not read the Calendar.'}}
 $('start').oninput=()=>{$('start').dataset.touched='1'};
 coverage();setInterval(coverage,60000);
+$('stop').onclick=async()=>{if(!window.confirm('Stop the run? What is finished is kept; press Resume to continue it.'))return;
+ try{const r=await post('/api/ops/stop',{});alert('Stopped: '+r.stopped.join(', '))}catch(e){alert(e.message)}setTimeout(refresh,1500)};
+async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||('failed '+r.status));return j}
 refresh();timer=setInterval(refresh,2500);
 </script></body></html>

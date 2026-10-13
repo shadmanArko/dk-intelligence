@@ -54,7 +54,7 @@ td.id{white-space:nowrap}.meta{color:var(--mute);font-size:12px}.res{font-size:1
 <div class="wrap">
 <section class="card hero">
  <div class="top"><h1 id="title">Mission control</h1><span class="pill" id="status">…</span><span class="pill" id="mode"></span><span class="pill demo" id="demo" hidden>demo: a made-up run, drawn the same way</span>
-  <span class="grow"></span><a class="btn" id="demoLink" href="?demo=1">Show a demo</a><button class="btn" id="full">Full screen</button></div>
+  <span class="grow"></span><button class="btn" id="stopBtn" hidden style="border-color:var(--bad);color:var(--bad)">■ Stop</button><a class="btn" id="demoLink" href="?demo=1">Show a demo</a><button class="btn" id="full">Full screen</button></div>
  <div class="bar" id="pbar"><i style="width:0"></i><b id="ptext">0%</b></div>
  <div class="stats">
   <div class="stat"><span>Elapsed</span><b class="mono" id="el">0:00</b></div>
@@ -169,7 +169,9 @@ function matrix(){ if(!T)return;if(!T.matrix.length){$('matrix').innerHTML='<div
   return day+`<tr><td class="id" title="${esc(m.angle||'')}"><span class="mono">${esc(m.id)}</span> <span class="meta">${esc(m.format)}${m.template?' · '+esc(m.template):''}</span></td>`+
    ids.map(i=>`<td><span class="cell ${m.cells[i]}" title="${CELL[i]}: ${m.cells[i]}"></span></td>`).join('')+`<td>${res}</td></tr>`}).join('')+'</tbody></table>'}
 
-function draw(){head();pipe();gantt();side();matrix()}
+function draw(){head();pipe();gantt();side();matrix();$('stopBtn').hidden=!(T&&T.running&&!demo)}
+$('stopBtn').onclick=async()=>{if(!confirm('Stop the run? What is finished is kept; press Resume on the Runs page to continue it.'))return;
+ try{const r=await fetch('/api/ops/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});const j=await r.json();alert(r.ok?'Stopped: '+j.stopped.join(', '):j.detail)}catch(e){alert(e.message)}};
 async function poll(){try{const r=await fetch(demo?`/api/telemetry/demo?tick=${tick++}`:'/api/telemetry');T=await r.json();T0=performance.now();draw()}catch(e){}
  setTimeout(poll,POLL)}
 setInterval(()=>{if(document.hidden||!T)return;clock();if(T.running)gantt()},250);
