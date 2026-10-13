@@ -4,8 +4,8 @@
 decisions:
   - id: rotation
     title: "All reels, or a mix of surfaces?"
-    detail: "The default mixes reels with a carousel, a story, an image and a landscape video (about 124 posts per 10 days). Set format_rotation: [] in config/studio/plan.yaml for all reels (150 posts)."
-    done: false
+    detail: "Decided 2026-10-13: keep the mix (about 124 posts per 10 days). Set format_rotation: [] in config/studio/plan.yaml only if you ever want all reels."
+    done: true
   - id: facts
     title: "Confirm two menu facts"
     detail: "The mutton box price, and whether the lamb box and the taster box are still sold (docs/brand/facts.yaml in the data-platform repo). Until then the checker blocks any mention of those two boxes."
