@@ -51,6 +51,15 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | A24 | **Run the real thing once; the fakes will not find these** | the fake-model suite passed while two real runs found a 3.5 GB-per-run disk leak, a `--dry-run` that hid the texts to be checked, music that failed QA once in ten, and a missing outcome in the log | four defects fixed, each with a test | M8 results |
 | A18 | **One run at a time; failures stay local** | lock file; a failed helper turns red and the run still finishes | tested | `orchestrate` |
 | A19 | **Humans approve every write** | agents only create proposals | — | `propose_post` |
+| A25 | **Budget guards (was N4)** | a token cap per run and a cap of AI calls per idea; at the cap no new call starts, in-flight ones finish, every idea not reached is named with the reason; an alert event at 80% | a cap of 30k stopped a 30-idea run within one in-flight batch of the cap (test); real runs used 0.53-0.63M of 4M | `studio/budget.py`, `ai.py` |
+| A26 | **State on disk, resume by id** | `state.json` after every change; a stopped run continues without repeating a finished AI call or render | a run killed mid-way resumed with 0 repeated calls (test) | `studio/state.py` |
+| A27 | **Batch the judgment across platforms (was N17)** | one idea: one copywriter, one adapter call that writes all 5 platform texts, one designer, one master render | 3 AI calls per idea instead of 7 (one adapter per platform); 20.8k tokens per idea, 4.2k per post (3 real runs) | `studio/crew.py`, `adapter.md` |
+| A28 | **Platform rules reach the agent as data, never in its prompt** | the adapter's task carries the publisher's caption limits, the playbook hashtag range and the checker's first-line and emoji limits | the first real run held 26 texts for `FIRST_LINE_LONG`, `HASHTAGS`; after the limits were put in the task none did | `inputs.platform_slices` |
+| A29 | **One repair round with the checker's own words** | a failed platform text, a refused spec or a blocked on-screen word goes back once, with exactly the codes and fixes dk_intel (or the renderer) gave | 6 repair rounds in the last real run; most failed texts then passed; never a loop | `crew.adapt`, `run._prepare` |
+| A30 | **Pipeline the slow, serial resource** | renders run one at a time behind the AI work; each master uploads while the next renders | a 26-idea run took 735 s of production with every render and upload hidden behind the AI work | `studio/run.py` |
+| A31 | **Ask once more when an answer is unusable** | an agent answer that is missing, not JSON or lacks its key field is asked for once more | 1 call in 40 answered without JSON in the real runs | `studio/ai.py` |
+| A32 | **Keep one connection per MCP server** | a background loop with one task per server, any thread calls through it | hundreds of code calls with no process start each | `studio/mcp.py` |
+| A33 | **Tell the agent what must not be said, from the owner's data** | the strategist, writers and designer get `not_on_the_menu` (items facts.yaml doesn't confirm); the brand rule `UNAVAILABLE_ITEM` blocks them anyway | the first run caught a whole video about the lamb box (rule fired on the on-screen words); the second run had none | `media.unavailable_items`, `checks.py` |
 
 ## 3. Not applied yet (and when to)
 | # | Practice | Why not yet | Apply when | Expected gain |
@@ -58,7 +67,7 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | N1 | **A caption-quality signal** (owner verdicts on proposals → a labelled set → a judge calibrated against it) | the content scorer can't see wording (P4.4, confirmed 2026-10-12); nothing automatic measures copy quality | first, in Phase 5: log approve/reject + reason for every proposal | real quality optimisation instead of format-only |
 | N2 | **Server-side role profiles with exactly the agent's tools** | the client-side `--disallowedTools` works and is measured | a new product server: design profiles = agent roles from day one | defence in depth; no listing call |
 | N3 | **Structured output enforced by schema** (tool-forcing or a JSON-schema option) instead of regex parsing | the parse plus code normalisation (A13) works at this scale | running unattended at volume | no malformed answers, fewer retries |
-| N4 | **Budget guards**: max turns per agent, a token cap per run, a € cap per day | runs are small and watched | anything on a schedule or with a paid API | no runaway loops |
+| N4 | ~~**Budget guards**~~ (applied in S2, A25) **Budget guards**: max turns per agent, a token cap per run, a € cap per day | runs are small and watched | anything on a schedule or with a paid API | no runaway loops |
 | N5 | **Retries with backoff + idempotency keys** on writes | the lab's writes are local and idempotent | real write servers (D9, `dk_propose`) | safe re-runs |
 | N6 | **Prompt-cache-aware ordering**: the fixed part of a prompt first, parallel helpers sharing a warmed prefix | the subscription doesn't bill cache separately; small effect on usage | on a paid API (cache reads ~10% of input price) | maybe −30–60% input cost |
 | N7 | **Batch API** (about half price, results within hours) | needs a paid API; the lab runs on the subscription | weekly or bulk runs on a paid API | −50% |
@@ -71,9 +80,15 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | N14 | **Local or open model for unattended runs** (D11) | the P4.5 captions needed rewrites; quality unmeasured | after N1 gives a quality signal to compare on | €0 at volume |
 | N15 | **Template-writing agent** (code per *style*, never per post) behind gates and the owner's approval | the designer only combines the five existing templates; no style gap has been logged yet | the designer emits `style_request`s, or an occasion needs a look that doesn't exist | new styles without a developer; needs the template registry first (M9) |
 | N16 | **Process-claims rule in dk_intel** | found in M8 (see results); the designer prompt covers only its own output | owner decides the rule | one source, all stages covered |
-| N17 | **Cross-posting one master to several platforms** | the bridge supports it; each slot publishes to its own platform | the owner wants one reel on Instagram, Facebook, TikTok and YouTube | 3–4× the reach per render |
+| N17 | ~~**Cross-posting one master to several platforms**~~ (applied in S2, A27) **Cross-posting one master to several platforms** | the bridge supports it; each slot publishes to its own platform | the owner wants one reel on Instagram, Facebook, TikTok and YouTube | 3–4× the reach per render |
 
 ## 4. Anti-patterns we hit (don't repeat)
+- **Trusting the model's own "keep".** A copywriter said `keep` for a caption the checker then failed on the language
+  line. Every text that ships is re-checked by code, per platform (A12).
+- **A checker heuristic that is too narrow.** The German-first-line rule knew about 70 words; real captions ("Festliche
+  Kacchi", "Jede Zutat, offen gezeigt") failed it, and 5 of 26 ideas were lost to it. The fix was in the checker (suffixes
+  and more words, with a test), not in the agent: when many good outputs fail one rule, look at the rule too.
+- **Copying the same limits into several prompts.** They drift from the checker (see A28).
 - **Each agent as a full Claude Code** (coding prompt, CLAUDE.md, every tool): ~20k tokens per turn of
   overhead. Strip to the agent's job (A2–A4).
 - **An AI step for deterministic work** (the writer-lead): it cost tokens and could skip or misreport (A1).

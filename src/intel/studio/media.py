@@ -1,4 +1,4 @@
-"""The media step of the lab: from a planned slot to a rendered, checked job ready for handover. Plain code.
+"""The media step of the studio (and the lab): a planned slot to a rendered, checked job ready for handover. Plain code.
 
 The designer agent (AI) writes the CREATIVE part of a ContentSpec: hook, shots, slides, on-screen words. Everything an
 AI must not control is set here by code: the job id, the format and size the platform needs, the slot time, the post
@@ -20,8 +20,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-LAB = Path(__file__).resolve().parent
-REPO = LAB.parents[1]
+REPO = Path(__file__).resolve().parents[3]
 REELS = Path(
     os.environ.get("DK_REELS_DIR") or REPO.parent / "dhaka-kacchi-reels"
 )  # a sibling folder; the path has spaces
@@ -131,6 +130,24 @@ def price_items(facts: list[dict[str, Any]]) -> list[dict[str, str]]:
     return rows[:4]
 
 
+def unavailable_items(facts: list[dict[str, Any]]) -> list[str]:
+    """Names of menu items whose availability is not confirmed (from dk_intel get_facts): agents are told not to build
+    anything on them. The brand check (UNAVAILABLE_ITEM) blocks them in every text regardless."""
+    by_item: dict[str, dict[str, dict[str, Any]]] = {}
+    for fact in facts:
+        parts = str(fact.get("key", "")).split(".")
+        if len(parts) == 3 and parts[0] == "menu":
+            by_item.setdefault(parts[1], {})[parts[2]] = fact
+    out = []
+    for item in by_item.values():
+        avail = item.get("available")
+        if avail is not None and not (avail.get("status") == "confirmed" and avail.get("value") is True):
+            name = (item.get("name") or {}).get("value")
+            if name:
+                out.append(str(name))
+    return out
+
+
 def _with_checked_prices(slides: list[Any], prices: list[dict[str, str]]) -> list[Any]:
     out = []
     for s in slides:
@@ -156,6 +173,17 @@ def finalize_spec(
 ) -> tuple[dict[str, Any] | None, str]:
     """The designer's answer is data: take its creative content, then set everything else from code. Returns
     (spec, "") or (None, why). Nothing the designer wrote for the envelope, scheduling or captions is trusted."""
+    content, why = creative_content(answer, slot_format, prices)
+    if content is None:
+        return None, why
+    spec = _envelope(answer, jid, week_label, content, {platform: caption},
+                     {"platforms": [platform], "at": planned_posted_at}, avoid)  # fmt: skip
+    return spec, ""
+
+
+def creative_content(answer: dict[str, Any] | None, slot_format: str,
+                     prices: list[dict[str, str]] | None) -> tuple[dict[str, Any] | None, str]:  # fmt: skip
+    """The designer's creative content with everything code decides put back: (content, "") or (None, why)."""
     if not isinstance(answer, dict) or not isinstance(answer.get("spec"), dict):
         return None, "the designer returned no spec"
     content = answer["spec"].get("content")
@@ -165,16 +193,18 @@ def finalize_spec(
     if kind == "video":
         if content.get("kind") != "video":
             return None, f"a {slot_format} needs a video spec, the designer made '{content.get('kind')}'"
-        content = {**content, "template": "beat-reel", "formats": ["9:16"]}  # the platforms take 9:16; code decides
-    else:
-        if content.get("kind") != "slides" or not isinstance(content.get("slides"), list) or not content["slides"]:
-            return None, f"a {slot_format} needs a slides spec, the designer made '{content.get('kind')}'"
-        slides = _with_checked_prices(content["slides"], prices or [])
-        if kind == "carousel":
-            content = {**content, "size": "carousel", "slides": slides}
-        else:  # one picture in the feed
-            content = {**content, "size": "album", "slides": slides[:1]}
-    language = answer["spec"].get("language")
+        return {**content, "template": "beat-reel", "formats": ["9:16"]}, ""  # the platforms take 9:16; code decides
+    if content.get("kind") != "slides" or not isinstance(content.get("slides"), list) or not content["slides"]:
+        return None, f"a {slot_format} needs a slides spec, the designer made '{content.get('kind')}'"
+    slides = _with_checked_prices(content["slides"], prices or [])
+    if kind == "carousel":
+        return {**content, "size": "carousel", "slides": slides}, ""
+    return {**content, "size": "album", "slides": slides[:1]}, ""  # one picture in the feed
+
+
+def _envelope(answer: dict[str, Any] | None, jid: str, week_label: str, content: dict[str, Any],
+              captions: dict[str, str], publish: dict[str, Any], avoid: list[str]) -> dict[str, Any]:  # fmt: skip
+    language = (answer or {}).get("spec", {}).get("language")
     spec: dict[str, Any] = {
         "spec_version": CONTENT_SPEC_VERSION,
         "job_id": jid,
@@ -183,18 +213,53 @@ def finalize_spec(
         if isinstance(language, list) and all(isinstance(x, str) for x in language)
         else ["en", "de"],
         "content": content,
-        "captions": {platform: caption},
-        "publish": {"platforms": [platform], "at": planned_posted_at},
+        "captions": captions,
+        "publish": publish,
     }
     if avoid:
         spec["avoid_assets"] = avoid
-    return spec, ""
+    return spec
+
+
+def finalize_idea_spec(
+    answer: dict[str, Any] | None,
+    *,
+    jid: str,
+    idea_format: str,
+    slots: dict[str, str],
+    captions: dict[str, str],
+    options: dict[str, dict[str, Any]],
+    avoid: list[str],
+    week_label: str,
+    prices: list[dict[str, str]] | None = None,
+) -> tuple[dict[str, Any] | None, str]:
+    """One idea, one master render, a post for every platform in `slots`: the designer's creative content, then
+    everything else from code (id, size, one slot per platform, the checked captions and options, the avoid list)."""
+    content, why = creative_content(answer, idea_format, prices)
+    if content is None:
+        return None, why
+    publish: dict[str, Any] = {"platforms": list(slots), "at": min(slots.values()), "slots": dict(slots)}
+    if options:
+        publish["options"] = options
+    return _envelope(answer, jid, week_label, content, captions, publish, avoid), ""
+
+
+def idea_designer_task(*, jid: str, idea_format: str, platforms: list[str], angle: str, caption: str,
+                       evidence: list[dict[str, str]], brand: list[str], vocab: dict[str, Any],
+                       inventory: dict[str, dict[str, str]]) -> dict[str, Any]:  # fmt: skip
+    """The designer's task for an idea: like `designer_task`, for one master that serves several platforms."""
+    task = designer_task(jid=jid, platform="", slot_format=idea_format, planned_posted_at="", angle=angle,
+                         caption=caption, evidence=evidence, brand=brand, vocab=vocab, inventory=inventory)  # fmt: skip
+    task.pop("platform")
+    task.pop("planned_posted_at")
+    return {**task, "platforms": platforms}
 
 
 # ---------- I/O ----------
 
 
-def reels_job(spec_path: Path, *flags: str, reels: Path | None = None) -> tuple[int, dict[str, Any]]:
+def reels_job(spec_path: Path, *flags: str, reels: Path | None = None,
+              timeout_s: int = RENDER_TIMEOUT_S) -> tuple[int, dict[str, Any]]:  # fmt: skip
     """Run the reels engine on a spec file. Returns (exit code, the JSON summary it prints as its last line).
     0 ok · 2 invalid spec · 3 render error · 4 QA failed. A crash or a missing engine is code 3 with the reason."""
     root = reels or REELS
@@ -202,9 +267,9 @@ def reels_job(spec_path: Path, *flags: str, reels: Path | None = None) -> tuple[
         return 3, {"ok": False, "error": f"the reels engine is not at {root} (set DK_REELS_DIR)"}
     try:
         p = subprocess.run(["npm", "run", "-s", "job", "--", str(spec_path), *flags], cwd=root, capture_output=True,
-                           text=True, timeout=RENDER_TIMEOUT_S)  # fmt: skip
+                           text=True, timeout=timeout_s)  # fmt: skip
     except subprocess.TimeoutExpired:
-        return 3, {"ok": False, "error": f"the render took longer than {RENDER_TIMEOUT_S} s"}
+        return 3, {"ok": False, "error": f"the render took longer than {timeout_s} s"}
     lines = [x for x in p.stdout.splitlines() if x.strip()]
     try:
         return p.returncode, json.loads(lines[-1])
@@ -231,13 +296,14 @@ class AssetLedger:
     """Which footage the last jobs used, so the next ones prefer something else (the resolver stays pure: the list
     travels in the spec as `avoid_assets`)."""
 
-    def __init__(self, path: Path | None = None):
+    def __init__(self, path: Path | None = None, recent_jobs: int = RECENT_JOBS):
         self.path = path or LEDGER
+        self.recent_jobs = recent_jobs  # the studio makes this horizon-aware: every idea of the plan counts
         self.rows: list[dict[str, Any]] = json.loads(self.path.read_text()) if self.path.exists() else []
 
     def recent(self) -> list[str]:
         seen: list[str] = []
-        for row in self.rows[-RECENT_JOBS:]:
+        for row in self.rows[-self.recent_jobs :]:
             seen += [a for a in row["assets"] if a not in seen]
         return seen
 

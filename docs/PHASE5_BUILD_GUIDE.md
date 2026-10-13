@@ -93,7 +93,7 @@ instagram|facebook only, `_dates_next_week` (weekday names, so 10 days can't be 
 
 ## 4. Milestones
 
-### S2: the studio at full scale (the next task)
+### S2: the studio at full scale (DONE 2026-10-12: ADR 0034, [STUDIO.md](STUDIO.md), [results](results/S2_studio.md))
 **Goal:** one command (and the console button) produces 150 valid drafts for a 10-day window: 30 ideas × 5
 platforms, with budgets, measured on frozen inputs.
 
@@ -166,7 +166,7 @@ platforms, with budgets, measured on frozen inputs.
 - ADR 0034 (studio package, ports, settings as data, cross-posting);
 - the console shows the run; tests cover chunking, budgets, resume and five-platform routing.
 
-### S3: approval at scale (in dk-publishing, a public repo: no addresses or secrets)
+### S3: approval at scale (DONE 2026-10-13 in dk-publishing, merged, not deployed; ADR 0025 there)
 **Goal:** the owner approves a day's 15 posts in under 2 minutes, watching each video.
 
 **Decided:** a **daily review page** in dk-publishing that reuses the same `approve` and `cancel` use cases (the

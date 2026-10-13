@@ -10,27 +10,27 @@ contracts:
     source: {repo: reels, file: index/content-spec.schema.json}
     pinned: contracts/pinned/reels.content-spec.schema.json
     version: 1                      # spec_version in every spec; reported by dk_reels list_templates.contracts
-    consumers: [lab/agentic-slice/media.py finalize_spec, .claude/agents/designer.md]
+    consumers: [src/intel/studio/media.py finalize_idea_spec, src/intel/studio/agents/designer.md]
   reels.manifest:
     owner: dhaka-kacchi-reels
     what: the render report the handover reads (files, status, on-screen text)
     source: {repo: reels, file: index/manifest.schema.json}
     pinned: contracts/pinned/reels.manifest.schema.json
     version: 1                      # manifest_version
-    consumers: [lab/agentic-slice/handover.py plan_post, lab/agentic-slice/run.py make_media]
+    consumers: [src/intel/studio/handover.py plan_post, src/intel/studio/run.py]
   publishing.api:
     owner: dk-publishing
     what: the HTTP API the handover calls (media upload, batch, posts, overview)
     source: {url: /openapi.json}    # public, no key; base from DK_PUBLISH_URL
     pinned: contracts/pinned/publishing.openapi.json
     version: "1.0"                  # info.version
-    consumers: [lab/agentic-slice/handover.py PublishClient]
+    consumers: [src/intel/studio/handover.py PublishClient]
   publishing.spec:
     owner: dk-publishing
     what: the publishing contract (every platform rule); checked at run time, cached by spec_version
     source: {runtime: GET /v1/spec}
     version: publishing-spec/v1     # the document's `spec` field; the handover refuses any other
-    consumers: [lab/agentic-slice/handover.py]
+    consumers: [src/intel/studio/handover.py]
   dk_intel.tools:
     owner: dk-intelligence
     what: the dk_intel MCP tools every agent calls

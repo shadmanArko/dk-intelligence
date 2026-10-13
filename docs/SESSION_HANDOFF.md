@@ -1,4 +1,4 @@
-# Session handoff (updated 2026-10-12, late evening): read this first
+# Session handoff (updated 2026-10-13, after S2 and S3): read this first
 
 For a new Claude session, a **different Claude account** or another chat. Everything needed to continue lives in
 the repos: this page (the state and the owner), [PHASE5_BUILD_GUIDE.md](PHASE5_BUILD_GUIDE.md) (how to finish every
@@ -6,7 +6,7 @@ remaining milestone), [PHASE5_CONTENT_STUDIO_PLAN.md](PHASE5_CONTENT_STUDIO_PLAN
 `CLAUDE.md` (rules), and the ADRs. Nothing here is secret. Keys, tokens and server addresses are never written in
 docs or chat.
 
-**If you are picking this up: read this page, then the build guide, then start S2 (build guide §4).** The owner
+**If you are picking this up: read this page, then the build guide, then start S4 (build guide §4); S2 and S3 are done.** The owner
 approved the whole plan ("go, full permission"). Don't re-ask what is decided; report at milestone boundaries.
 
 ## 1. The owner and how to work with them
@@ -71,9 +71,9 @@ https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc.
 | M8 media pipeline (designer agent → reels render → drafts at dk-publishing) | **done**, merged (PR #19) | ADR 0031, [results](results/M8_media_pipeline.md) |
 | **S0** safety and one truth | **done** | ADR 0032; PRs #19 and #24 |
 | **S1** contracts between the projects | **done** | ADR 0033; PR #20; `contracts/` |
-| **S2** the studio at full scale | **next** | build guide §4 S2 |
-| S3 the daily review page (dk-publishing) | to do | build guide §4 S3 |
-| S4 the learning loop | to do (after S2, parallel with S5) | build guide §4 S4 |
+| **S2** the studio at full scale | **done** (branch `feat/s2-studio`, PR to `main`) | ADR 0034, [STUDIO.md](STUDIO.md), [results](results/S2_studio.md) |
+| **S3** the daily review page (dk-publishing) | **done and merged there, NOT deployed** (dk-publishing PR #2; the owner runs `make deploy`) | dk-publishing ADR 0025, `docs/runbooks/review-page.md` |
+| **S4** the learning loop | **next** (can run beside S5) | build guide §4 S4 |
 | S5 production breadth (templates, footage curator, template engineer) | to do | build guide §4 S5 |
 | S6 unattended (schedule, earned autonomy, model choice) | to do | build guide §4 S6 |
 
@@ -95,6 +95,19 @@ The live run (2026-10-12) designed, checked and rendered 2 reels on live data. I
 Calendar tab.** The video is in `dhaka-kacchi-reels/out/jobs/2026w42-ig-tue1700-s1/`. The second reel was held on
 purpose: it claims "smoky lamb kacchi is back", but the lamb box's availability is unknown in facts.yaml. A rule for
 that is part of S2.
+
+**What S2 did** (`uv run intel studio run`, see [STUDIO.md](STUDIO.md)):
+- `src/intel/studio/`: ports for tools, agent runner, renderer and publisher; settings in `config/studio/*.yaml`; the
+  scorer picks each day's windows; strategist in chunks; per idea a copywriter, one adapter call for five platforms and
+  a designer; one render at a time with uploads overlapping; token and call budgets; resume; a console on port 8771.
+- dk_intel rules 1.2: `UNAVAILABLE_ITEM` (from facts.yaml data) and a wider German-first-line check.
+- Three real 10-day dry runs on frozen inputs: **26 of 26 plannable ideas, 128 of 130 posts valid at the real publisher,
+  541k tokens (4.2k per post), 14 minutes.** The scorer ruled out 4 of 30 slots (decision for the owner, in the results).
+- **No drafts have been created from a 10-day run.** `--publish drafts` is the owner's go, after the review page is live.
+
+**What S3 did** (in dk-publishing, public repo): a `/review` page with approve and reject per day, idea and platform
+through the Calendar's own `review_drafts`; signed 24 h link from the 08:00 Telegram digest plus a session cookie; a
+`watch` column in the Calendar tab; owner steps in dk-publishing `docs/runbooks/review-page.md`.
 
 **What S1 did:**
 - `contracts/registry.yaml` with pinned copies (reels content spec and manifest, dk-publishing's API);
@@ -120,10 +133,12 @@ reels validates its manifest before every write. Both owner repos document "add 
 ## 4. The owner's open items
 Full list: build guide §5.
 1. Approve or reject the first draft in the Calendar.
-2. Confirm the facts: the mutton box price, and whether the lamb and taster boxes are available.
-3. Where the review page lives (S3).
-4. The token budget per run.
-5. The TikTok privacy default.
+2. Confirm the facts: the mutton box price, and whether the lamb and taster boxes are available (now they also stop
+   agents and the checker from mentioning those two boxes).
+3. **Deploy the review page** (dk-publishing runbook `docs/runbooks/review-page.md`: `dk review init`, `make deploy-secrets`,
+   `make deploy`, first link), then say go for the first `--publish drafts` run.
+4. The four ruled-out slots (results doc, "Decisions").
+5. The token budget per run (4M is set and 4x what is used) and the TikTok privacy default (`only_me`).
 
 ## 5. How to start a new session
 1. Open the session in `dk-intelligence`. Read this page, then [PHASE5_BUILD_GUIDE.md](PHASE5_BUILD_GUIDE.md), then
@@ -136,5 +151,5 @@ Full list: build guide §5.
    - dk-publishing: `make check`;
    - reels: `npx tsc -p .`, `npm test` and `npm run regress`.
 4. Read [AGENTIC_PLAYBOOK.md](AGENTIC_PLAYBOOK.md) before building any agent part (`CLAUDE.md` requires it).
-5. Start **S2** from build guide §4. Work in a branch, open a PR, check CI, merge (that deploys dk-intelligence),
+5. Start **S4** from build guide §4. Work in a branch, open a PR, check CI, merge (that deploys dk-intelligence),
    report.

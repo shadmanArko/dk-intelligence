@@ -47,6 +47,16 @@ menu:
   - id: chutney
     name: Chutney
     price: null
+  - id: lamb_box
+    name: Smokey Lamb Box
+    available: null               # the owner has not said whether it is on the menu
+  - id: mutton_box
+    name: Mutton Box
+    available: true
+  - id: borhani
+    name: Shahi Borhani
+    available: false
+    mentions: [borhani, bourhani]
 fulfilment:
   home_delivery:
     fees: [{max_km: 5, fee: 5.00}]
@@ -176,6 +186,16 @@ CASES = [
         {"caption": "Borhani: a refreshing secret!\nKacchi in Berlin. #kacchibiryani #berlinfood #biryaniberlin"},
         {"caption": "Borhani – Geheimnis aus Kacchi!\nBerlin. #kacchibiryani #berlinfood #biryaniberlin"},
     ),
+    (
+        "LANG_ORDER",
+        {"caption": "Cooking in Berlin: Kacchi.\n#kacchibiryani #berlinfood #biryaniberlin"},
+        {"caption": "Jede Zutat, offen gezeigt\nKacchi in Berlin. #kacchibiryani #berlinfood #biryaniberlin"},
+    ),  # found in a real run  # fmt: skip
+    (
+        "LANG_ORDER",
+        {"caption": "Young Kacchi in Berlin.\n#kacchibiryani #berlinfood #biryaniberlin"},
+        {"caption": "Festliche Kacchi in Berlin\nSamstagabend. #kacchibiryani #berlinfood #biryaniberlin"},
+    ),  # suffixes  # fmt: skip
     ("WERBUNG_MISSING", {"caption": GOOD, "paid": True}, {"caption": "Werbung: " + GOOD, "paid": True}),
     ("PRICE_UNCONFIRMED", {"caption": GOOD + " Taster nur 9,99 €"}, {"caption": GOOD + " Box 15,00 €"}),
     ("PRICE_MISMATCH", {"caption": GOOD + " Box 12,50 €"}, {"caption": GOOD + " Lieferung 5 €"}),
@@ -195,6 +215,17 @@ CASES = [
     ("UNVERIFIED_CLAIM", {"caption": GOOD + " New in Berlin!"}, {}),
     ("PORTION_CLAIM", {"caption": GOOD + " Box für 2 Personen."}, {"caption": GOOD + " 1000 ml Box."}),
     ("PORTION_CLAIM", {"caption": GOOD + " Feeds 2 people."}, {}),
+    (
+        "UNAVAILABLE_ITEM",
+        {"caption": GOOD + " Smokey lamb kacchi is back!"},
+        {"caption": GOOD + " Mutton box, 1000 ml."},
+    ),
+    ("UNAVAILABLE_ITEM", {"caption": GOOD + " Lambs from the pot."}, {}),  # a plural counts
+    (
+        "UNAVAILABLE_ITEM",
+        {"caption": GOOD + " Dazu Bourhani!"},
+        {},
+    ),  # the item's own `mentions` list wins over its name
     ("HEALTH_CLAIM", {"caption": GOOD + " und gesund"}, {}),
     ("ALLERGEN_CLAIM", {"caption": GOOD + " glutenfrei"}, {}),
     (

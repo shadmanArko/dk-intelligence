@@ -1,0 +1,26 @@
+# The content plan: how much one run plans. Change a line, run again. Every key is read by src/intel/studio/config.py.
+
+horizon_days: 10          # days one run plans (10 days x 3 ideas = 30 ideas)
+first_day_offset: 1       # 1 = the plan starts tomorrow; 0 = today (only slots 60 s or more away can be handed over)
+ideas_per_day: 3          # ideas per day (at most 3: one per posting window, see slots.yaml)
+max_ideas_per_run: 30     # a hard cap on ideas in one run, whatever the two lines above say
+chunk_ideas: 10           # the strategist plans this many ideas per call (about 3 days), so its context stays small
+
+# One idea becomes one native post per platform below (its own caption and options), from ONE master render.
+platforms: [instagram, facebook, tiktok, youtube, threads]
+primary_platform: instagram   # the platform whose content scorer and grounding pack plan an idea
+
+# The format of idea 1, 2, 3 of each day. reel = a 9:16 video for all five platforms. carousel = slides for Instagram
+# and Facebook only (2 posts); image = one picture for Instagram, Facebook and Threads (3 posts). TikTok and YouTube
+# post video only (routes.yaml), so every non-reel idea makes fewer than 5 posts. All reels = 150 posts per 10 days.
+format_mix: [reel, reel, reel]
+
+# What the ideas are about. The strategist tags each idea with one pillar; no pillar may take more than max_pillar_share
+# of a run (code checks this and tells the strategist the counts so far).
+max_pillar_share: 0.4
+pillars:
+  - {name: food, about: "the food itself: the pot, the rice, the meat, the box; close-ups and the moment of opening"}
+  - {name: berlin, about: "Berlin: the areas we deliver to, the Saturday ritual of picking up, neighbours"}
+  - {name: guests, about: "what guests say, answering a real need from a review (never copy a quote)"}
+  - {name: order, about: "how to order for Saturday: the deadline and channels, only as the facts say"}
+  - {name: occasions, about: "festive days in the next 10 days, in the right tone (sales_ok only where allowed)"}

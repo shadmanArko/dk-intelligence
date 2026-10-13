@@ -1,5 +1,7 @@
 # Lab: an agentic vertical slice
 
+> **2026-10-13: the production version of this lab is `src/intel/studio/` ([STUDIO.md](../../docs/STUDIO.md), ADR 0034).** `media.py` and `handover.py` moved there and this lab imports them; the rest here (the demo calendar, `/plan-week`, the first console) stays as the measured reference for v1-v6.
+
 A small, readable multi-agent system, built to show how the pieces fit together before the real one is designed.
 It uses one orchestrator, three kinds of agent and two MCP servers, and has a console where you can watch a run and
 start one yourself. **By default it is read-only on everything real:** the only write goes to the local

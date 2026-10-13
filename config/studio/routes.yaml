@@ -1,0 +1,41 @@
+# What each kind of idea becomes on each platform. Platform RULES (formats, limits, required options) live in the
+# publisher (GET /v1/spec) and are checked against it on every run; this file only chooses which publishing format a
+# master file goes to, and the defaults code (never the AI) sets.
+
+formats:
+  reel:      # one 9:16 video, one render
+    make: video
+    render: [video, "9:16"]
+    content_type: reel
+    targets: {instagram: reel, facebook: video, tiktok: video, youtube: video, threads: video}
+  carousel:  # 3-5 swipe slides
+    make: carousel
+    render: [slides, carousel]
+    content_type: carousel
+    targets: {instagram: carousel, facebook: photo}   # Threads takes one image only (publisher spec: image max 1)
+  image:     # one picture
+    make: image
+    render: [slides, album]
+    content_type: image
+    targets: {instagram: carousel, facebook: photo, threads: image}   # one file turns "carousel" into a feed post
+
+# Options code sets on every post of a platform. The AI never writes these (a safe default until the owner decides).
+defaults:
+  tiktok: {privacy_level: only_me}      # change to public once you trust the output (owner decision, build guide 5.5)
+  youtube: {made_for_kids: "no"}
+
+# The only options the platform adapter (AI) may write, per platform. Everything else comes from the defaults above.
+adapter_options:
+  youtube: [title, description]
+
+# How a post reads on each platform: creative guidance for the adapter, not a rule (rules come from the publisher and
+# dk_intel). The performance playbook (build guide S4) will replace these lines with what actually worked.
+feel:
+  instagram: "warm and visual; the first line carries the post; a German hook, then one English line, a few hashtags"
+  facebook: "a little longer and more conversational, for neighbours and families; two or three short lines"
+  tiktok: "short and punchy; the first words are the hook, written the way you would say it"
+  youtube: "no caption: a clear title that says what you will see, and a short description that says what and where"
+  threads: "one casual thought, like a message to a friend; short; no '#' symbol (one topic word without '#' at most)"
+
+# A language that needs a native speaker's check before its on-screen text may go out (en and de never do).
+reviewed_languages: []

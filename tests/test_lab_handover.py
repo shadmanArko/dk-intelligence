@@ -5,14 +5,14 @@ key never leaking. No network."""
 
 import datetime as dt
 import hashlib
-import importlib.util
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+
+from intel.studio import handover
 
 LAB = Path(__file__).resolve().parents[1] / "lab" / "agentic-slice"
 KEY = "dkp_SECRETSECRETSECRET"
@@ -20,16 +20,7 @@ NOW = dt.datetime(2026, 10, 12, 18, 0, tzinfo=dt.UTC)
 SLOT = "2026-10-14T16:30:00+02:00"
 
 
-def _load():  # type: ignore[no-untyped-def]
-    spec = importlib.util.spec_from_file_location("lab_handover", LAB / "handover.py")
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["lab_handover"] = mod  # dataclasses look their module up here while the class is built
-    spec.loader.exec_module(mod)
-    return mod
-
-
-H = _load()
+H = handover
 
 
 def _fmt(lo: int, hi: int, caption: int | None = 2200, options: dict[str, Any] | None = None) -> dict[str, Any]:

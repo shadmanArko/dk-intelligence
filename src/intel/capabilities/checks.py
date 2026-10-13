@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -15,7 +16,7 @@ from intel.capabilities.brand import CAPTION_LIMIT, EMOJI_MAX, FIRST_LINE_MAX, g
 from intel.capabilities.ports import BrandPack, BrandSource
 from intel.capabilities.types import Draft, ToolProblem, prov, refs
 
-RULES_VERSION = "1.1"  # 1.1 (2026-10-12): UNVERIFIED_CLAIM, PORTION_CLAIM (ex the designer prompt)
+RULES_VERSION = "1.2"  # 1.1 (2026-10-12): UNVERIFIED_CLAIM, PORTION_CLAIM · 1.2: UNAVAILABLE_ITEM (from facts.yaml)
 MAX_DRAFTS = 20
 Severity = Literal["block", "warn"]
 
@@ -55,6 +56,11 @@ RULES: dict[str, Rule] = {
         "show the food instead; only say what get_facts confirms (e.g. the personal confirmation message)",
     ),
     "PORTION_CLAIM": Rule("block", "how many people a box feeds", "give the size in ml (get_facts), not people"),
+    "UNAVAILABLE_ITEM": Rule(
+        "block",
+        "a menu item facts.yaml doesn't confirm is available",
+        "leave it out until the owner confirms it is on the menu (menu.<item>.available)",
+    ),
     "HEALTH_CLAIM": Rule("block", "a health claim (EU 1924/2006)", "describe taste and craft instead"),
     "ALLERGEN_CLAIM": Rule(
         "block", "an allergen statement", "never state allergens in posts; customers ask us directly"
@@ -65,7 +71,7 @@ RULES: dict[str, Rule] = {
 
 GERMAN = re.compile(
     r"[äöüß]|\b(und|der|die|das|den|dem|ein|eine|ist|sind|nicht|mit|für|auf|bei|jetzt|bestell\w*|samstag|frisch|"
-    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt|aus|von|vom|zum|zur|im|unser|unsere|dein|deine|dich|dir|schmeckt)\b",
+    r"lecker|heute|wir|ihr|euer|eure|warum|weil|wie|wer|wo|braucht|gibt|kein|keine|oder|ohne|uns|euch|auch|noch|nur|sich|niemals|immer|schon|mal|hier|schreibt|aus|von|vom|zum|zur|im|unser|unsere|dein|deine|dich|dir|schmeckt|jede|jeder|jedes|jeden|alle|alles|offen|zeigt|zeigen|bereit|deckel|topf|reis|fleisch|zutat|zutaten|gewürze|duft|wartet|warten|kommt|kommen)\b|\b\w{3,}(?:lich|liche|lichen|licher|liches|ung|ungen|heit|keit|abend|nacht)\b|\b\w{3,}tag\b",
     re.I,
 )
 PRICE = re.compile(r"(?:€\s?(\d{1,3}(?:[.,]\d{1,2})?))|(?:(\d{1,3}(?:[.,]\d{1,2})?)\s?(?:€|eur\b|euro\b))", re.I)
@@ -135,6 +141,34 @@ def _known_prices(source: BrandSource) -> dict[float, str]:
     return prices
 
 
+def _unavailable_terms(source: BrandSource) -> dict[str, list[str]]:
+    """Menu item id → the words that name it, for every item whose `available` is not confirmed true. From the data:
+    an item's own `mentions` list in facts.yaml when it has one (e.g. a German name), else the words of its id and
+    name that no other item shares ("lamb", "taster": not "kacchi" or "box"). An item with no `available` line at all
+    makes no statement, so it is not blocked."""
+    items: dict[str, dict[str, Any]] = {}
+    for fact in get_facts(source, ["menu"])["items"]:
+        parts = str(fact["key"]).split(".")
+        if len(parts) >= 3:
+            items.setdefault(parts[1], {}).setdefault(parts[2], []).append(fact)
+    words: dict[str, set[str]] = {}
+    for item_id, fields in items.items():
+        name = (fields.get("name") or [{}])[0].get("value")
+        found = re.findall(r"[a-zäöüß]+", f"{item_id.replace('_', ' ')} {name or ''}".lower())
+        words[item_id] = {w for w in found if len(w) >= 4}
+    seen = Counter(w for ws in words.values() for w in ws)
+    out: dict[str, list[str]] = {}
+    for item_id, fields in items.items():
+        available = (fields.get("available") or [None])[0]
+        if available is None or (available["status"] == "confirmed" and available["value"] is True):
+            continue
+        listed = [str(f["value"]).lower() for f in fields.get("mentions") or [] if f.get("value")]
+        terms = listed or sorted(w for w in words[item_id] if seen[w] == 1)
+        if terms:
+            out[item_id] = terms
+    return out
+
+
 def _hashtag_range(pack: BrandPack, platform: str, fmt: str | None) -> tuple[int, int] | None:
     formats = pack.playbook.get("formats") or {}
     chosen = fmt or next(iter(platform_formats(pack, platform)), None)
@@ -143,7 +177,13 @@ def _hashtag_range(pack: BrandPack, platform: str, fmt: str | None) -> tuple[int
     return (int(rng[0]), int(rng[1])) if isinstance(rng, list) and len(rng) == 2 else None
 
 
-def check_one(d: Draft, pack: BrandPack, prices: dict[float, str], halal_certified: bool) -> dict[str, Any]:
+def check_one(
+    d: Draft,
+    pack: BrandPack,
+    prices: dict[float, str],
+    halal_certified: bool,
+    unavailable: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
     text = d.caption
     low = _norm(text)
     lines = [ln for ln in text.splitlines() if ln.strip()]
@@ -202,6 +242,10 @@ def check_one(d: Draft, pack: BrandPack, prices: dict[float, str], halal_certifi
         hit("UNVERIFIED_CLAIM", (m.start(), m.end()))
     if m := PORTION.search(text):
         hit("PORTION_CLAIM", (m.start(), m.end()))
+    for item_id, terms in (unavailable or {}).items():
+        if m := re.search(r"(?<!\w)(?:" + "|".join(re.escape(t) for t in terms) + r")\w{0,2}(?!\w)", low):
+            hit("UNAVAILABLE_ITEM", (m.start(), m.end()), detail=item_id)
+            break
     if m := HEALTH.search(text):
         hit("HEALTH_CLAIM", (m.start(), m.end()))
     if m := ALLERGEN.search(text):
@@ -237,7 +281,9 @@ def check_drafts(source: BrandSource, drafts: list[Draft]) -> dict[str, Any]:
     prices = _known_prices(source)
     halal = (pack.facts.get("claims_status") or {}).get("halal") or {}
     certified = bool(halal.get("certified"))
+    unavailable = _unavailable_terms(source)
     results = [
-        {"ref": ref, **check_one(d, pack, prices, certified)} for ref, d in zip(refs(drafts), drafts, strict=True)
+        {"ref": ref, **check_one(d, pack, prices, certified, unavailable)}
+        for ref, d in zip(refs(drafts), drafts, strict=True)
     ]
     return {"rules_version": RULES_VERSION, "results": results, "prov": prov("knowledge pack (brand)", pack.pack_id)}
