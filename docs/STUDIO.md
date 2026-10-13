@@ -40,6 +40,16 @@ uv run intel studio eval run --label v2 --publish render
 uv run intel studio eval show                     # posts made, tokens, minutes per version
 ```
 
+## The look of each post (S5)
+A creative-director agent chooses each idea's template, variant, music hint and pace, one call per day; code makes it valid
+and varied. `config/studio/craft.yaml` holds how each platform's native post is made (edit a line to change the director's
+taste); `config/studio/plan.yaml` `format_rotation` sets which surface the third idea of each day takes. See
+[ADR 0036](adr/0036-creative-director-and-template-registry.md).
+```bash
+uv run intel studio curate --scope enrich --limit 5   # the curator proposes knowledge for footage (you accept in the reels repo)
+uv run intel studio requests                          # what no template could do, most asked first
+```
+
 ## What worked (S4)
 ```bash
 uv run intel performance build      # after each Sunday pull: results per post, the playbook per platform (0 tokens)

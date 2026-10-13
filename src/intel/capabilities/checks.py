@@ -89,6 +89,8 @@ UNVERIFIED = re.compile(
     r"(\b(personally|persönlich|by hand|von hand|handverlesen)\b.{0,40}"
     r"\b(check|inspect|test|tast|prüf|kontroll|geprüft)\w*"
     r"|\b(check|inspect|prüf|kontrollier)\w*\b.{0,40}\b(personally|persönlich|by hand|von hand)\b"
+    r"|\b(seal|verschlossen|versiegel|handverschlossen)\w*\b.{0,25}\b(by hand|von hand|handmade|hand-made)\b"
+    r"|\b(by hand|von hand)\b.{0,25}\b(seal|verschlossen|versiegel)\w*"
     r"|\b(quality[- ]control\w*|qualitätskontroll\w*|hand[- ]checked|handgeprüft)"
     r"|\b(\d{1,2}|two|three|four|five|six|seven|eight|zwei|drei|vier|fünf|sechs|sieben|acht)\s*(hours?|hrs?|stunden?)\b"
     r"|\b(since|from|ab|seit)\s+\d{1,2}(?::\d{2})?\s*(a\.?m\.?|uhr)\b"

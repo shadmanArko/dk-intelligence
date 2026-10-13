@@ -24,6 +24,7 @@ from tests.studio_fakes import NOW, TODAY, FakeRenderer, FakeRunner, FakeTools, 
 from tests.test_contracts import errors, validator
 
 SHIPPED = sc.load()
+ALL_REELS = SHIPPED.with_plan(format_rotation=[])  # the 150-posts scenario: three reels a day, no rotation
 
 
 # ---------- settings as data ----------
@@ -46,7 +47,7 @@ def test_the_shipped_settings_load_and_describe_150_posts():
 def _write(tmp_path: Path, **patch: Any) -> Path:
     d = tmp_path / "studio"
     d.mkdir()
-    for name in ("plan", "slots", "routes", "budgets"):
+    for name in ("plan", "slots", "routes", "budgets", "craft"):
         data = yaml.safe_load((sc.CONFIG_DIR / f"{name}.yaml").read_text())
         data.update(patch.get(name, {}))
         (d / f"{name}.yaml").write_text(yaml.safe_dump(data))
@@ -87,34 +88,34 @@ def test_the_plan_uses_real_dates_with_the_right_offset_across_the_clock_change(
 
 
 def test_the_ideas_of_ten_days_get_distinct_valid_post_keys_and_a_time_per_platform():
-    days = slots.plan_days(SHIPPED, TODAY)
-    scores = slots.read_scores(slots.probes(SHIPPED, days), [])  # no answer from the scorer: every slot may pass
-    ideas, dropped = slots.assign(SHIPPED, days, scores)
+    days = slots.plan_days(ALL_REELS, TODAY)
+    scores = slots.read_scores(slots.probes(ALL_REELS, days), [])  # no answer from the scorer: every slot may pass
+    ideas, dropped = slots.assign(ALL_REELS, days, scores)
     assert len(ideas) == 30 and not dropped
     keys = [i.job_id for i in ideas]
     assert len(set(keys)) == 30 and all(re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$", k) for k in keys)
     assert keys[0] == "2026w42-tue13-i1"
     first_day = [i for i in ideas if i.date == dt.date(2026, 10, 13)]
     assert sorted(i.window for i in first_day) == ["evening", "lunch", "pre_dinner"]  # one idea per window
-    assert all(set(i.slots) == set(SHIPPED.plan.platforms) for i in ideas)
+    assert all(set(i.slots) == set(ALL_REELS.plan.platforms) for i in ideas)
     assert slots.job_id(dt.date(2026, 10, 13), 1, "R-2") == "2026w42-tue13-i1-r2"  # a redo needs a new key
 
 
 def test_the_scorer_decides_the_window_and_an_idea_that_passes_nowhere_is_reported_not_written():
-    days = slots.plan_days(SHIPPED.with_plan(horizon_days=2), TODAY)
-    items = slots.probes(SHIPPED, days)
+    days = slots.plan_days(ALL_REELS.with_plan(horizon_days=2), TODAY)
+    items = slots.probes(ALL_REELS, days)
     low = {
         slots.probe_ref(p) for p in items if p[0] == days[0] and p[2] == "pre_dinner"
     }  # day 1: the best window fails
     results = [{"ref": slots.probe_ref(p), "verdict": "rewrite" if slots.probe_ref(p) in low else "keep",
                 "scores": {"content_scorer": {"probability": 0.4 if slots.probe_ref(p) in low else 0.6}}}
                for p in items]  # fmt: skip
-    ideas, dropped = slots.assign(SHIPPED, days, slots.read_scores(items, results))
+    ideas, dropped = slots.assign(ALL_REELS, days, slots.read_scores(items, results))
     # three ideas need all three windows, so one of day 1's ideas must take the failing one and is reported
     assert [d.date for d in dropped] == [days[0]] and "40%" in dropped[0].why
     assert sorted(i.window for i in ideas if i.date == days[0]) == ["evening", "lunch"] and len(ideas) == 5
     everywhere_low = [{**r, "verdict": "rewrite", "scores": {"content_scorer": {"probability": 0.3}}} for r in results]
-    ideas, dropped = slots.assign(SHIPPED, days, slots.read_scores(items, everywhere_low))
+    ideas, dropped = slots.assign(ALL_REELS, days, slots.read_scores(items, everywhere_low))
     assert not ideas and len(dropped) == 6 and "30%" in dropped[0].why
 
 
@@ -139,7 +140,7 @@ def test_the_budget_stops_new_calls_at_the_cap_and_alerts_once():
 
 
 class World:
-    def __init__(self, tmp_path: Path, cfg: sc.StudioConfig = SHIPPED, publisher: bool = True) -> None:
+    def __init__(self, tmp_path: Path, cfg: sc.StudioConfig = ALL_REELS, publisher: bool = True) -> None:
         self.tools, self.runner = FakeTools(), FakeRunner()
         self.renderer = FakeRenderer(tmp_path / "reels-out")
         self.client, self.fake = fake_publisher() if publisher else (None, None)
@@ -188,8 +189,8 @@ def test_ten_days_become_thirty_ideas_and_150_posts_all_valid_at_the_publisher(w
     assert max(len(d) for d in evals) <= 20 and sum(len(d) for d in evals) > 150
     # AI work: 3 strategist chunks, then per idea a copywriter, an adapter and a designer, and nothing else
     by_agent = Counter_(world.runner.calls)
-    assert by_agent == {"strategist": 3, "copywriter": 30, "adapter": 30, "designer": 30}
-    assert s["tokens"]["total"] == 93 * 1200 and s["tokens"]["per_idea"] == 3720
+    assert by_agent == {"strategist": 3, "director": 10, "copywriter": 30, "adapter": 30, "designer": 30}
+    assert s["tokens"]["total"] == 103 * 1200 and s["tokens"]["per_idea"] == 4120
     # renders are strictly one at a time, ideas are written side by side
     assert world.renderer.max_active == 1 and 1 < world.runner.max_active <= SHIPPED.budgets.parallel_ideas
 
@@ -216,6 +217,7 @@ def test_drafts_mode_creates_one_post_per_idea_with_a_native_variant_per_platfor
 
 
 def test_every_spec_sent_to_the_renderer_is_a_valid_content_spec_with_all_platforms(world):
+    world.tools.vocab["template_registry"] = None  # an engine without a registry: the director has one video template
     world.go("render")
     v = validator("reels.content_spec")
     specs = sorted(world.folder.glob("*.spec.json"))
@@ -234,7 +236,7 @@ def test_every_spec_sent_to_the_renderer_is_a_valid_content_spec_with_all_platfo
 
 
 def test_carousels_reach_only_the_platforms_that_take_slides(tmp_path):
-    w = World(tmp_path, SHIPPED.with_plan(horizon_days=2, format_mix=["reel", "carousel", "image"]))
+    w = World(tmp_path, SHIPPED.with_plan(horizon_days=2, format_rotation=[], format_mix=["reel", "carousel", "image"]))
     assert w.go("drafts") == 0
     s = w.summary()
     assert s["variants"] == {"planned": 2 * (5 + 2 + 3), "made": 20, "held_reasons": {}}
@@ -316,7 +318,7 @@ def test_a_failed_render_is_reported_and_the_queue_goes_on(world):
 
 def test_the_token_budget_stops_new_ai_calls_finishes_what_started_and_names_every_idea_it_missed(tmp_path):
     cfg = sc.StudioConfig.model_validate(
-        {**SHIPPED.model_dump(), "budgets": {**SHIPPED.budgets.model_dump(), "max_tokens_per_run": 30_000}}
+        {**ALL_REELS.model_dump(), "budgets": {**ALL_REELS.budgets.model_dump(), "max_tokens_per_run": 30_000}}
     )
     w = World(tmp_path, cfg)
     assert w.go("render") == 0
@@ -339,11 +341,11 @@ def test_a_stopped_run_resumes_without_paying_twice(tmp_path):
     original = w.runner.run
     count = {"n": 0}
 
-    def dying(node: str, agent: str, task: str) -> Any:
+    def dying(node: str, agent: str, task: str, files: Any = None) -> Any:
         count["n"] += 1
         if count["n"] > 40:
             raise Crash
-        return original(node, agent, task)
+        return original(node, agent, task, files)
 
     w.runner.run = dying  # type: ignore[method-assign]
     with pytest.raises(Crash):
@@ -495,7 +497,7 @@ def test_the_console_shows_a_run_idea_by_idea_and_never_starts_drafts_without_co
     assert summary["status"] == "done" and summary["ideas"] == "29/30" and summary["publish"] == "dry-run"
     run = c.get(f"/api/runs/{summary['id']}").json()
     assert (
-        len(run["ideas"]) == 30 and run["tokens"] == 90 * 1200 + 200
+        len(run["ideas"]) == 30 and run["tokens"] == 100 * 1200 + 200
     )  # a failed copywriter and its retry spent 100 each
     held = next(i for i in run["ideas"] if i["id"] == "d02i1")
     assert held["holds"]["*"]["code"] == "agent_failed" and held["outcome"] is None
@@ -506,6 +508,7 @@ def test_the_console_shows_a_run_idea_by_idea_and_never_starts_drafts_without_co
     assert [p["phase"] for p in run["phases"] if p["status"] == "end"] == [
         "inputs",
         "strategist",
+        "director",
         "production",
         "handover",
     ]
@@ -560,13 +563,13 @@ def test_an_unusable_agent_answer_is_asked_for_once_more_and_never_more(world):
     original = world.runner.run
     seen: dict[str, int] = {}
 
-    def flaky(node: str, agent: str, task: str):
+    def flaky(node: str, agent: str, task: str, files: Any = None):
         seen[node] = seen.get(node, 0) + 1
         if node == "copywriter:d01i1" and seen[node] == 1:  # the first answer had no JSON in it
             from intel.studio.ports import AgentResult
 
             return AgentResult(None, 500, 20, error="no JSON in the answer")
-        return original(node, agent, task)
+        return original(node, agent, task, files)
 
     world.runner.run = flaky  # type: ignore[method-assign]
     world.go("render")
@@ -616,3 +619,219 @@ def test_without_a_playbook_the_agents_are_told_there_is_none_not_given_invented
         and not strategist["what_worked"]["instagram"]["works"]
     )
     assert all(r["angle"] for r in world.result())
+
+
+# ---------- S5: the creative director ----------
+
+
+def test_the_director_asked_for_one_look_everywhere_still_gets_a_varied_plan(world):
+    world.go("render")
+    s = world.summary()
+    looks = s["looks"]
+    assert len(looks["templates"]) >= 3 and max(looks["templates"].values()) <= 12  # no look over 40% of 30 ideas
+    state = json.loads((world.folder / "state.json").read_text())
+    seq = [state["ideas"][i]["treatment"] for i in sorted(state["ideas"])]
+    assert all(
+        a["template"] != b["template"] for a, b in zip(seq, seq[1:], strict=False)
+    )  # never the same look twice running
+    last: dict[str, str] = {}
+    for t in seq:  # a template used again changes variant
+        if t["template"] in last and t["variant"]:
+            assert t["variant"] != last[t["template"]]
+        last[t["template"]] = t["variant"]
+    assert looks["assets_used"] > 0 and looks["assets_reused"] <= looks["assets_used"]
+    calls = [c["task"] for c in world.runner.calls if c["agent"] == "director"]
+    assert len(calls) == 10 and len(calls[0]["ideas"]) == 3  # one call per day, the day's ideas together
+    first = calls[0]["ideas"][0]
+    assert {t["template"] for t in first["templates"]} == {"beat-reel", "kinetic-text", "one-take", "photo-motion"}
+    assert "instagram" in first["craft"] and first["craft"]["tiktok"]["how"].startswith(
+        "9:16"
+    )  # how each platform's post is made
+
+
+def test_the_designer_gets_the_chosen_template_its_brief_and_the_directors_wishes(world):
+    world.go("render")
+    d = [c["task"] for c in world.runner.calls if c["agent"] == "designer"]
+    state = json.loads((world.folder / "state.json").read_text())
+    for task in d:
+        idea = next(i for i, r in state["ideas"].items() if r["idea"]["job_id"] == task["job_id"])
+        assert task["template"] == state["ideas"][idea]["treatment"]["template"]
+    kinetic = next(t for t in d if t["template"] == "kinetic-text")
+    assert kinetic["template_brief"] == "Give 2-6 short lines." and kinetic["music_hint"]["culture"] == "desi"
+    specs = {p.name: json.loads(p.read_text()) for p in world.folder.glob("*.spec.json")}
+    templates = {s["content"]["template"] for s in specs.values()}
+    assert templates == {
+        t for t in world.summary()["looks"]["templates"]
+    }  # code put the director's template in the spec
+
+
+def test_when_the_director_fails_code_still_makes_a_varied_valid_plan(world):
+    world.runner.fail = {f"director:2026-10-{d}" for d in range(13, 23)}
+    world.runner.fail |= {n + "-retry" for n in world.runner.fail}
+    world.go("render")
+    s = world.summary()
+    assert s["ideas"]["completed"] == 30 and len(s["looks"]["templates"]) >= 3
+    state = json.loads((world.folder / "state.json").read_text())
+    assert not any(r["treatment"]["directed"] for r in state["ideas"].values())  # all of it was code's choice
+
+
+def test_a_wish_that_cannot_make_the_format_or_repeats_the_last_look_is_settled_by_code():
+    from collections import Counter
+
+    from intel.studio import director
+    from tests.studio_fakes import REGISTRY
+
+    options = director.candidates(ALL_REELS.with_plan(), REGISTRY, "reel")
+    assert options == ["beat-reel", "kinetic-text", "one-take", "photo-motion"]
+    landscape = director.candidates(
+        ALL_REELS.with_plan(format_rotation=[["reel", "reel", "landscape"]]), REGISTRY, "landscape"
+    )
+    assert landscape == ["kinetic-text", "one-take", "photo-motion"]  # beat-reel has no 16:9
+    assert director.candidates(ALL_REELS, REGISTRY, "story") == ["collage", "photo"]
+    out = director.settle(
+        ALL_REELS, {"template": "collage", "variant": "grid"}, options, REGISTRY, Counter(), {}, None, "k", 10
+    )
+    assert out["template"] in options and "cannot make this format" in out["adjusted"][0]
+    again = director.settle(
+        ALL_REELS,
+        {"template": "one-take", "variant": "slow"},
+        options,
+        REGISTRY,
+        Counter(),
+        {"one-take": "slow"},
+        "one-take",
+        "k2",
+        10,
+    )
+    assert again["template"] != "one-take"  # the post before used it
+    legacy = director.template_registry({"templates": {"slides": {"photo": "x", "card": "y"}}})
+    assert set(legacy) == {"beat-reel", "photo", "card"} and director.candidates(ALL_REELS, legacy, "reel") == [
+        "beat-reel"
+    ]
+
+
+# ---------- S5: more surfaces ----------
+
+
+@pytest.fixture
+def rotating(tmp_path: Path) -> World:
+    return World(tmp_path, SHIPPED.with_plan(horizon_days=4))  # the shipped rotation: carousel, story, image, landscape
+
+
+def test_the_days_rotate_surfaces_and_each_reaches_only_the_platforms_that_take_it(rotating):
+    w = rotating
+    assert w.go("drafts") == 0
+    s = w.summary()
+    assert s["looks"]["formats"] == {"reel": 8, "carousel": 1, "story": 1, "image": 1, "landscape": 1}
+    assert s["variants"]["planned"] == 8 * 5 + 2 + 1 + 3 + 2 == s["variants"]["made"]
+    posts = w.fake.posts
+    story = next(
+        p
+        for k, p in posts.items()
+        if k.endswith("i3") and len(p["variants"]) == 1 and p["variants"][0]["format"] == "story"
+    )
+    assert story["variants"][0]["platform"] == "instagram" and "caption" not in story["variants"][0]
+    wide = next(p for p in posts.values() if {v["platform"] for v in p["variants"]} == {"youtube", "facebook"})
+    assert {v["format"] for v in wide["variants"]} == {"video"}
+    specs = {p.name: json.loads(p.read_text()) for p in w.folder.glob("*.spec.json")}
+    assert sorted(s["content"].get("formats", [s["content"].get("size")])[0] for s in specs.values()).count("16:9") == 1
+    assert sum(s["content"].get("size") == "story" for s in specs.values()) == 1
+
+
+def test_a_story_has_no_caption_so_no_copywriter_and_no_adapter_is_paid_for(rotating):
+    rotating.go("render")
+    story_id = next(
+        i
+        for i, r in json.loads((rotating.folder / "state.json").read_text())["ideas"].items()
+        if r["idea"]["format"] == "story"
+    )
+    calls = [c["node"] for c in rotating.runner.calls]
+    assert not any(
+        n.endswith(story_id) and n.split(":")[0] in ("copywriter", "adapter", "adapter-repair") for n in calls
+    )
+    assert f"designer:{story_id}" in calls  # the picture is still designed
+
+
+def test_what_no_template_could_do_is_written_down_for_a_person_to_build(tmp_path):
+    from intel.studio import requests as sr
+
+    log = tmp_path / "requests.jsonl"
+    sr.add("d01i1", "designer", "a countdown card for the Saturday order deadline", "reel", log)
+    sr.add("d02i3", "director", "A countdown card for the Saturday order deadline please", "story", log)
+    sr.add("d03i1", "director", "a split screen before and after", "reel", log)
+    rows = sr.read(log)
+    assert [r["by"] for r in rows] == ["designer", "director", "director"]
+    assert sr.tally(rows)[0] == ("a countdown card for the saturday", 2)  # the same wish twice is the template to build
+
+
+# ---------- S5: the footage curator ----------
+
+
+class _CuratorTools:
+    def __init__(self, sheet: Path) -> None:
+        self.sheet, self.calls, self.refuse_first = sheet, [], True
+
+    def offered(self, server: str) -> list[str]:
+        return []
+
+    def call(self, server: str, tool: str, args: dict[str, Any]) -> Any:
+        self.calls.append((server, tool, args))
+        if tool == "list_unindexed":
+            return {"total_waiting": 3, "enrichable": 80, "vocabulary": {"shot_type": ["pour"]}, "items": [
+                {"id": "v-new1", "kind": "video", "sheet": str(self.sheet), "tech": {"duration": 12.0}},
+                {"id": "m-song", "kind": "audio", "sheet": None, "tech": {}},
+                {"id": "p-nosheet", "kind": "photo", "sheet": "/nonexistent.jpg", "tech": {}}]}  # fmt: skip
+        if self.refuse_first:  # the engine refuses an unknown word once; the refusal text goes back to the agent
+            self.refuse_first = False
+            return {
+                "ok": False,
+                "problems": [{"path": "moments.0.shot_type", "message": "unknown shot_type 'pouring'"}],
+            }
+        return {"ok": True, "pending": "v-new1"}
+
+
+def test_the_curator_looks_at_the_sheet_proposes_and_fixes_a_refused_word_once(tmp_path):
+    from intel.studio import curator
+    from intel.studio.ai import AI
+    from intel.studio.budget import Budget
+    from intel.studio.runlog import RunLog
+
+    sheet = tmp_path / "sheet.jpg"
+    sheet.write_bytes(b"jpeg")
+    seen: list[dict[str, Any]] = []
+
+    class Runner(FakeRunner):
+        def _curator(self, t: dict[str, Any]) -> dict[str, Any]:
+            seen.append(t)
+            word = "pouring" if "repair" not in t else "pour"
+            return {"id": t["id"], "moments": [{"start": 1, "end": 4, "category": "Pouring", "shot_type": word}]}
+
+    runner = Runner()
+    files_seen: list[Any] = []
+    original = runner.run
+    runner.run = lambda node, agent, task, files=None: (files_seen.append(files), original(node, agent, task, files))[1]  # type: ignore[method-assign]
+    log = RunLog(tmp_path / "log", "c1")
+    tools = _CuratorTools(sheet)
+    report = curator.curate(tools, AI(runner, Budget(10**6, 0.8, 99), log), "new", 5)  # type: ignore[arg-type]
+    assert report["proposed"] == ["v-new1"] and report["refused"] == [] and report["waiting"] == 3
+    assert [s["id"] for s in report["skipped"]] == [
+        "m-song",
+        "p-nosheet",
+    ]  # music is code's; no sheet, nothing to look at
+    assert "repair" in seen[1] and "unknown shot_type" in str(
+        seen[1]["repair"]["problems"]
+    )  # exactly what the engine said
+    assert all(f == {"sheet.jpg": sheet} for f in files_seen)  # the agent is given the picture and nothing else
+    assert [c[1] for c in tools.calls] == ["list_unindexed", "propose_asset_entry", "propose_asset_entry"]
+    assert not any(c[1] in ("accept", "write_index") for c in tools.calls)  # it only ever proposes
+
+
+def test_the_scorer_ranks_every_surface_but_only_gates_reels():
+    cfg = SHIPPED.with_plan(horizon_days=2)  # day 1: reel, reel, carousel
+    days = slots.plan_days(cfg, TODAY)
+    items = slots.probes(cfg, days)
+    low = [{"ref": slots.probe_ref(p), "verdict": "rewrite",
+            "scores": {"content_scorer": {"probability": 0.3}}} for p in items]  # fmt: skip
+    ideas, dropped = slots.assign(cfg, days, slots.read_scores(items, low))
+    assert {d.format for d in dropped} == {"reel"}  # a weak reel slot is ruled out
+    assert any(i.format in ("carousel", "story") for i in ideas)  # a weak carousel or story is kept: the owner wants it

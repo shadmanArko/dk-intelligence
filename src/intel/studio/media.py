@@ -32,7 +32,8 @@ RECENT_JOBS = 12  # footage used in the last 12 jobs is avoided when something e
 RENDER_TIMEOUT_S = 1200
 
 # what the designer is told it may make, by the planner's slot format
-KINDS = {"reel": "video", "video": "video", "short": "video", "carousel": "carousel", "image": "image"}
+KINDS = {"reel": "video", "video": "video", "short": "video", "landscape": "video", "carousel": "carousel",
+         "image": "image", "story": "story"}  # fmt: skip
 
 
 def contract_problem(templates: dict[str, Any]) -> str | None:
@@ -182,8 +183,10 @@ def finalize_spec(
 
 
 def creative_content(answer: dict[str, Any] | None, slot_format: str,
-                     prices: list[dict[str, str]] | None) -> tuple[dict[str, Any] | None, str]:  # fmt: skip
-    """The designer's creative content with everything code decides put back: (content, "") or (None, why)."""
+                     prices: list[dict[str, str]] | None, video_format: str = "9:16", template: str | None = None,
+                     variant: str | None = None) -> tuple[dict[str, Any] | None, str]:  # fmt: skip
+    """The designer's creative content with everything code decides put back: (content, "") or (None, why). Code owns
+    the output size (`video_format`) and, when the creative director chose one, the template and its variant."""
     if not isinstance(answer, dict) or not isinstance(answer.get("spec"), dict):
         return None, "the designer returned no spec"
     content = answer["spec"].get("content")
@@ -193,12 +196,21 @@ def creative_content(answer: dict[str, Any] | None, slot_format: str,
     if kind == "video":
         if content.get("kind") != "video":
             return None, f"a {slot_format} needs a video spec, the designer made '{content.get('kind')}'"
-        return {**content, "template": "beat-reel", "formats": ["9:16"]}, ""  # the platforms take 9:16; code decides
+        out = {
+            **content,
+            "template": template or "beat-reel",
+            "formats": [video_format],
+        }  # code decides size and template
+        if variant:
+            out["variant"] = variant
+        return out, ""
     if content.get("kind") != "slides" or not isinstance(content.get("slides"), list) or not content["slides"]:
         return None, f"a {slot_format} needs a slides spec, the designer made '{content.get('kind')}'"
     slides = _with_checked_prices(content["slides"], prices or [])
     if kind == "carousel":
         return {**content, "size": "carousel", "slides": slides}, ""
+    if kind == "story":  # one 9:16 picture: the publisher's story takes exactly one file
+        return {**content, "size": "story", "slides": slides[:1]}, ""
     return {**content, "size": "album", "slides": slides[:1]}, ""  # one picture in the feed
 
 
@@ -232,10 +244,13 @@ def finalize_idea_spec(
     avoid: list[str],
     week_label: str,
     prices: list[dict[str, str]] | None = None,
+    video_format: str = "9:16",
+    template: str | None = None,
+    variant: str | None = None,
 ) -> tuple[dict[str, Any] | None, str]:
     """One idea, one master render, a post for every platform in `slots`: the designer's creative content, then
     everything else from code (id, size, one slot per platform, the checked captions and options, the avoid list)."""
-    content, why = creative_content(answer, idea_format, prices)
+    content, why = creative_content(answer, idea_format, prices, video_format, template, variant)
     if content is None:
         return None, why
     publish: dict[str, Any] = {"platforms": list(slots), "at": min(slots.values()), "slots": dict(slots)}

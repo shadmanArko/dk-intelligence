@@ -62,7 +62,7 @@ function draw(v){if(!v)return;window.V=v;const n=v.ideas.length,done=v.ideas.fil
   [n?k(Math.round(v.tokens/n)):'-','tokens per idea'],[Math.round(v.seconds/60*10)/10+' min','time']].map(([b,s])=>`<div class="stat"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join('');
  $('bar').hidden=!v.cap;if(v.cap)$('bar').firstChild.style.width=Math.min(100,v.tokens/v.cap*100)+'%';
  const names={};v.phases.forEach(p=>names[p.phase]=p);
- $('phases').innerHTML=['inputs','strategist','production','handover'].map(n=>{const p=names[n];const c=!p?'':p.status==='end'?'done':'run';
+ $('phases').innerHTML=['inputs','strategist','director','production','handover'].map(n=>{const p=names[n];const c=!p?'':p.status==='end'?'done':'run';
   return `<span class="ph ${c}">${n}${p&&p.seconds!=null?' · '+Math.round(p.seconds)+' s':''}</span>`}).join('');
  $('plan').textContent=(v.plan||'')+(v.error?' · '+v.error:'');
  const byDay={};v.ideas.forEach(i=>(byDay[i.date]=byDay[i.date]||[]).push(i));

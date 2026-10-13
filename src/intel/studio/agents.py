@@ -34,7 +34,16 @@ def agent_spec(name: str, directory: Path = AGENTS_DIR) -> dict[str, Any]:
             k, v = line.split(":", 1)
             meta[k.strip()] = v.strip()
     tools = [t.strip() for t in meta.get("tools", "").split(",") if t.strip()]
-    return {"name": name, "tools": tools, "model": meta.get("model", "sonnet"), "prompt": body.strip()}
+    builtin = [
+        t.strip() for t in meta.get("builtin", "").split(",") if t.strip()
+    ]  # e.g. Read: an agent that must look at pictures
+    return {
+        "name": name,
+        "tools": tools,
+        "builtin": builtin,
+        "model": meta.get("model", "sonnet"),
+        "prompt": body.strip(),
+    }
 
 
 def servers_for(tools: list[str]) -> list[str]:
@@ -64,7 +73,9 @@ class ClaudeRunner:
             hidden += [f"mcp__{s}__{t}" for t in self.tools.offered(s) if f"mcp__{s}__{t}" not in allowed]
         return hidden
 
-    def run(self, node: str, agent: str, task: str) -> AgentResult:
+    def run(self, node: str, agent: str, task: str, files: dict[str, Path] | None = None) -> AgentResult:
+        """`files` (name → path) are copied into the agent's empty working folder, so an agent with the Read tool can
+        look at exactly those pictures and at nothing else."""
         spec = agent_spec(agent, self.directory)
         cfg = self.log.dir / f"{node.replace(':', '_')}.mcp.json"
         cfg.write_text(
@@ -73,17 +84,19 @@ class ClaudeRunner:
         hidden = self._hidden(spec["tools"])
         cmd = [
             self.claude, "-p", task, "--output-format", "stream-json", "--verbose",
-            "--mcp-config", str(cfg), "--strict-mcp-config", "--tools", "",
+            "--mcp-config", str(cfg), "--strict-mcp-config", "--tools", ",".join(spec["builtin"]),
             "--system-prompt", spec["prompt"], "--no-session-persistence", "--model", spec["model"],
             "--max-turns", str(self.max_turns.get(agent, 4)),
         ]  # fmt: skip
-        if spec["tools"]:
-            cmd += ["--allowedTools", ",".join(spec["tools"])]
+        if spec["tools"] or spec["builtin"]:
+            cmd += ["--allowedTools", ",".join([*spec["builtin"], *spec["tools"]])]
         if hidden:
             cmd += ["--disallowedTools", ",".join(hidden)]
         self.log.emit(node, "start", agent=agent, model=spec["model"], tools=spec["tools"], hidden=len(hidden),
                       task=short(task, 600))  # fmt: skip
         work = Path(tempfile.mkdtemp(prefix="dk-agent-"))  # outside the repo: no CLAUDE.md, no memory, nothing to read
+        for name, src in (files or {}).items():
+            shutil.copyfile(src, work / name)
         started = time.monotonic()
         calls: dict[str, tuple[str, float]] = {}
         names: list[str] = []

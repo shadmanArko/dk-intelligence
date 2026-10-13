@@ -719,3 +719,39 @@ the traces, fixed the checker with tests, and the next run recovered to 126 of 1
 for safety and predictability, the data can't see orders, and about 1 in 20 findings is chance. The honest limit, stated
 in the results, is that the agents can only act on the caption and the picture. Moving the format and day levers
 into the plan is an owner decision for after the studio's own posts have results.
+
+## S5 · Making 150 posts a fortnight not feel repeated: a creative director whose taste is enforced by code
+
+**Situation.** The studio made correct posts, but they all looked the same: one video template, four slide templates, one
+format every day. The owner wanted the toolbox and the judgement of a head of creative: native formats per platform
+(reels, carousels, stories, landscape video), different looks, and a system that learns from new footage instead of
+hand-written notes.
+
+**Task.** Give the system taste, without letting an AI decide things code must guarantee, and without an AI writing code
+per post.
+
+**Action.**
+- **Templates live in the render engine**, as a registry with a machine-readable description of each (formats, variants,
+  duration, what it needs, a brief for the designer). I split the work: two agents built the registry with seven new templates
+  and a footage ingest system in the reels repo, and I built the director in the studio and read every report against
+  the code and the real renders.
+- **A creative-director agent** chooses each idea's template, variant, music and pace one day at a time, so a day's three
+  ideas contrast, from a data file of how each platform's native post is made. **Code enforces variety**: the template
+  must fit the format, not repeat the previous post, stay under 40% of the plan, change variant when reused. If the director
+  fails, code still builds a varied valid plan (tested).
+- **Footage becomes knowledge:** ingest finds new, changed and removed files and makes contact sheets; a curator agent looks
+  at the actual picture and proposes mood, shot type and where text can sit; the engine validates it against its
+  vocabulary; a person approves.
+- **Ran it for real and looked at frames.** The real runs found the scorer was silently removing every non-reel surface,
+  an invented "sealed by hand" claim on a story, a caption hidden by a photo frame, and a bug that made a test depend on the
+  time of day. Each was fixed with a test.
+
+**Result.** 12 ideas, 48 of 48 posts valid at the real publisher across five surfaces (reel, carousel, story, image,
+landscape): 7 distinct templates in 12 ideas, no look twice in a row, 20 footage uses with 4 repeats. The director's
+reasons were real ("a family sharing one box deserves one unhurried shot rather than cuts"). The curator described real
+frames at 7.8k tokens a clip and changed nothing until a person accepts.
+
+**Trade-off I would defend.** I did not build an agent that writes new templates by itself: an agent with a shell and write
+access should come after the registry has run for weeks. Instead the director and designer log what no template could do,
+counted, so the next template is chosen from evidence and built by a person under the engine's tests. I also let the
+scorer rank but not veto non-reel surfaces: it was trained on reels, and the owner wants the variety.

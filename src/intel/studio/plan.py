@@ -102,10 +102,9 @@ def plan_angles(ai: AI, cfg: StudioConfig, state: RunState, log: RunLog, ideas: 
         for attempt in (1, 2):
             if not pending:
                 break
-            primary = cfg.plan.primary_platform
             open_slots = [
                 {"slot_id": i.idea_id, "date": i.date.isoformat(), "weekday": i.weekday, "format": i.format,
-                 "time": i.slots[primary][11:16], "slot_score": i.score}
+                 "time": i.slots[i.lead(cfg.plan.primary_platform)][11:16], "slot_score": i.score}
                 for i in pending
             ]  # fmt: skip
             task = {"slots": open_slots, "grounding_pack": pack, "pillars": [p.model_dump() for p in cfg.plan.pillars],

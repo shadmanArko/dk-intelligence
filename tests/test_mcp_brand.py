@@ -220,6 +220,12 @@ CASES = [
         {"caption": GOOD + " Wir bestätigen persönlich."},
     ),
     ("UNVERIFIED_CLAIM", {"caption": GOOD + " We personally check every Kacchi."}, {}),
+    (
+        "UNVERIFIED_CLAIM",
+        {"caption": GOOD + " Every pot sealed by hand."},
+        {"caption": GOOD + " Every pot sealed, Berlin."},
+    ),
+    ("UNVERIFIED_CLAIM", {"caption": GOOD + " Jeder Topf von Hand verschlossen."}, {}),
     ("UNVERIFIED_CLAIM", {"caption": GOOD + " 6 hours on dum."}, {"caption": GOOD + " Hours of patience."}),
     ("UNVERIFIED_CLAIM", {"caption": GOOD + " Cooking since 5 a.m."}, {}),
     ("UNVERIFIED_CLAIM", {"caption": GOOD + " New in Berlin!"}, {}),

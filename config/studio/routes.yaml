@@ -13,11 +13,25 @@ formats:
     render: [slides, carousel]
     content_type: carousel
     targets: {instagram: carousel, facebook: photo}   # Threads takes one image only (publisher spec: image max 1)
+    gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
+  story:     # one 9:16 picture for Instagram Stories (the publisher's story format takes one file and has no caption)
+    make: story
+    render: [slides, story]
+    content_type: image
+    targets: {instagram: story}
+    gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
+  landscape: # a 16:9 video for YouTube and Facebook
+    make: video
+    render: [video, "16:9"]
+    content_type: video
+    targets: {facebook: video, youtube: video}
+    gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
   image:     # one picture
     make: image
     render: [slides, album]
     content_type: image
     targets: {instagram: carousel, facebook: photo, threads: image}   # one file turns "carousel" into a feed post
+    gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
 
 # Options code sets on every post of a platform. The AI never writes these (a safe default until the owner decides).
 defaults:

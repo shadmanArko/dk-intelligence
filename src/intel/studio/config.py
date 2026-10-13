@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 REPO = Path(__file__).resolve().parents[3]
 CONFIG_DIR = REPO / "config" / "studio"
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-IdeaFormat = Literal["reel", "carousel", "image"]
+IdeaFormat = str  # a key of routes.yaml `formats` (checked against it when the settings load)
 
 
 class StudioConfigError(Exception):
@@ -43,6 +43,7 @@ class PlanCfg(_Strict):
     platforms: list[str] = Field(min_length=1)
     primary_platform: str
     format_mix: list[IdeaFormat] = Field(min_length=1)
+    format_rotation: list[list[IdeaFormat]] = []  # optional: day 1 uses row 1, day 2 row 2, ... then repeats
     max_pillar_share: float = Field(gt=0, le=1)
     pillars: list[Pillar] = Field(min_length=1)
 
@@ -69,10 +70,11 @@ class SlotsCfg(_Strict):
 
 
 class FormatRoute(_Strict):
-    make: Literal["video", "carousel", "image"]
+    make: Literal["video", "carousel", "image", "story"]
     render: tuple[str, str]
     content_type: Literal["image", "video", "reel", "carousel", "short"]
     targets: dict[str, str]
+    gate: bool = True  # False: the scorer ranks the windows but never rules the slot out (not trained on stories)
 
 
 class RoutesCfg(_Strict):
@@ -93,11 +95,23 @@ class BudgetsCfg(_Strict):
     render_timeout_s: int = Field(ge=60)
 
 
+class DirectorCfg(_Strict):
+    max_template_share: float = Field(gt=0, le=1)  # no template may take more than this share of the plan
+    recent_window: int = Field(ge=0, le=100)  # how many earlier posts' templates the director is told about
+    defaults: dict[str, str]  # family (video | slides) → the template used when the registry or the director gives none
+
+
+class CraftCfg(_Strict):
+    director: DirectorCfg
+    platforms: dict[str, dict[str, Any]]  # per platform: how each kind of post is made there (craft, not rules)
+
+
 class StudioConfig(_Strict):
     plan: PlanCfg
     slots: SlotsCfg
     routes: RoutesCfg
     budgets: BudgetsCfg
+    craft: CraftCfg
 
     @model_validator(mode="after")
     def _consistent(self) -> StudioConfig:
@@ -108,9 +122,12 @@ class StudioConfig(_Strict):
             missing = [w for w in self.slots.windows if w not in self.slots.times.get(platform, {})]
             if missing:
                 raise ValueError(f"slots.yaml: {platform} has no time for the window(s) {', '.join(missing)}")
-        for fmt in p.format_mix:
+        for fmt in [*p.format_mix, *(f for row in p.format_rotation for f in row)]:
             if fmt not in self.routes.formats:
-                raise ValueError(f"format_mix names {fmt!r}, which routes.yaml does not define")
+                raise ValueError(f"format_mix / format_rotation names {fmt!r}, which routes.yaml does not define")
+        for row in p.format_rotation:
+            if len(row) != p.ideas_per_day:
+                raise ValueError(f"every format_rotation row needs {p.ideas_per_day} formats, not {len(row)}")
         for agent in ("strategist", "copywriter", "designer", "adapter"):
             if agent not in self.budgets.max_turns:
                 raise ValueError(f"budgets.yaml: max_turns has no entry for {agent}")
@@ -157,7 +174,7 @@ class StudioConfig(_Strict):
 
 def load(directory: Path = CONFIG_DIR) -> StudioConfig:
     parts: dict[str, Any] = {}
-    for name in ("plan", "slots", "routes", "budgets"):
+    for name in ("plan", "slots", "routes", "budgets", "craft"):
         path = directory / f"{name}.yaml"
         if not path.exists():
             raise StudioConfigError(f"{path} is missing")

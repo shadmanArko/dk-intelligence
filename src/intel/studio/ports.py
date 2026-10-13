@@ -38,7 +38,7 @@ class AgentResult:
 
 
 class RunnerPort(Protocol):
-    def run(self, node: str, agent: str, task: str) -> AgentResult: ...
+    def run(self, node: str, agent: str, task: str, files: dict[str, Path] | None = None) -> AgentResult: ...
 
 
 class RendererPort(Protocol):
