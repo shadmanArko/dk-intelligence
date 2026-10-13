@@ -40,5 +40,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0034](0034-the-studio-package.md) | The studio package: ports, settings as data, one idea → five native posts, budgets, resume | Accepted |
 | [0035](0035-performance-learning.md) | Performance learning: growth-normalised results, plain statistics with intervals, a playbook the studio reads | Accepted |
 | [0036](0036-creative-director-and-template-registry.md) | A creative director chooses the look; code enforces variety; the engine owns the templates; new footage becomes knowledge | Accepted |
+| [0037](0037-running-unattended.md) | Running unattended: a cheap daily check, drafts only, local notifications, measured autonomy, models by measurement | Accepted |
 
 Template: [0000-template.md](0000-template.md).

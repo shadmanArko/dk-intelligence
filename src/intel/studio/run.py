@@ -36,6 +36,7 @@ from intel.studio.budget import Budget
 from intel.studio.config import StudioConfig
 from intel.studio.crew import Crew
 from intel.studio.inputs import fetch_inputs
+from intel.studio.notify import Notifier, NullNotifier
 from intel.studio.plan import plan_angles
 from intel.studio.ports import PublisherPort, RendererPort, RunnerPort, ToolPort
 from intel.studio.render import keep_awake
@@ -66,6 +67,7 @@ class Studio:
     data_dir: Path
     now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC)
     stay_awake: Callable[[], contextlib.AbstractContextManager[None]] = keep_awake
+    notifier: Notifier = dataclasses.field(default_factory=NullNotifier)
 
     # ---------- entry ----------
 
@@ -114,8 +116,14 @@ class Studio:
             self.phase_seconds[name] = self.phase_seconds.get(name, 0.0) + took
             self.log.phase(name, "end", seconds=took)
 
+    def _budget_alert(self, used: int, cap: int) -> None:
+        self.notifier.notify("Studio: token budget", f"{used:,} of {cap:,} tokens used ({round(100 * used / cap)}%).")
+
     def _fail(self, why: str) -> int:
         self.log.emit("orchestrator", "end", status="failed", error=short(why, 400))
+        (self.data_dir / "last-summary.md").write_text(f"# Studio run {self.log.id} FAILED\n\n{why}\n")
+        if self.opts.trigger in ("schedule", "button"):
+            self.notifier.notify("Studio run failed", short(why, 160))
         print(f"failed: {why}")
         return 1
 
@@ -134,7 +142,7 @@ class Studio:
                  f"{len(cfg.plan.platforms)} platforms ({', '.join(cfg.plan.platforms)})")  # fmt: skip
         budget = Budget(cfg.budgets.max_tokens_per_run, cfg.budgets.alert_at, cfg.budgets.max_ai_calls_per_idea)
         self.budget = budget
-        self.ai = AI(self.make_runner(log), budget, log)
+        self.ai = AI(self.make_runner(log), budget, log, on_alert=self._budget_alert)
 
         # 1. start checks: before a single token is spent
         if o.publish != "render" and self.publisher is None:
@@ -514,7 +522,16 @@ class Studio:
         }  # fmt: skip
         (folder / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
         (folder / "result.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1))
-        (folder / "report.md").write_text(_report_md(run_id, self.opts, summary, rows, state.data["dropped"]))
+        report_md = _report_md(run_id, self.opts, summary, rows, state.data["dropped"])
+        (folder / "report.md").write_text(report_md)
+        (self.data_dir / "last-summary.md").write_text(report_md)  # the newest run's report, one stable place
+        if self.opts.trigger in ("schedule", "button"):
+            self.notifier.notify(
+                "Studio run finished",
+                f"{done} of {len(ideas)} ideas, {variants_ok} posts as {self.opts.publish}; {tokens:,} tokens. "
+                "Review them on the review page." if self.opts.publish == "drafts" else
+                f"{done} of {len(ideas)} ideas, {variants_ok} posts ({self.opts.publish}); {tokens:,} tokens."
+            )  # fmt: skip
         self.log.emit("orchestrator", "end", status="done", ideas=len(ideas), completed=done, variants=variants_ok,
                       tokens=tokens, seconds=total_s)  # fmt: skip
         return 0

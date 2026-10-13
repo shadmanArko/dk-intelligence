@@ -47,7 +47,7 @@ def test_the_shipped_settings_load_and_describe_150_posts():
 def _write(tmp_path: Path, **patch: Any) -> Path:
     d = tmp_path / "studio"
     d.mkdir()
-    for name in ("plan", "slots", "routes", "budgets", "craft"):
+    for name in ("plan", "slots", "routes", "budgets", "craft", "schedule", "autonomy", "models"):
         data = yaml.safe_load((sc.CONFIG_DIR / f"{name}.yaml").read_text())
         data.update(patch.get(name, {}))
         (d / f"{name}.yaml").write_text(yaml.safe_dump(data))
@@ -835,3 +835,173 @@ def test_the_scorer_ranks_every_surface_but_only_gates_reels():
     ideas, dropped = slots.assign(cfg, days, slots.read_scores(items, low))
     assert {d.format for d in dropped} == {"reel"}  # a weak reel slot is ruled out
     assert any(i.format in ("carousel", "story") for i in ideas)  # a weak carousel or story is kept: the owner wants it
+
+
+# ---------- S6: unattended ----------
+
+NOW6 = dt.datetime(2026, 10, 13, 3, 30, tzinfo=dt.UTC)
+
+
+def test_a_run_is_due_only_when_the_calendar_needs_filling_and_the_owner_is_not_backed_up():
+    from intel.studio import schedule
+
+    cfg = SHIPPED.schedule
+    far_end, near_end = "2026-10-20T15:00:00+00:00", "2026-10-15T15:00:00+00:00"
+    far = {
+        "plan_ends": "2026-12-01T15:00:00+00:00",
+        "awaiting_approval": [],
+    }  # the owner's own Sheet posts reach Dec: ignored
+    near = {"plan_ends": "2026-12-01T15:00:00+00:00", "awaiting_approval": []}
+    assert (
+        schedule.due(cfg, far, None, NOW6, far_end)[0] is False
+        and "planned 7.5 days ahead" in schedule.due(cfg, far, None, NOW6, far_end)[1]
+    )
+    ok, why = schedule.due(cfg, near, None, NOW6, near_end)
+    assert ok and "only 2.5 days ahead" in why
+    assert schedule.due(cfg, {"awaiting_approval": []}, None, NOW6) == (
+        True,
+        "the studio has nothing planned in the calendar",
+    )
+    recent = NOW6 - dt.timedelta(days=2)
+    assert schedule.due(cfg, near, recent, NOW6, near_end)[0] is False  # nothing twice in six days
+    backed_up = {**near, "awaiting_approval": [{}] * 40}
+    ok, why = schedule.due(cfg, backed_up, None, NOW6, near_end)
+    assert not ok and "approve first" in why  # a backlog is never added to
+    off = sc.ScheduleCfg.model_validate({**cfg.model_dump(), "enabled": False})
+    assert schedule.due(off, near, None, NOW6, near_end) == (
+        False,
+        "the schedule is switched off (schedule.yaml: enabled: false)",
+    )
+
+
+def test_the_last_scheduled_run_is_found_from_the_run_folders(tmp_path):
+    from intel.studio import schedule
+
+    for name, trigger in (
+        ("20261001T033000Z", "schedule"),
+        ("20261005T100000Z", "manual"),
+        ("20261008T033000Z", "schedule"),
+    ):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "events.jsonl").write_text(
+            json.dumps({"node": "orchestrator", "kind": "start", "trigger": trigger}) + "\n"
+        )
+    assert schedule.last_scheduled_run(tmp_path) == dt.datetime(2026, 10, 8, 3, 30, tzinfo=dt.UTC)
+    assert schedule.last_scheduled_run(tmp_path / "none") is None
+
+
+def test_the_launchd_job_runs_the_daily_check_and_installing_it_is_explicit(tmp_path, monkeypatch):
+    import plistlib
+
+    from intel.studio import schedule
+
+    plist = schedule.plist_for(SHIPPED.schedule, "/opt/homebrew/bin/uv", "/usr/bin")
+    assert plist["StartCalendarInterval"] == {"Hour": 3, "Minute": 30} and plist["RunAtLoad"] is False
+    assert plist["ProgramArguments"][-3:] == ["--if-due", "--trigger", "schedule"]  # the cheap check, not a blind run
+    calls: list[list[str]] = []
+    monkeypatch.setattr(schedule.subprocess, "run", lambda cmd, **kw: calls.append(cmd))  # no real launchctl in tests
+    path = schedule.install(SHIPPED.schedule, "/opt/homebrew/bin/uv", "/usr/bin", tmp_path / "x.plist")
+    assert plistlib.loads(path.read_bytes())["Label"] == "com.dhakakacchi.studio"
+    assert schedule.uninstall(tmp_path / "x.plist") is True and schedule.uninstall(tmp_path / "x.plist") is False
+    assert all(c[0] == "launchctl" for c in calls)
+
+
+def test_a_scheduled_run_tells_the_owner_and_leaves_a_summary_and_a_failed_one_says_why(tmp_path):
+    from intel.studio.notify import LocalNotifier
+
+    w = World(tmp_path)
+    notes: list[tuple[str, str]] = []
+
+    class Rec(LocalNotifier):
+        def notify(self, title: str, message: str) -> None:
+            notes.append((title, message))
+
+    w.studio.notifier = Rec(tmp_path)
+    w.studio.run(Options(publish="render", trigger="schedule", today=TODAY))
+    assert notes[-1][0] == "Studio run finished" and "30 of 30 ideas" in notes[-1][1]
+    assert (w.data / "last-summary.md").read_text().startswith("# Studio run")
+    w2 = World(tmp_path / "b", publisher=False)
+    notes.clear()
+    w2.studio.notifier = Rec(tmp_path)
+    w2.studio.run(Options(publish="drafts", trigger="schedule", today=TODAY))  # no key: fails before any AI
+    assert notes[-1][0] == "Studio run failed" and "DK_PUBLISH_URL" in notes[-1][1]
+    assert "FAILED" in (w2.data / "last-summary.md").read_text()
+    w3 = World(tmp_path / "c")
+    w3.studio.notifier = Rec(tmp_path)
+    notes.clear()
+    w3.studio.run(Options(publish="render", trigger="manual", today=TODAY))
+    assert not notes  # a run you started yourself does not interrupt you with a notification
+
+
+def test_the_budget_alert_reaches_the_owner(tmp_path):
+    from intel.studio.notify import NullNotifier
+
+    cfg = sc.StudioConfig.model_validate(
+        {**ALL_REELS.model_dump(), "budgets": {**ALL_REELS.budgets.model_dump(), "max_tokens_per_run": 100_000}}
+    )
+    w = World(tmp_path, cfg)
+    alerts: list[tuple[str, str]] = []
+
+    class Rec(NullNotifier):
+        def notify(self, title: str, message: str) -> None:
+            alerts.append((title, message))
+
+    w.studio.notifier = Rec()
+    w.studio.run(Options(publish="render", trigger="schedule", today=TODAY))
+    assert alerts[0][0] == "Studio: token budget" and "80%" in alerts[0][1] or "%" in alerts[0][1]
+
+
+def test_a_model_can_be_changed_per_agent_and_the_choice_is_checked(claude):
+    runner, log, tmp_path = claude
+    runner.models = {"copywriter": "haiku"}
+    runner.run("copywriter:d01i1", "copywriter", "{}")
+    a = _args(tmp_path)[0]["args"]
+    assert a[a.index("--model") + 1] == "haiku"
+    runner.run("strategist-1", "strategist", "{}")  # an agent with no override keeps its own file's model
+    b = _args(tmp_path)[1]["args"]
+    assert b[b.index("--model") + 1] == "sonnet"
+    from intel.studio.cli import _models
+
+    assert (
+        _models(SHIPPED, ["designer=haiku"])["designer"] == "haiku" and _models(SHIPPED, None)["designer"] == "sonnet"
+    )
+    import typer
+
+    with pytest.raises(typer.Exit):
+        _models(SHIPPED, ["designer=gpt"])
+
+
+def test_autonomy_is_measured_per_kind_and_never_acts():
+    from intel.studio import autonomy
+
+    cfg = SHIPPED.autonomy
+    assert cfg.enabled is False  # the shipped state: measurement only
+    kinds = {
+        f"k{i}": {"pillar": "food" if i < 12 else "order", "format": "reel", "template": "one-take"} for i in range(16)
+    }
+    rows = [{"source": "api", "post_key": f"k{i}", "slot": "2026-10-10T15:00:00+00:00",
+             "state": "cancelled" if i in (3, 7, 12) else "published"} for i in range(16)]  # fmt: skip
+    rows.append(
+        {"source": "sheet", "post_key": "k0", "slot": "2026-10-10T15:00:00+00:00", "state": "cancelled"}
+    )  # not ours
+    rows.append(
+        {"source": "api", "post_key": "k1", "slot": "2026-09-01T15:00:00+00:00", "state": "cancelled"}
+    )  # too old
+    rows.append({"source": "api", "post_key": "k2", "slot": "2026-10-10T15:00:00+00:00", "state": "awaiting_approval"})
+    t = {(r["kind"], r["value"]): r for r in autonomy.table(rows, kinds, cfg, NOW6)}
+    assert t[("pillar", "food")]["decided"] == 12 and t[("pillar", "food")]["approved"] == 10
+    assert t[("pillar", "food")]["clears_bar"] is True  # 83% of 12
+    assert t[("pillar", "order")]["decided"] == 4 and t[("pillar", "order")]["clears_bar"] is False  # too few to say
+    assert t[("template", "one-take")]["decided"] == 16
+
+
+def test_only_the_studios_own_posts_say_whether_its_plan_runs_out():
+    from intel.studio import schedule
+
+    rows = [
+        {"source": "sheet", "slot": "2026-12-01T10:00:00+00:00", "state": "scheduled"},  # the owner's own plan
+        {"source": "api", "slot": "2026-10-16T10:00:00+00:00", "state": "scheduled"},
+        {"source": "api", "slot": "2026-10-30T10:00:00+00:00", "state": "cancelled"},
+    ]  # rejected: no longer planned
+    assert schedule.agent_plan_ends(rows) == "2026-10-16T10:00:00+00:00" and schedule.agent_plan_ends([]) is None

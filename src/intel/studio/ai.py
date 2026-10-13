@@ -14,8 +14,10 @@ from intel.studio.runlog import RunLog
 
 
 class AI:
-    def __init__(self, runner: RunnerPort, budget: Budget, log: RunLog) -> None:
+    def __init__(self, runner: RunnerPort, budget: Budget, log: RunLog,
+                 on_alert: Callable[[int, int], None] | None = None) -> None:  # fmt: skip
         self.runner, self.budget, self.log = runner, budget, log
+        self.on_alert = on_alert  # told once when the budget reaches its alert level: (tokens used, the cap)
         self.calls: list[dict[str, Any]] = []
         self._lock = threading.Lock()
 
@@ -49,6 +51,8 @@ class AI:
         if self.budget.charge(result.tokens, idea_id):
             self.log.emit("orchestrator", "budget_alert", used=self.budget.used, cap=self.budget.max_tokens,
                           share=round(self.budget.share, 3))  # fmt: skip
+            if self.on_alert:
+                self.on_alert(self.budget.used, self.budget.max_tokens)
         with self._lock:
             self.calls.append({"node": node, "agent": agent, "idea": idea_id, "tokens": result.tokens,
                                "tokens_in": result.tokens_in, "tokens_out": result.tokens_out,

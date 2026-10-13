@@ -1,0 +1,9 @@
+# Earned autonomy: which kinds of post could skip your review one day. This file only MEASURES today
+# (`uv run intel studio autonomy`): the auto-approve path is not built, and `enabled: false` means it never will act by itself.
+# If you ever switch it on, it must be enforced in code by a dedicated publisher key, never by a prompt (ADR 0037).
+
+enabled: false
+approval_rate: 0.8       # a kind needs at least this share of its posts approved...
+window_days: 14          # ...over this many days...
+min_posts: 10            # ...and at least this many decided posts (approved or rejected)
+kinds: [pillar, format, template]   # what counts as a "kind of post": each is measured on its own
