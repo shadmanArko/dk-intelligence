@@ -72,7 +72,7 @@ https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc.
 | **S0** safety and one truth | **done** | ADR 0032; PRs #19 and #24 |
 | **S1** contracts between the projects | **done** | ADR 0033; PR #20; `contracts/` |
 | **S2** the studio at full scale | **done** (branch `feat/s2-studio`, PR to `main`) | ADR 0034, [STUDIO.md](STUDIO.md), [results](results/S2_studio.md) |
-| **S3** the daily review page (dk-publishing) | **done and merged there, NOT deployed** (dk-publishing PR #2; the owner runs `make deploy`) | dk-publishing ADR 0025, `docs/runbooks/review-page.md` |
+| **S3** the daily review page (dk-publishing) | **done, deployed 2026-10-13, working** (dk-publishing PR #2 and the Chrome fix PR #3: a `no-referrer` policy made Chrome send `Origin: null` and every button was refused) | dk-publishing ADR 0025, `docs/runbooks/review-page.md` |
 | **S4** the learning loop | **next** (can run beside S5) | build guide §4 S4 |
 | S5 production breadth (templates, footage curator, template engineer) | to do | build guide §4 S5 |
 | S6 unattended (schedule, earned autonomy, model choice) | to do | build guide §4 S6 |
@@ -103,7 +103,7 @@ that is part of S2.
 - dk_intel rules 1.2: `UNAVAILABLE_ITEM` (from facts.yaml data) and a wider German-first-line check.
 - Three real 10-day dry runs on frozen inputs: **26 of 26 plannable ideas, 128 of 130 posts valid at the real publisher,
   541k tokens (4.2k per post), 14 minutes.** The scorer ruled out 4 of 30 slots (decision for the owner, in the results).
-- **No drafts have been created from a 10-day run.** `--publish drafts` is the owner's go, after the review page is live.
+- **First real drafts (2026-10-13):** `--publish drafts --days 1` made 3 ideas, 15 drafts for 14 Oct (71.8k tokens, 152 s); the owner approved/rejected on the review page. No 10-day drafts run yet: that is the owner's go.
 
 **What S3 did** (in dk-publishing, public repo): a `/review` page with approve and reject per day, idea and platform
 through the Calendar's own `review_drafts`; signed 24 h link from the 08:00 Telegram digest plus a session cookie; a
@@ -135,8 +135,7 @@ Full list: build guide §5.
 1. Approve or reject the first draft in the Calendar.
 2. Confirm the facts: the mutton box price, and whether the lamb and taster boxes are available (now they also stop
    agents and the checker from mentioning those two boxes).
-3. **Deploy the review page** (dk-publishing runbook `docs/runbooks/review-page.md`: `dk review init`, `make deploy-secrets`,
-   `make deploy`, first link), then say go for the first `--publish drafts` run.
+3. ~~Deploy the review page~~ done. Next: say go for a full 10-day `--publish drafts` run (about 130 drafts).
 4. The four ruled-out slots (results doc, "Decisions").
 5. The token budget per run (4M is set and 4x what is used) and the TikTok privacy default (`only_me`).
 
