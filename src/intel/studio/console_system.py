@@ -43,11 +43,23 @@ def _folder(run: str | None) -> Path | None:
     return found[0] if found else None
 
 
-def _system(events: list[dict[str, Any]], run_id: str | None, running: bool, demo: bool = False) -> dict[str, Any]:
+def _pack_dir() -> Path | None:
+    try:
+        from intel.settings import McpSettings
+
+        return McpSettings().pack_dir
+    except Exception:  # noqa: BLE001 - the page works without a pack: it says there is none
+        return None
+
+
+def _system(events: list[dict[str, Any]], run_id: str | None, running: bool, demo: bool = False,
+            folder: Path | None = None) -> dict[str, Any]:  # fmt: skip
     done = any(e.get("node") == "orchestrator" and e.get("kind") == "end" for e in events)
     now_ms = events[-1]["ms"] if events else 0
+    knowledge = trace.rag_demo(now_ms) if demo else trace.rag(_pack_dir(), folder, events)
     return {"run": run_id, "running": running, "finished": done, "demo": demo, "topology": trace.topology(),
-            "layers": trace.layers(events), "calls": trace.calls(events), "now_ms": now_ms}  # fmt: skip
+            "layers": trace.layers(events), "calls": trace.calls(events), "now_ms": now_ms,
+            "rag": knowledge}  # fmt: skip
 
 
 @router.get("/api/system")
@@ -55,7 +67,8 @@ def api_system(run: str | None = None) -> dict[str, Any]:
     folder = _folder(run)
     if folder is None:
         return _system([], None, False)
-    return _system(read_events(folder / "events.jsonl"), folder.name, _running() == folder.name)
+    events = read_events(folder / "events.jsonl")
+    return _system(events, folder.name, _running() == folder.name, folder=folder)
 
 
 @router.get("/api/system/call")

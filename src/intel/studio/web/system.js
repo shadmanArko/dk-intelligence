@@ -19,13 +19,14 @@ function renderSystemMap(el,S,onSelect){
   const agents=M.T.agents,AY=i=>TOP+i*(AH+AG);
   // servers stacked, each tall enough for its tools
   let y=TOP;const SV=M.servers.map(s=>{const h=Math.max(78,34+s.tools.length*26);const r={...s,y,h};y+=h+14;return r});
-  const portY=y+6,PH=64,H=Math.max(AY(agents.length),portY+2*(PH+10))+20;
+  const portY=y+6,PH=64,RAGY=portY+2*(PH+10),H=Math.max(AY(agents.length),RAGY+78)+20;
   const OX=18,OW=210,AX=330,AW=230,SX=690,SW=230,TX=1010,TW=230;
   const nodes={};  // id -> {x,y,w,h}
   nodes['orch']={x:OX,y:TOP,w:OW,h:H-TOP-30};
   agents.forEach((a,i)=>nodes['agent:'+a.name]={x:AX,y:AY(i),w:AW,h:AH});
   SV.forEach(s=>{nodes['server:'+s.name]={x:SX,y:s.y,w:SW,h:s.h};s.tools.forEach((t,j)=>nodes['tool:'+s.name+'.'+t]={x:TX,y:s.y+30+j*26,w:TW,h:22})});
   M.T.ports.forEach((p,i)=>nodes['port:'+p.id]={x:SX,y:portY+i*(PH+10),w:SW,h:PH});
+  nodes['rag']={x:SX,y:RAGY,w:SW,h:68};
   M.T.phases.forEach((p,i)=>nodes['phase:'+p.id]={x:OX+10,y:TOP+36+i*54,w:OW-20,h:46});
   const side=(id,right)=>{const n=nodes[id];return {x:right?n.x+n.w:n.x,y:n.y+n.h/2}};
   const E=[];const add=(a,b,live,fromRight=true)=>{if(!nodes[a]||!nodes[b])return;const c=live?M.edge(a,b):0;E.push({a,b,calls:c})};
@@ -33,6 +34,9 @@ function renderSystemMap(el,S,onSelect){
   agents.forEach(a=>{[...new Set(a.tools.map(t=>t.server))].forEach(s=>add('agent:'+a.name,'server:'+s,true))});
   SV.forEach(s=>{add('orch','server:'+s.name,true);s.tools.forEach(t=>add('server:'+s.name,'tool:'+s.name+'.'+t,true))});
   M.T.ports.forEach(p=>add('orch','port:'+p.id,true));
+  const RAGT=['grounding_pack','search_posts','search_brand','search_reviews','verify_citations','get_sources','brand_rules','get_facts'];
+  const ragCalls=s=>RAGT.reduce((a,t)=>{const r=M.trow(s,t);return a+r.by_agents+r.by_code},0);
+  ['dk_intel_planner','dk_intel_writer'].forEach(s=>{if(nodes['server:'+s])E.push({a:'server:'+s,b:'rag',calls:ragCalls(s)})});
   // live-only agent->server edges not in the static allowlists
   M.L.edges.forEach(e=>{const f=e.from==='orchestrator'?'orch':e.from;if(!E.find(x=>x.a===f&&x.b===e.to)&&nodes[f]&&nodes[e.to])E.push({a:f,b:e.to,calls:e.calls})});
   const running=S.running;let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="agent system map">`;
@@ -72,6 +76,11 @@ function renderSystemMap(el,S,onSelect){
         <text x="${tn.x+9}" y="${tn.y+15}" fill="${c?'#f3e9d8':'#7a6a58'}" font-size="11">${t}</text>
         <text x="${tn.x+tn.w-9}" y="${tn.y+15}" fill="${r.errors?'#e0715f':'#a8987f'}" font-size="10.5" text-anchor="end">${c?c+' × '+ms(r.ms/c):'not used yet'}</text></g>`});
     if(!s.tools.length)svg+=`<text x="${TX}" y="${n.y+48}" fill="#7a6a58" font-size="10.5">no tool used by this studio yet</text>`});
+  // the knowledge pack (RAG)
+  {const n=nodes.rag,R=S.rag||{},pk=R.pack,tot=pk?Object.values(pk.collections).reduce((a,b)=>a+b,0):0;
+   svg+=box('rag',`<text x="${n.x+12}" y="${n.y+22}" fill="#f3e9d8" font-size="12.5" font-weight="600">Knowledge pack (RAG)</text>
+    <text x="${n.x+12}" y="${n.y+40}" fill="#a8987f" font-size="10.5">${pk?k(tot)+' chunks · '+Object.keys(pk.collections).length+' collections':'no pack loaded'}</text>
+    <text x="${n.x+12}" y="${n.y+56}" fill="#7a6a58" font-size="10">${pk?String(pk.id).slice(0,30):''}</text>`,'stroke-dasharray="0"')}
   // ports
   M.T.ports.forEach(p=>{const n=nodes['port:'+p.id];let line='';
     if(p.id==='publisher'){const calls=Object.values(M.L.publisher).reduce((a,x)=>a+x.calls,0);line=`${calls} call${calls===1?'':'s'} · ${M.L.uploads} upload${M.L.uploads===1?'':'s'}`}
@@ -124,6 +133,7 @@ function drawerHtml(S,sel){
       <h3>Tools</h3><table><thead><tr><th>tool</th><th class="n">agents</th><th class="n">code</th><th class="n">avg</th><th class="n">max</th><th class="n">errors</th></tr></thead><tbody>`+sv.tools.map(t=>{const r=M.trow(id,t),c=r.by_agents+r.by_code;return `<tr class="click toolrow" data-tool="tool:${esc(id)}.${esc(t)}"><td>${esc(t)}</td><td class="n">${r.by_agents}</td><td class="n">${r.by_code}</td><td class="n">${c?ms(r.ms/c):'–'}</td><td class="n">${ms(r.ms_max||null)}</td><td class="n">${r.errors}</td></tr>`}).join('')+'</tbody></table><h3>Calls</h3>'+callsTable(calls.filter(c=>(c.type==='code'||c.type==='tool')&&c.who.startsWith(id+'.')),SYS.callId)}
   if(type==='tool'){const r=M.trow(id.split('.')[0],id.split('.').slice(1).join('.')),mine=calls.filter(c=>(c.type==='code'||c.type==='tool')&&c.who===id);
     return `<h2>Tool: ${esc(id)}</h2><dl class="kv"><dt>called by agents</dt><dd>${r.by_agents}</dd><dt>called by code</dt><dd>${r.by_code}</dd><dt>total time</dt><dd>${ms(r.ms)}</dd><dt>slowest</dt><dd>${ms(r.ms_max||null)}</dd><dt>errors</dt><dd>${r.errors}</dd></dl><h3>Every call</h3>`+callsTable(mine,SYS.callId)}
+  if(sel==='rag')return ragDrawer(S);
   if(type==='port'){const mine=calls.filter(c=>id==='publisher'?(c.type==='publisher'||c.type==='upload'):c.type==='render');
     return `<h2>${id==='publisher'?'Publisher API':'Reels renderer'}</h2><div class="meta">${id==='publisher'?'The only place drafts leave this Mac. It makes drafts, never posts.':'Turns a spec into a video or pictures with the reels engine, on this Mac, one at a time.'}</div>`+
       (id==='publisher'?`<h3>By method</h3><table><tbody>`+Object.entries(L.publisher).map(([m,v])=>`<tr><td>${esc(m)}</td><td class="n">${v.calls}×</td><td class="n">${ms(v.ms/Math.max(1,v.calls))} avg</td></tr>`).join('')+'</tbody></table>':'')+'<h3>Calls</h3>'+callsTable(mine,SYS.callId)}
@@ -143,4 +153,27 @@ function renderAllCalls(el,S,ctx){
   el.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{SYS.filter=b.dataset.f;ctx.redraw()});
   const s=el.querySelector('#callSearch');s.oninput=()=>{SYS.text=s.value;clearTimeout(SYS._t);SYS._t=setTimeout(ctx.redraw,200)};
   el.querySelectorAll('.callrow').forEach(r=>r.onclick=()=>ctx.openCall(r.dataset.call));
+}
+
+// ---------- RAG: where the agent system uses retrieval ----------
+function ragDrawer(S){
+  const R=S.rag||{},pk=R.pack;
+  return `<h2>Knowledge pack (RAG)</h2><div class="meta">What the studio retrieves its evidence from. Built every Sunday by the ML run, searched by the dk_intel MCP servers. See the section "Where the agents use RAG" on this page.</div>`+(pk?
+   `<dl class="kv" style="margin-top:8px"><dt>pack</dt><dd class="mono">${esc(pk.id)}</dd><dt>built</dt><dd>${esc(String(pk.built_at||'').slice(0,16).replace('T',' '))} UTC</dd><dt>from pull / market</dt><dd class="mono">${esc(pk.pull)} / ${esc(pk.market)}</dd>
+    <dt>embedder</dt><dd>${esc(pk.embedder)} (${pk.dim} dimensions)</dd><dt>search</dt><dd>hybrid (vector + words), re-read by a cross-encoder reranker</dd><dt>duplicates collapsed</dt><dd>${pk.duplicates_collapsed??'–'}</dd></dl>
+    <h3>Collections</h3><table><tbody>${Object.entries(pk.collections).map(([a,b])=>`<tr><td>${esc(a)}</td><td class="n">${b.toLocaleString()}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No knowledge pack is active on this Mac.</div>');
+}
+function renderRag(el,S){
+  const R=S.rag||{},pk=R.pack,rt=R.retrieval,us=R.use;
+  const box=(n,title,body,on)=>`<div style="flex:1 1 210px;min-width:200px;background:#271416;border:1.5px solid ${on?'#3f8a60':'#3a1f21'};border-radius:12px;padding:11px 13px"><div class="meta" style="letter-spacing:.08em;text-transform:uppercase">${n}</div><b>${title}</b><div style="margin-top:6px;font-size:12.5px">${body}</div></div>`;
+  const arrow='<div style="align-self:center;color:#7a5a3a;font-size:22px">→</div>';
+  const cols=pk?Object.entries(pk.collections).map(([a,b])=>`<span class="chip">${esc(a)} · ${b.toLocaleString()}</span>`).join(''):'<span class="meta">no pack</span>';
+  const parts=rt?Object.entries(rt.parts).map(([a,b])=>`<tr><td>${esc(a)}</td><td class="n">${b.n}</td><td class="meta">${esc(b.from)}</td></tr>`).join(''):'';
+  el.innerHTML=`<div class="meta" style="margin-bottom:10px;font-size:13px">The agents do <b>not</b> search the knowledge pack themselves. The orchestrator's code retrieves once per run, the agents get the evidence with citation ids inside their task, and code throws away any citation that is not in the evidence.</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">
+   ${box('1 · Build','Knowledge pack (weekly)',`Step "Rebuild the knowledge pack" of the Sunday ML run: clean, mask personal data, chunk, embed, gate.<div style="margin-top:6px">${cols}</div>${pk?`<div class="meta" style="margin-top:6px">${esc(pk.embedder)} · ${esc(String(pk.id).slice(3,18))}</div>`:''}`,!!pk)}${arrow}
+   ${box('2 · Retrieve','Orchestrator → grounding_pack',rt?`One call to <span class="mono">${esc(rt.tool)}</span> in the inputs phase${rt.took_ms?` (${ms(rt.took_ms)})`:''}: hybrid search over the pack, reranked.<table style="margin-top:6px"><tbody>${parts}</tbody></table><div class="meta">${rt.cite_ids} citation ids come back</div>`:'Happens in the inputs phase of a run (not yet, or no run).',!!rt)}${arrow}
+   ${box('3 · Agents read','Evidence inside the task',`<b>strategist</b> gets the whole pack and writes each angle with the <span class="mono">sources</span> it rests on.<br><b>copywriter</b> gets the cited quotes and posts, plus our best posts as voice examples.<br><b>adapter</b> and <b>designer</b> get the same cited evidence with the angle and the brand rules.`,!!us&&us.angled>0)}${arrow}
+   ${box('4 · Code checks','Citations and facts',`Only citations that exist in the pack survive (<span class="mono">normalise</span>). Prices, hours and claims come from <span class="mono">get_facts</span>; every caption goes through <span class="mono">evaluate_drafts</span>.${us?`<div style="margin-top:6px"><b>${us.with_sources} of ${us.angled}</b> angles cite a source · ${us.citations} citations · ${us.distinct} distinct</div>`:''}`,!!us&&us.with_sources>0)}
+  </div>`;
 }

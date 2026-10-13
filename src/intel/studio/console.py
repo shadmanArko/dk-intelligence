@@ -336,6 +336,7 @@ NAV = (
     ("/live", "Mission control"),
     ("/runs", "Runs"),
     ("/demo", "Demo"),
+    ("/how", "How it works"),
     ("/guide", "Guide"),
 )
 
@@ -365,15 +366,24 @@ def _page(name: str, active: str) -> str:
     return (WEB / name).read_text().replace("<!--NAV-->", _nav(active))
 
 
+def _doc_page(name: str, title: str, active: str, width: int = 760) -> str:
+    path = REPO / "docs" / name
+    text = path.read_text() if path.exists() else "not written yet"
+    esc = text.replace("&", "&amp;").replace("<", "&lt;")
+    style = f"font:15px/1.6 system-ui;max-width:{width}px;margin:24px auto;padding:0 16px"
+    head = f"<!doctype html><meta charset=utf-8><title>{title}</title>"
+    body = f"<body style='margin:0;background:#f6f4ef;color:#1d1b16'>{_nav(active)}"
+    return f"{head}{body}<main style='{style}'><pre style='white-space:pre-wrap;font:inherit'>{esc}</pre></main></body>"
+
+
 @app.get("/guide", response_class=HTMLResponse)
 def guide() -> str:
-    path = REPO / "docs" / "OWNER_GUIDE.md"
-    text = path.read_text() if path.exists() else "no guide yet"
-    esc = text.replace("&", "&amp;").replace("<", "&lt;")
-    style = "font:15px/1.6 system-ui;max-width:760px;margin:24px auto;padding:0 16px"
-    head = "<!doctype html><meta charset=utf-8><title>Studio guide</title>"
-    body = f"<body style='margin:0;background:#f6f4ef;color:#1d1b16'>{_nav('/guide')}"
-    return f"{head}{body}<main style='{style}'><pre style='white-space:pre-wrap;font:inherit'>{esc}</pre></main></body>"
+    return _doc_page("OWNER_GUIDE.md", "Studio guide", "/guide")
+
+
+@app.get("/how", response_class=HTMLResponse)
+def how_it_works() -> str:
+    return _doc_page("HOW_IT_WORKS.md", "How it works", "/how", width=1180)
 
 
 @app.get("/ops", response_class=HTMLResponse)

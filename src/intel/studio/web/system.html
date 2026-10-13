@@ -19,6 +19,7 @@
  </div>
 </section>
 <section class="card"><h2>The system, layer by layer (line thickness = number of calls; moving dashes = working now)</h2><div id="map"></div></section>
+<section class="card"><h2>Where the agents use RAG (retrieval-augmented generation)</h2><div id="rag"></div></section>
 <section class="card"><h2>Every call, in order</h2><div id="calls"></div></section>
 </div>
 <aside class="card dr" id="drawer" hidden></aside>
@@ -35,7 +36,7 @@ function draw(){if(!S)return;
  $('sAgents').textContent=A.reduce((a,v)=>a+v.calls,0);$('sTools').textContent=L.tools.reduce((a,t)=>a+t.by_agents,0);$('sCode').textContent=L.tools.reduce((a,t)=>a+t.by_code,0);
  $('sTok').textContent=k(A.reduce((a,v)=>a+(v.tokens_in||0)+(v.tokens_out||0),0));$('sRend').textContent=L.renderer.renders;
  $('sPub').textContent=Object.values(L.publisher).reduce((a,v)=>a+v.calls,0);$('sRetry').textContent=A.reduce((a,v)=>a+(v.retries||0),0);
- renderSystemMap($('map'),S,ctx.select);renderAllCalls($('calls'),S,ctx);
+ renderSystemMap($('map'),S,ctx.select);renderRag($('rag'),S);renderAllCalls($('calls'),S,ctx);
  const d=$('drawer');if(!SYS.sel&&!SYS.callId){d.hidden=true;return}
  d.hidden=false;d.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="grow"></span><button class="btn" id="closeDr">close ✕</button></div>`+(SYS.callData?callView(SYS.callData):drawerHtml(S,SYS.sel));
  $('closeDr').onclick=()=>{SYS.sel=null;SYS.callId=null;SYS.callData=null;draw()};wireDrawer(d,S,ctx)}

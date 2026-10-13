@@ -32,6 +32,8 @@ That is all. You never need the terminal for this.
   Operations (or by itself after 6 hours).
 - **Retrain one model:** on **Operations** ("One model at a time") or in a model's window on the **ML pipeline** page. About a
   minute, no tokens, and it is a candidate only: nothing is uploaded or deployed. The full ML run deploys.
+- **Explain how it works to someone:** open **How it works** (top bar): where the agents, the orchestrator, the MCP servers, the
+  RAG and the schedule are, with the files to show and a ten-minute demo order. The **Agent system** page shows the RAG part live.
 - **Start things:** **Operations** has *Run everything*, *Run the ML part*, *Run the agent part*, and the small ones (pull,
   market snapshot). It always asks before it spends tokens. The run keeps going if you close the tab.
 - **Let the curator learn more footage** (button): it looks at 20 clips and proposes descriptions; you accept them. Do it a few
