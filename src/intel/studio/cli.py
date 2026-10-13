@@ -117,15 +117,16 @@ def run(
         publish = cfg.schedule.publish
     studio, hub = build(cfg, need_publisher=publish != "render" or if_due, model_overrides=model)
     if if_due:
-        assert isinstance(studio.publisher, handover.PublishClient)
-        overview = studio.publisher.overview(days_back=1, days_ahead=30)
-        mine = studio.publisher.calendar(source="api", limit=200).get("posts") or []
-        ok, why = schedule_mod.due(cfg.schedule, overview, schedule_mod.last_scheduled_run(DATA / "runs"),
-                                   dt.datetime.now(dt.UTC), schedule_mod.agent_plan_ends(mine))  # fmt: skip
-        typer.echo(f"[{dt.datetime.now(dt.UTC):%Y-%m-%d %H:%M}Z] {'RUN' if ok else 'skip'}: {why}")
-        if not ok:
+        decision = _check(cfg, studio)
+        typer.echo(f"[{dt.datetime.now(dt.UTC):%Y-%m-%d %H:%M}Z] {decision.action.upper()}: {decision.reason}")
+        if decision.action == "giveup":
+            _give_up(decision)
+        if decision.action not in ("run", "resume"):
             hub.close()
             raise typer.Exit(0)
+        if decision.action == "resume":
+            resume = decision.run_id
+            publish = decision.publish or publish
     start = _start_day(cfg, studio, start_from, resume)
     try:
         code = studio.run(Options(publish=publish, trigger=trigger, inputs=inputs, save_inputs=save_inputs,
@@ -133,6 +134,34 @@ def run(
     finally:
         hub.close()
     raise typer.Exit(code)
+
+
+def _check(cfg: StudioConfig, studio: Studio) -> schedule_mod.Decision:
+    """One check of the schedule: finish a cut-off run, start a due one, or do nothing (no AI, one calendar read). A
+    publisher that cannot be reached is not an error: the next check, a few minutes later, asks again."""
+    assert isinstance(studio.publisher, handover.PublishClient)
+    now = dt.datetime.now(dt.UTC)
+    try:
+        overview = studio.publisher.overview(days_back=1, days_ahead=30)
+        rows = coverage_mod.fetch_rows(studio.publisher, now)
+    except Exception as ex:  # noqa: BLE001
+        return schedule_mod.Decision(
+            "skip", f"the publisher cannot be reached ({type(ex).__name__}): trying again later"
+        )
+    ends = schedule_mod.agent_plan_ends(rows or [])
+    return schedule_mod.decide(cfg.schedule, DATA / "runs", DATA / ".running", overview, ends, now,
+                               dt.datetime.now().astimezone())  # fmt: skip
+
+
+def _give_up(decision: schedule_mod.Decision) -> None:
+    """Tell the owner once that a run could not be finished by itself (a marker in the run folder keeps it to once)."""
+    marker = DATA / "runs" / str(decision.run_id) / "gave-up"
+    if marker.exists():
+        return
+    marker.write_text(decision.reason)
+    LocalNotifier(DATA).notify(
+        "Studio run did not finish", f"{decision.reason}. Open the Runs page and press Resume, or look at the log."
+    )
 
 
 def _start_day(cfg: StudioConfig, studio: Studio, start_from: str | None, resume: str | None) -> dt.date | None:
@@ -228,13 +257,12 @@ def schedule_check() -> None:
         typer.echo("set DK_PUBLISH_URL and DK_PUBLISH_KEY in .env", err=True)
         raise typer.Exit(1)
     client = handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
+    now = dt.datetime.now(dt.UTC)
     overview = client.overview(days_back=1, days_ahead=30)
-    mine = client.calendar(source="api", limit=200).get("posts") or []
-    last = schedule_mod.last_scheduled_run(DATA / "runs")
-    ok, why = schedule_mod.due(
-        cfg.schedule, overview, last, dt.datetime.now(dt.UTC), schedule_mod.agent_plan_ends(mine)
-    )
-    typer.echo(("WOULD RUN: " if ok else "would skip: ") + why)
+    ends = schedule_mod.agent_plan_ends(coverage_mod.fetch_rows(client, now) or [])
+    d = schedule_mod.decide(cfg.schedule, DATA / "runs", DATA / ".running", overview, ends, now,
+                            dt.datetime.now().astimezone())  # fmt: skip
+    typer.echo(f"{'WOULD ' + d.action.upper() if d.action in ('run', 'resume') else 'would ' + d.action}: {d.reason}")
 
 
 @schedule_app.command("install")
@@ -248,7 +276,10 @@ def schedule_install() -> None:
         typer.echo("uv is not on the PATH", err=True)
         raise typer.Exit(1)
     path = schedule_mod.install(cfg.schedule, uv, f"{Path(uv).parent}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
-    typer.echo(f"installed {path}: a check every day at {cfg.schedule.run_at}. Log: {DATA / 'schedule.log'}")
+    typer.echo(
+        f"installed {path}: a check at login and every {cfg.schedule.check_every_minutes} minutes (new plans "
+        f"after {cfg.schedule.run_at}, cut-off runs finished). Log: {DATA / 'schedule.log'}"
+    )
     typer.echo("The Mac must be on (not asleep) at that time. Remove it with: uv run intel studio schedule uninstall")
 
 

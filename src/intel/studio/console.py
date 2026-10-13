@@ -39,8 +39,9 @@ def _folder(run_id: str) -> Path:
 
 
 def _running() -> str | None:
-    lock = DATA / ".running"
-    return lock.read_text().split()[-1] if lock.exists() else None
+    from intel.studio import schedule as schedule_mod
+
+    return schedule_mod.live_run(DATA / ".running")  # a lock left by a crash is not a run in progress
 
 
 def run_view(folder: Path) -> dict[str, Any]:
@@ -288,7 +289,10 @@ def schedule_install() -> dict[str, Any]:
         raise HTTPException(500, "uv is not on the PATH")
     cfg = studio_config.load().schedule
     schedule_mod.install(cfg, uv, f"{Path(uv).parent}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
-    return {"message": f"installed: a check every day at {cfg.run_at}"}
+    return {
+        "message": f"installed: a check every {cfg.check_every_minutes} minutes while the Mac is on "
+        f"(new plans after {cfg.run_at})"
+    }
 
 
 @app.post("/api/performance/analyst")

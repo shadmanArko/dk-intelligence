@@ -63,14 +63,20 @@ The daily check also sets a 9:00 reminder that appears only when something waits
 ## Running without you (S6)
 ```bash
 uv run intel studio schedule check      # would a run start now? (reads the calendar, no AI)
-uv run intel studio schedule install    # a daily check on this Mac at 03:30 (launchd); makes DRAFTS only
+uv run intel studio schedule install    # a check on this Mac at login and every 30 minutes (launchd); makes DRAFTS only
 uv run intel studio schedule status     # installed? what did it last do?
 uv run intel studio schedule uninstall
 uv run intel studio autonomy            # which kinds of post you approve most (measurement only; nothing is auto-approved)
 uv run intel studio run --model designer=haiku --inputs data/studio/eval/inputs.json   # try a step on another model
 ```
-Settings: `config/studio/schedule.yaml` (when, how far ahead, the backlog limit), `autonomy.yaml`, `models.yaml`. The newest
-run's report is always `data/studio/last-summary.md`. See [ADR 0037](adr/0037-running-unattended.md).
+Settings: `config/studio/schedule.yaml` (earliest time for a new run, how often to check, how far ahead, the backlog limit,
+tries to finish a cut-off run), `autonomy.yaml`, `models.yaml`. The newest run's report is always
+`data/studio/last-summary.md`. See [ADR 0037](adr/0037-running-unattended.md).
+
+**A closed or crashed Mac** (ADR 0039): the check runs at login and every 30 minutes while the Mac is on. A Mac that was off at
+09:30 catches up at its first check; a run that was cut off (crash, power loss) is finished by the next check from where it
+stopped, up to 3 tries, then you get one notification. `intel studio schedule check` says what a check would do now; the log is
+`data/studio/schedule.log`. After changing `schedule.yaml` run `intel studio schedule install` again.
 
 ## The look of each post (S5)
 A creative-director agent chooses each idea's template, variant, music hint and pace, one call per day; code makes it valid

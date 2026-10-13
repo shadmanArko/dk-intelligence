@@ -65,12 +65,18 @@ def _bar(lane: str, key: str, idea: str | None, start: int, end: int | None = No
     }
 
 
-def calls(events: list[dict[str, Any]], now_ms: int) -> list[dict[str, Any]]:
+def calls(events: list[dict[str, Any]], now_ms: int, live: bool = True) -> list[dict[str, Any]]:
     """Every unit of work as a bar: an agent call, a render, an upload. `running` is true while it is still working."""
     out: list[dict[str, Any]] = []
     open_: dict[str, dict[str, Any]] = {}
     for e in events:
         node, kind = str(e.get("node", "")), e.get("kind")
+        if (
+            kind == "start" and node == "orchestrator" and open_
+        ):  # the run was picked up again: what was open was cut off
+            for bar in open_.values():
+                bar.update(end=e["ms"], ok=False, cut=True)
+            open_.clear()
         if kind == "start" and e.get("agent"):
             open_[node] = _bar(e["agent"], node, _idea_of(node), e["ms"], model=e.get("model"))
             out.append(open_[node])
@@ -85,9 +91,10 @@ def calls(events: list[dict[str, Any]], now_ms: int) -> list[dict[str, Any]]:
             begin = max(0, e["ms"] - int(float(e.get("seconds") or 0.5) * 1000))
             out.append(_bar("upload", f"upload:{node}", node, begin, e["ms"]))
     for bar in out:
-        bar["running"] = bar["end"] is None
+        bar["running"] = bar["end"] is None and live
         if bar["end"] is None:
             bar["end"] = now_ms
+            bar["ok"] = bar["ok"] and live  # nobody is working: a call with no end was cut off
     return out
 
 
@@ -161,7 +168,7 @@ def telemetry(view: dict[str, Any], events: list[dict[str, Any]], now_ms: int | 
     running = view.get("status") == "running"
     last_ms = events[-1]["ms"] if events else 0
     now = max(now_ms if now_ms is not None else last_ms, last_ms) if running else last_ms
-    bars = calls(events, now)
+    bars = calls(events, now, running)
     ideas = view.get("ideas") or []
     treated = {str(e["node"]) for e in events if e.get("kind") == "treatment"}
     phase_open = {b["lane"] for b in bars if b["running"]}
@@ -388,9 +395,10 @@ def demo(tick: int) -> dict[str, Any]:
 
 
 def started_at(events: list[dict[str, Any]]) -> dt.datetime | None:
-    """When the run's first event happened (UTC), from the log's own timestamps."""
-    for e in events:
-        if e.get("t"):
+    """The moment the run's clock (`ms`) started, from the log's own timestamps: the last time the run was started or
+    picked up again, so the time a Mac spent off in between is not counted."""
+    for e in reversed(events):
+        if e.get("t") and e.get("node") == "orchestrator" and e.get("kind") == "start":
             try:
                 return dt.datetime.fromisoformat(str(e["t"])) - dt.timedelta(milliseconds=int(e.get("ms") or 0))
             except ValueError:

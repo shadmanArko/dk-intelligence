@@ -1,8 +1,13 @@
-# Running without you. `uv run intel studio schedule install` puts a daily check on this Mac (launchd); the studio only
-# does real work when the calendar needs filling. Nothing here ever approves or posts: every run makes DRAFTS.
+# Running without you. `uv run intel studio schedule install` puts a check on this Mac (launchd) that asks every
+# `check_every_minutes`, and at every login, whether a run is due. The studio only does real work when the calendar needs
+# filling. A Mac that was off or asleep simply catches up at the next check; a run that was cut off (crash, power loss,
+# lid closed) is picked up where it stopped. Nothing here ever approves or posts: every run makes DRAFTS.
 
 enabled: true
-run_at: "03:30"          # the daily check, Mac local time (the Mac must be on; the studio keeps it awake while it works)
+run_at: "09:30"          # a NEW run never starts before this time of day (Mac local time); the studio keeps the Mac awake while it works
+check_every_minutes: 30  # how often the Mac asks "is a run due, or is one unfinished?" (one calendar read, no AI)
+max_resumes: 3           # tries to finish a run that was cut off; after that it stops and tells you
+resume_within_hours: 36  # a cut-off run older than this is dropped (its slots have passed); a new one is planned instead
 publish: drafts          # drafts | dry-run | render
 lead_days: 4             # run when the last planned slot in the publisher's calendar is fewer than this many days ahead
 min_days_between: 6      # never run twice within this many days
