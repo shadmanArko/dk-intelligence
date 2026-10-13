@@ -41,6 +41,9 @@ ARGS: dict[str, dict[str, Any]] = {  # one valid call per tool
     "search_posts": {"query": "kacchi"},
     "get_sources": {"cites": ["R-AAAAAAAA"]},
     "verify_citations": {"answer": "It was cold [R-AAAAAAAA]."},
+    "platform_playbook": {"platform": "instagram"},
+    "performance_by_feature": {"platform": "instagram", "feature": "format"},
+    "post_performance": {"post_key": "2026w42-tue13-i1"},
 }
 
 
@@ -93,6 +96,7 @@ def test_no_tool_output_carries_a_restricted_origin_field(deps):  # noqa: F811
         found: set[str] = set()
         async with Client(build_gateway(profile, deps)) as c:
             for t in await c.list_tools():
+                await asyncio.sleep(0.12)  # the gateway's burst is 20 calls: the owner now has more tools than that
                 r = await c.call_tool(t.name, ARGS[t.name], raise_on_error=False)
                 if r.structured_content is not None:
                     found |= _keys(r.structured_content) & RESTRICTED

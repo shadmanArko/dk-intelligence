@@ -7,7 +7,9 @@ from typing import Any
 
 from intel.adapters.intel_api import HttpIntelApi, ScoringLimits
 from intel.adapters.pack import PackBrandSource, PackTrendSource
+from intel.adapters.performance import FilePerformanceSource
 from intel.capabilities.evidence import EvidenceIndex, TrendSource
+from intel.capabilities.performance import PerformanceSource
 from intel.capabilities.ports import BrandSource, IntelApi
 from intel.capabilities.types import ToolProblem
 from intel.mcp_server.kit.audit import AuditLog
@@ -44,6 +46,7 @@ class Deps:
     min_evidence: float | None = None  # top rerank score below which search says "not found" (calibrated, ADR 0027)
     strong_evidence: float = 0.5  # top rerank score from which evidence counts as strong
     min_support: float | None = None  # reranker score a claim needs from its cited source to count as supported
+    performance: PerformanceSource | None = None  # what our own posts did (S4); None: the tools say there is no data
 
     @classmethod
     def from_settings(cls, settings: McpSettings, principal: str) -> Deps:
@@ -68,6 +71,7 @@ class Deps:
             min_evidence=settings.intel_rag_min_evidence,
             strong_evidence=settings.intel_rag_strong_evidence,
             min_support=settings.intel_rag_min_support,
+            performance=FilePerformanceSource(settings.intel_data_dir / "performance"),
         )
 
 

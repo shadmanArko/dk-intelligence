@@ -134,12 +134,14 @@ class FakeRunner:
         for k, s in enumerate(t["slots"]):
             angle = f"angle number {s['slot_id']} about food" if not (self.dup_first and first and k == 1) else \
                 f"angle number {t['slots'][0]['slot_id']} about food"  # fmt: skip
+            worked = t.get("what_worked", {}).get("instagram", {}).get("works")
             slots.append(
                 {
                     "id": s["slot_id"],
                     "angle": angle,
                     "pillar": pillars[k % len(pillars)],
                     "sources": ["R-AAAAAAAA", "R-MADEUP00"],
+                    "playbook_note": "instagram: reels reach more" if worked else "",
                 }
             )  # `id`, as the real planner once answered
         return {"slots": slots}

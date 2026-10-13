@@ -291,6 +291,122 @@
       "dk/trust": "untrusted"
     }
   },
+  "performance_by_feature": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: you want every value of one feature on one platform, e.g. format or caption length: the median\nlift of a usual post, its interval, how many posts, and whether the difference from the other posts is clear.\nNot for: the short summary (use platform_playbook).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "feature": {
+          "description": "the post feature to break down",
+          "enum": [
+            "format",
+            "weekday",
+            "window",
+            "caption_length",
+            "first_line",
+            "hashtags",
+            "emojis",
+            "asks_question",
+            "calls_to_action",
+            "german_first_line",
+            "bilingual",
+            "mentions_price"
+          ],
+          "type": "string"
+        },
+        "platform": {
+          "enum": [
+            "instagram",
+            "facebook",
+            "threads",
+            "youtube",
+            "tiktok"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform",
+        "feature"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_performance",
+      "dk/trust": "trusted"
+    }
+  },
+  "platform_playbook": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: planning or writing for one platform and you want to know what our own past posts there support:\nwhat works, what hurts (each with its numbers, interval and post count), what a brand rule decides, and when\nthere is not enough data to say anything. Reach and engagement, never orders. Not for: checking a draft (use\nevaluate_drafts) or competitor or market trends (use trend_signals).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "enum": [
+            "instagram",
+            "facebook",
+            "threads",
+            "youtube",
+            "tiktok"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_performance",
+      "dk/trust": "trusted"
+    }
+  },
+  "post_performance": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: you want to know how one of our studio's published posts did, per platform, with what we knew about\nits idea (pillar, angle, hook). Posts are judged after 7 days. Not for: posts made by hand (they are in the\nplaybook's numbers, not listed by key).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "post_key": {
+          "description": "e.g. 2026w42-tue13-i1",
+          "maxLength": 80,
+          "type": "string"
+        }
+      },
+      "required": [
+        "post_key"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_performance",
+      "dk/trust": "trusted"
+    }
+  },
   "search_brand": {
     "annotations": {
       "destructive_hint": false,

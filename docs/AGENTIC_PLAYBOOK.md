@@ -59,6 +59,8 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 | A30 | **Pipeline the slow, serial resource** | renders run one at a time behind the AI work; each master uploads while the next renders | a 26-idea run took 735 s of production with every render and upload hidden behind the AI work | `studio/run.py` |
 | A31 | **Ask once more when an answer is unusable** | an agent answer that is missing, not JSON or lacks its key field is asked for once more | 1 call in 40 answered without JSON in the real runs | `studio/ai.py` |
 | A32 | **Keep one connection per MCP server** | a background loop with one task per server, any thread calls through it | hundreds of code calls with no process start each | `studio/mcp.py` |
+| A34 | **Close the loop with evidence in the task, not in the prompt (S4)** | the playbook per platform (what our own past posts support, with counts and intervals) goes into the strategist's and each adapter's task from code; "no playbook" and "no evidence" are said as such; each idea cites the line it leans on | Instagram captions with no emoji went from 38% to 74% of the plan after the playbook said no-emoji posts reached 2.4x (3 real runs, same frozen inputs); 10 of 26 ideas cited a line | `performance/`, `studio/inputs.py`, `plan.py` |
+| A35 | **Offer findings with their limits** | intervals not point estimates; the number of comparisons and the expected chance findings stated; overlapping features flagged; anything a rule decides shown to the owner only; no claim below 30 posts | Threads and YouTube honestly got "no evidence"; a language "finding" went to the owner, not to an agent | `performance/playbook.py` |
 | A33 | **Tell the agent what must not be said, from the owner's data** | the strategist, writers and designer get `not_on_the_menu` (items facts.yaml doesn't confirm); the brand rule `UNAVAILABLE_ITEM` blocks them anyway | the first run caught a whole video about the lamb box (rule fired on the on-screen words); the second run had none | `media.unavailable_items`, `checks.py` |
 
 ## 3. Not applied yet (and when to)
@@ -88,6 +90,8 @@ that could pass, measured on a frozen week ([lab README](../lab/agentic-slice/RE
 - **A checker heuristic that is too narrow.** The German-first-line rule knew about 70 words; real captions ("Festliche
   Kacchi", "Jede Zutat, offen gezeigt") failed it, and 5 of 26 ideas were lost to it. The fix was in the checker (suffixes
   and more words, with a test), not in the agent: when many good outputs fail one rule, look at the rule too.
+- **A look-alike signal.** Reach is not orders: the playbook optimises what the data can see (reach, engagement) and says so;
+  tracked links are empty, so no claim about sales.
 - **Copying the same limits into several prompts.** They drift from the checker (see A28).
 - **Each agent as a full Claude Code** (coding prompt, CLAUDE.md, every tool): ~20k tokens per turn of
   overhead. Strip to the agent's job (A2–A4).

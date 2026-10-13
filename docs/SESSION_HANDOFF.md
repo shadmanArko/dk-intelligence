@@ -73,8 +73,8 @@ https://claude.ai/artifact/PqPo1TGGVciq3EfrukRhTc.
 | **S1** contracts between the projects | **done** | ADR 0033; PR #20; `contracts/` |
 | **S2** the studio at full scale | **done** (branch `feat/s2-studio`, PR to `main`) | ADR 0034, [STUDIO.md](STUDIO.md), [results](results/S2_studio.md) |
 | **S3** the daily review page (dk-publishing) | **done, deployed 2026-10-13, working** (dk-publishing PR #2 and the Chrome fix PR #3: a `no-referrer` policy made Chrome send `Origin: null` and every button was refused) | dk-publishing ADR 0025, `docs/runbooks/review-page.md` |
-| **S4** the learning loop | **next** (can run beside S5) | build guide §4 S4 |
-| S5 production breadth (templates, footage curator, template engineer) | to do | build guide §4 S5 |
+| **S4** the learning loop | **done** (PR to `main`) | ADR 0035, [results](results/S4_performance_learning.md), [STUDIO.md](STUDIO.md) |
+| **S5** production breadth (templates, footage curator, template engineer) | **next** | build guide §4 S5 |
 | S6 unattended (schedule, earned autonomy, model choice) | to do | build guide §4 S6 |
 
 **What S0 did:**
@@ -104,6 +104,17 @@ that is part of S2.
 - Three real 10-day dry runs on frozen inputs: **26 of 26 plannable ideas, 128 of 130 posts valid at the real publisher,
   541k tokens (4.2k per post), 14 minutes.** The scorer ruled out 4 of 30 slots (decision for the owner, in the results).
 - **First real drafts (2026-10-13):** `--publish drafts --days 1` made 3 ideas, 15 drafts for 14 Oct (71.8k tokens, 152 s); the owner approved/rejected on the review page. No 10-day drafts run yet: that is the owner's go.
+
+**What S4 did** (`uv run intel performance build|join|analyst`):
+- `src/intel/performance/`: growth-normalised results per post from the warehouse pull, plain statistics with bootstrap
+  intervals, a playbook per platform (`data/performance/<pull>/playbook.md`). Instagram: reels 2.1x reach, no emoji 2.4x,
+  short captions 2.1x. Threads and YouTube: no evidence. Reach is not orders (tracked links are empty).
+- The strategist and each adapter get the supported lines (or "no evidence"); every idea cites the line it leans on.
+  Measured: no-emoji Instagram captions 38% → 84% of the plan, +2.5k tokens per idea.
+- dk_intel: `platform_playbook`, `performance_by_feature`, `post_performance` (read-only, Mac files; shipping the playbook
+  to the VPS is S6). A weekly analyst agent writes `analyst.md` (about 5k tokens).
+- dk_intel rules: the German first-line check was widened after 11 texts failed it (tests keep English failing).
+- Owner decisions in the results doc: let the playbook choose format and window; Threads and order attribution.
 
 **What S3 did** (in dk-publishing, public repo): a `/review` page with approve and reject per day, idea and platform
 through the Calendar's own `review_drafts`; signed 24 h link from the 08:00 Telegram digest plus a session cookie; a

@@ -20,3 +20,6 @@ verify_citations: 4000
 trend_signals: 2000
 brand_rules: 2500
 get_facts: 2500
+platform_playbook: 2500
+performance_by_feature: 2500
+post_performance: 1500

@@ -35,6 +35,7 @@ def warehouse_tables(n_posts: int = 60, snaps_per_post: int = 10) -> dict[str, p
                 "posted_at": (TS, posted),
                 "content_type": (pa.string(), ["reel", "image", None] * (n_posts // 3)),
                 "caption": (pa.string(), ["kacchi"] * n_posts),
+                "permalink": (pa.string(), [f"https://www.instagram.com/p/C{i}/" for i in range(n_posts)]),
             }
         ),
         "social_metrics_snapshot": _t(
@@ -43,7 +44,7 @@ def warehouse_tables(n_posts: int = 60, snaps_per_post: int = 10) -> dict[str, p
                 "captured_at": (TS, captured),
                 **{
                     c: (pa.int64(), [k % 50 for k in range(m)])
-                    for c in ("impressions", "reach", "likes", "comments", "shares")
+                    for c in ("impressions", "reach", "likes", "comments", "shares", "saves", "views")
                 },
             }
         ),
@@ -234,6 +235,7 @@ def training_snapshots(root: Path, n_posts: int = 240) -> tuple[Path, Path]:
             "posted_at": (TS, posted),
             "content_type": (pa.string(), types),
             "caption": (pa.string(), captions),
+            "permalink": (pa.string(), [f"https://www.instagram.com/p/C{i}/" for i in range(n_posts)]),
         }
     )
     t["social_metrics_snapshot"] = _t(
@@ -245,6 +247,8 @@ def training_snapshots(root: Path, n_posts: int = 240) -> tuple[Path, Path]:
             "likes": (pa.int64(), likes),
             "comments": (pa.int64(), [x // 5 for x in likes]),
             "shares": (pa.int64(), [x // 10 for x in likes]),
+            "saves": (pa.int64(), [x // 20 for x in likes]),
+            "views": (pa.int64(), [x * 30 for x in likes]),
         }
     )
     pull = write_snapshot(root / "pulls", "20261008T060000Z", t)

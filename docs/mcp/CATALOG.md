@@ -7,9 +7,9 @@ Connect: stdio `intel mcp serve --profile <p>`, or HTTP `http://127.0.0.1:8766/m
 
 | Profile | Tools | Tool list (tokens, est.) | Prompts |
 |---|---|---|---|
-| `owner` | 18 | 7,630 | caption_ideas, cited_answer, content_plan, image_ideas, role_checker, role_planner, role_producer, role_writer, video_ideas |
-| `analyst` | 11 | 4,181 | cited_answer |
-| `planner` | 10 | 3,773 | role_planner |
+| `owner` | 21 | 8,568 | caption_ideas, cited_answer, content_plan, image_ideas, role_checker, role_planner, role_producer, role_writer, video_ideas |
+| `analyst` | 14 | 5,119 | cited_answer |
+| `planner` | 11 | 4,085 | role_planner |
 | `writer` | 7 | 2,962 | caption_ideas, role_writer |
 | `producer` | 4 | 1,585 | image_ideas, role_producer, video_ideas |
 | `checker` | 6 | 2,452 | role_checker |
@@ -29,6 +29,9 @@ Connect: stdio `intel mcp serve --profile <p>`, or HTTP `http://127.0.0.1:8766/m
 | `get_sources` | evidence | S2 | 6000 | owner, analyst, checker | you need the full source behind citations like [R-7KQ2M9XA] (place, district, date, rating, text) or want to prove a citation exists |
 | `grounding_pack` | studio | S1 | 3500 | owner, planner, writer | planning posts, a content calendar, captions or ideas for one platform: START HERE |
 | `model_status` | models | S1 | 1500 | owner | you need which model versions are live, their health and drift, the last 7 days of live accuracy, the last training run and models waiting for the owner's approval |
+| `performance_by_feature` | performance | S1 | 2500 | owner, analyst | you want every value of one feature on one platform, e.g |
+| `platform_playbook` | performance | S1 | 2500 | owner, analyst, planner | planning or writing for one platform and you want to know what our own past posts there support: what works, what hurts (each with its numbers, interval and post count), what a brand rule decides, and when there is not enough data to say anything |
+| `post_performance` | performance | S1 | 1500 | owner, analyst | you want to know how one of our studio's published posts did, per platform, with what we knew about its idea (pillar, angle, hook) |
 | `score_drafts` | models | S1 | 8000 | owner | you have 1-50 Facebook or Instagram drafts and want the production content scorer's verdict, ranked, with plain reasons |
 | `search_brand` | evidence | S0 | 2500 | owner, analyst, planner, writer, producer, checker | you need what our brand book says (collection=brand: story, dishes, tone; public) or what our voice and content rules say (collection=rules: wording, languages, platform rules; internal), with citations |
 | `search_posts` | evidence | S2 | 4000 | owner, analyst, planner, writer, producer | you need examples of posts on a topic, ours (with reach and engagement vs our typical post) or Berlin food creators' on TikTok (views, likes), e.g |

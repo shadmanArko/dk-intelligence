@@ -20,7 +20,7 @@ def test_generated_snapshots_pass_and_get_a_card(tmp_path):
     m = validate_snapshot(write_snapshot(tmp_path / "market", "s1", market_tables()), "market")
     assert w.ok and m.ok and not w.warnings, (lines(w), lines(w, "warning"), lines(m))
     card = w.card["social_post"]
-    assert card["rows"] == 60 and card["used_by"] == ["content_scorer", "reach_scorer", "funnel"]
+    assert card["rows"] == 60 and card["used_by"] == ["content_scorer", "reach_scorer", "funnel", "performance"]
     assert card["columns"]["content_type"]["null_pct"] == pytest.approx(33.33, abs=0.01)
     assert card["columns"]["platform"]["top"] == {"facebook": 30, "instagram": 30}
     assert card["age_hours"] > 0 and w.summary()["tables"] == 5

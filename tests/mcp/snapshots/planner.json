@@ -322,6 +322,40 @@
       "dk/trust": "trusted"
     }
   },
+  "platform_playbook": {
+    "annotations": {
+      "destructive_hint": false,
+      "idempotent_hint": true,
+      "open_world_hint": false,
+      "read_only_hint": true
+    },
+    "description": "Use when: planning or writing for one platform and you want to know what our own past posts there support:\nwhat works, what hurts (each with its numbers, interval and post count), what a brand rule decides, and when\nthere is not enough data to say anything. Reach and engagement, never orders. Not for: checking a draft (use\nevaluate_drafts) or competitor or market trends (use trend_signals).",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "enum": [
+            "instagram",
+            "facebook",
+            "threads",
+            "youtube",
+            "tiktok"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform"
+      ],
+      "type": "object"
+    },
+    "meta": {
+      "dk/contract": "1.0",
+      "dk/sensitivity": "S1",
+      "dk/server": "dk_performance",
+      "dk/trust": "trusted"
+    }
+  },
   "search_brand": {
     "annotations": {
       "destructive_hint": false,

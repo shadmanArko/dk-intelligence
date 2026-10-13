@@ -95,8 +95,15 @@ CONTRACTS: tuple[TableContract, ...] = (
     TableContract(
         "warehouse",
         "social_post",
-        used_by=("content_scorer", "reach_scorer", "funnel"),
-        columns={"id": "string", "platform": "string", "posted_at": TS, "content_type": "string", "caption": "string"},
+        used_by=("content_scorer", "reach_scorer", "funnel", "performance"),
+        columns={
+            "id": "string",
+            "platform": "string",
+            "posted_at": TS,
+            "content_type": "string",
+            "caption": "string",
+            "permalink": "string",  # the performance join: the publisher's live_url names the same post
+        },
         errors=_schema(
             {
                 "id": pa.Column(None, nullable=False),
@@ -117,7 +124,7 @@ CONTRACTS: tuple[TableContract, ...] = (
     TableContract(
         "warehouse",
         "social_metrics_snapshot",
-        used_by=("content_scorer", "reach_scorer"),
+        used_by=("content_scorer", "reach_scorer", "performance"),
         columns={
             "social_post_id": "string",
             "captured_at": TS,
@@ -126,6 +133,8 @@ CONTRACTS: tuple[TableContract, ...] = (
             "likes": "int64",
             "comments": "int64",
             "shares": "int64",
+            "saves": "int64",
+            "views": "int64",
         },
         errors=_schema(
             {
