@@ -58,7 +58,8 @@ loaded (`launchctl list | grep intel.weekly`)? Run `uv run intel weekly` by hand
 
 ## HostDiskLow
 🟠 Less than 15% free on `/`. `docker system df`; `docker image prune` (keeps images in use); old backups in
-`/opt/dhaka-kacchi/backups` (B2 keeps 30 days anyway); `journalctl --vacuum-time=7d`.
+`/opt/dhaka-kacchi/backups` (B2 keeps 30 days anyway); `journalctl --vacuum-time=7d`. Step by step, with the publisher's
+media and this Mac: [disk.md](disk.md).
 
 ## HostDiskCritical
 🔴 Less than 5% free: Postgres stops writing. Free space now: `docker image prune -a`, delete the oldest local backups,

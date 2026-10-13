@@ -173,7 +173,7 @@ def test_the_ml_demo_walks_every_step_and_ends_with_every_model_judged():
 
 
 def test_the_actions_are_a_fixed_list_and_spending_ones_ask_first():
-    base = {"all", "ml.weekly", "agents.drafts", "agents.render", "ml.pull", "ml.market"}
+    base = {"all", "ml.weekly", "agents.drafts", "agents.render", "ml.pull", "ml.market", "cleanup"}
     single = {a for a in ops.ACTIONS if a.startswith("ml.only.")}
     assert set(ops.ACTIONS) == base | single and len(single) == 6  # one per model plug-in, from the code's own plug-ins
     assert [s.id for s in ops.ACTIONS["all"].steps] == ["ml.weekly", "agents.drafts"]

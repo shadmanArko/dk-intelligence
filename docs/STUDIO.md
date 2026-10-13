@@ -64,6 +64,11 @@ retrieves once with `grounding_pack`; agents read cited evidence; code checks th
 not Claude Code's cron). The **Agent system** page has a RAG box on the map and a section "Where the agents use RAG" with the live
 numbers of the last run.
 
+**Disk space (ADR 0042).** `uv run intel studio cleanup` previews and `--apply` deletes generated videos nothing needs, old knowledge
+packs and old upload copies (rules in `config/studio/retention.yaml`); the scheduled check does it once a day; Operations has a
+button and a preview; Today warns under 15% free. Your footage and `out/campaign` are never reachable. The plan is 5 days (less
+disk, fewer tokens per run). The VPS steps are in [runbooks/disk.md](runbooks/disk.md).
+
 **Stop, and one model alone (ADR 0041).** *Stop* (Operations, Runs, Mission control) asks the studio run and the ML run to end
 cleanly: they write "stopped by the owner", keep what is finished, and end their own agents and renderers; it takes seconds. A
 stopped studio run is never restarted by the schedule; *Resume* on the Runs page continues it without redoing finished calls. A

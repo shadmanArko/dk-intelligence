@@ -13,6 +13,7 @@
  <div class="meta" style="margin-top:6px">Start the whole machine, or one part of it. Each button runs the same command the schedule or you would run by hand; the programs keep their own locks, so nothing can run twice at once. Nothing here approves or posts anything.</div>
  <div id="everything" style="margin-top:14px"></div>
 </section>
+<section class="card"><h2>Disk space</h2><div id="disk" class="meta">checking the disk…</div><div id="diskAct" style="margin-top:8px"></div></section>
 <section class="card"><h2>One model at a time</h2><div class="meta" style="margin-bottom:6px">Retrain a single model on fresh data and judge it. A candidate only: nothing is uploaded or deployed, and it does not count as this week's training. The full ML run (above) deploys.</div><div id="modelActs"></div></section>
 <section class="card" id="nowCard" hidden><h2>What is running now</h2><div id="now"></div></section>
 <div class="grid3">
@@ -40,6 +41,9 @@ function draw(){if(!O)return;const all=O.actions.find(a=>a.id==='all');
  $('everything').innerHTML=`<div class="row"><button class="btn primary big" data-act="all" ${busy()?'disabled':''}>▶ Run everything</button><div class="grow"><b>${esc(all.what)}</b><div class="meta">cost: ${esc(all.cost)}. The studio part starts only if the ML part succeeds, and plans from the day after what is already scheduled.</div></div></div>`;
  $('modelActs').innerHTML=O.actions.filter(a=>a.group==='model').map(a=>actHtml(a,false)).join('');
  $('stopBtn').hidden=!busy();$('stopBtn').onclick=stopAll;
+ const cl=O.actions.find(a=>a.id==='cleanup');if(cl&&window.D){const d=window.D,mb=n=>n>=1e9?(n/1e9).toFixed(1)+' GB':Math.round(n/1e6)+' MB';
+  $('disk').innerHTML=`<b style="color:${d.disk.free_percent<15?'var(--bad)':'var(--ink)'}">${mb(d.disk.free)} free (${d.disk.free_percent}%)</b> on this Mac. A cleanup would free <b>${mb(d.would_free)}</b>: ${d.videos.skipped?`videos: ${esc(d.videos.skipped)}`:`${d.videos.count} generated videos (${mb(d.videos.bytes)})`}, ${d.packs.count} old knowledge packs (${mb(d.packs.bytes)}), ${d.uploads.count} old upload copies (${mb(d.uploads.bytes)}). Your footage and photos are never touched, and neither is a post that still waits to go out. It also runs by itself once a day.`;
+  $('diskAct').innerHTML=actHtml(cl,d.would_free>0&&d.disk.free_percent<25)}
  $('mlActs').innerHTML=O.actions.filter(a=>a.group==='ml').map(a=>actHtml(a,a.id==='ml.weekly')).join('');
  $('agActs').innerHTML=O.actions.filter(a=>a.group==='agents').map(a=>actHtml(a,a.id==='agents.drafts')).join('');
  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>start(b.dataset.act));
@@ -48,7 +52,7 @@ function draw(){if(!O)return;const all=O.actions.find(a=>a.id==='all');
  $('nowCard').hidden=!c;
  if(c)$('now').innerHTML=`<div class="row"><b>${esc(c.label)}</b><span class="pill ${c.state==='done'?'ok':c.state==='failed'||c.state==='stopped'?'bad':'run'}">${esc(c.state)}</span><span class="meta">started ${esc((c.started_at||'').slice(11,19))} UTC${c.finished_at?' · finished '+esc(c.finished_at.slice(11,19)):''}</span></div>`+c.steps.map(s=>`<div class="stp">${s.state==='running'?'<span class="sp"></span>':`<span class="pill ${stCls[s.state]||''}">${s.state}</span>`}<span>${esc(s.label)}</span><span class="grow"></span><span class="meta">${s.exit!=null?'exit '+s.exit:''}</span></div>`).join('')+(msg?`<div class="meta" style="margin-top:6px">${esc(msg)}</div>`:'');
  else if(msg)$('now').innerHTML=esc(msg)}
-async function load(){O=await api('/api/ops');draw();
+async function load(){O=await api('/api/ops');try{window.D=await api('/api/cleanup')}catch(e){}draw();
  try{const m=await api('/api/ml');$('mlBar').className='bar'+(m.run.running?' on':'');$('mlBar').firstChild.style.width=m.percent+'%';$('mlTxt').textContent=m.percent.toFixed(0)+'%';
    $('mlLine').textContent=m.run.id?`last run ${m.run.id}: ${m.run.state}${m.run.current_step?' · on '+m.run.current_step:''}`:'no run yet'}catch(e){}
  try{const t=await api('/api/telemetry');$('agBar').className='bar'+(t.running?' on':'');$('agBar').firstChild.style.width=t.percent+'%';$('agTxt').textContent=t.percent.toFixed(0)+'%';

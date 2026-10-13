@@ -9,6 +9,7 @@ from typing import Any
 
 import typer
 
+from intel.studio import cleanup as cleanup_mod
 from intel.studio import config as studio_config
 from intel.studio import coverage as coverage_mod
 from intel.studio import handover, media
@@ -122,6 +123,7 @@ def run(
         if decision.action == "giveup":
             _give_up(decision)
         if decision.action not in ("run", "resume"):
+            _auto_cleanup(studio)  # nothing to start: a good time to tidy the disk (once a day)
             hub.close()
             raise typer.Exit(0)
         if decision.action == "resume":
@@ -153,6 +155,33 @@ def _check(cfg: StudioConfig, studio: Studio) -> schedule_mod.Decision:
                                dt.datetime.now().astimezone())  # fmt: skip
 
 
+def _auto_cleanup(studio: Studio) -> None:
+    """Once a day, delete what nothing needs (retention.yaml). Never while a run works, never when the publisher
+    cannot be asked, and it tells the owner only when it freed something worth mentioning."""
+    cfg = cleanup_mod.load_retention()
+    marker = DATA / "last-cleanup"
+    now = dt.datetime.now(dt.UTC)
+    if not cfg.enabled or schedule_mod.live_run(DATA / ".running") is not None:
+        return
+    if marker.exists() and now - dt.datetime.fromtimestamp(marker.stat().st_mtime, dt.UTC) < dt.timedelta(hours=20):
+        return
+    try:
+        result = cleanup_mod.run(cfg, studio.publisher, media.REELS, DATA, now, apply=True)
+    except Exception as ex:  # noqa: BLE001 - tidying must never break the check
+        typer.echo(f"cleanup failed: {type(ex).__name__}: {ex}")
+        return
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(now.isoformat())
+    typer.echo(
+        f"cleanup: deleted {result.removed} folders, {cleanup_mod.human(result.freed)}"
+        + (f" ({result.jobs.skipped})" if result.jobs.skipped else "")
+    )
+    if result.freed >= 100_000_000:
+        LocalNotifier(DATA).notify(
+            "Studio: freed disk space", f"Deleted old videos and packs: {cleanup_mod.human(result.freed)}."
+        )
+
+
 def _give_up(decision: schedule_mod.Decision) -> None:
     """Tell the owner once that a run could not be finished by itself (a marker in the run folder keeps it to once)."""
     marker = DATA / "runs" / str(decision.run_id) / "gave-up"
@@ -181,6 +210,58 @@ def _start_day(cfg: StudioConfig, studio: Studio, start_from: str | None, resume
     day, why = coverage_mod.resolve_start(cfg, cov, wanted)
     typer.echo(f"{cov['sentence']} Planning {why}.")
     return day
+
+
+def _publisher_client() -> handover.PublishClient | None:
+    env = handover.load_env()
+    if "DK_PUBLISH_URL" in env and "DK_PUBLISH_KEY" in env:
+        return handover.PublishClient(env["DK_PUBLISH_URL"], env["DK_PUBLISH_KEY"])
+    return None
+
+
+def _print_plan(label: str, plan: cleanup_mod.Plan) -> None:
+    if plan.skipped:
+        typer.echo(f"{label}: nothing deleted: {plan.skipped}")
+        return
+    typer.echo(f"{label}: {len(plan.delete)} to delete ({cleanup_mod.human(plan.freed)}), {len(plan.keep)} kept")
+    for item in plan.delete[:12]:
+        typer.echo(f"   delete {item.path.name:<44} {cleanup_mod.human(item.bytes):>8}  {item.why}")
+    if len(plan.delete) > 12:
+        typer.echo(f"   ... and {len(plan.delete) - 12} more")
+
+
+@studio_app.command("cleanup")
+def cleanup_cmd(
+    apply: bool = typer.Option(False, "--apply", help="really delete (default: only show what would go)"),
+    unknown_days: int = typer.Option(
+        None, "--unknown-days", help="how long a video no post knows stays (default: retention.yaml; 0 = delete now)"
+    ),
+) -> None:
+    """Free disk space: delete generated videos nothing needs (finished posts, experiments) and old knowledge packs.
+
+    Never touches your own footage and photos, `out/campaign`, a post that still waits to go out, or a resumable run."""
+    import shutil
+
+    from intel.studio import schedule as schedule_mod
+
+    cfg = cleanup_mod.load_retention()
+    if unknown_days is not None:
+        cfg = cfg.model_copy(update={"unknown_keep_days": unknown_days})
+    now = dt.datetime.now(dt.UTC)
+    before = shutil.disk_usage(media.REELS).free
+    working = schedule_mod.live_run(DATA / ".running") is not None
+    result = cleanup_mod.run(cfg, _publisher_client(), media.REELS, DATA, now, apply=apply, working=working)
+    _print_plan("generated videos (reels out/jobs)", result.jobs)
+    _print_plan("old knowledge packs", result.packs)
+    _print_plan("copies sent to the VPS (data/packages/knowledge)", result.uploads)
+    if apply:
+        after = shutil.disk_usage(media.REELS).free
+        typer.echo(
+            f"deleted {result.removed} folders, {cleanup_mod.human(result.freed)}; free space "
+            f"{cleanup_mod.human(before)} -> {cleanup_mod.human(after)}"
+        )
+    else:
+        typer.echo("nothing was deleted (this was a preview). Run again with --apply to delete.")
 
 
 @studio_app.command("coverage")

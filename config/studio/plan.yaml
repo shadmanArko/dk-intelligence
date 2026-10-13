@@ -1,6 +1,6 @@
 # The content plan: how much one run plans. Change a line, run again. Every key is read by src/intel/studio/config.py.
 
-horizon_days: 10          # days one run plans (10 days x 3 ideas = 30 ideas)
+horizon_days: 5           # days one run plans (5 days x 3 ideas = 15 ideas): fewer videos kept on the disks (ADR 0042)
 first_day_offset: 1       # 1 = the plan starts tomorrow; 0 = today (only slots 60 s or more away can be handed over)
 ideas_per_day: 3          # ideas per day (at most 3: one per posting window, see slots.yaml)
 max_ideas_per_run: 30     # a hard cap on ideas in one run, whatever the two lines above say

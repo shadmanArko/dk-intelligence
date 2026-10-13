@@ -197,6 +197,13 @@ def _rows() -> list[dict[str, Any]] | None:
     return coverage.fetch_rows(client, dt.datetime.now(dt.UTC)) if client else None
 
 
+def _disk_free() -> float:
+    import shutil
+
+    d = shutil.disk_usage(REPO)
+    return d.free / d.total
+
+
 def _readers(rows: list[dict[str, Any]] | None) -> today.Readers:
     from intel.studio import schedule as schedule_mod
 
@@ -209,6 +216,7 @@ def _readers(rows: list[dict[str, Any]] | None) -> today.Readers:
         running=_running,
         schedule_installed=lambda: schedule_mod.PLIST.exists(),
         now=lambda: dt.datetime.now(dt.UTC),
+        disk_free=_disk_free,
     )
 
 

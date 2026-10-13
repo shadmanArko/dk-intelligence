@@ -1,0 +1,10 @@
+# How long files stay on this Mac. The Mac and the VPS disks are small: generated videos are deleted once nothing needs them.
+# `uv run intel studio cleanup` shows what would go (nothing is deleted); `--apply` deletes it. The daily check does it too.
+# NEVER touched: your own footage and photos (reels incoming/, raw/, public/), the campaign you made by hand (out/campaign),
+# anything a post that is still waiting to go out uses, and anything a run that can still be resumed uses.
+
+enabled: true            # the daily check cleans up by itself (once a day)
+keep_days_after_post: 3  # a video stays this many days after its post's time (published, or cancelled) ...
+unknown_keep_days: 1     # ... a video that no post knows about (a test, an experiment) stays this long
+keep_packs: 3            # knowledge packs kept besides the active one (a rollback needs a few)
+keep_uploads: 1          # copies of knowledge packs kept in data/packages/knowledge (the newest); the model bundle is not kept

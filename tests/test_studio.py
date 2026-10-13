@@ -24,7 +24,17 @@ from intel.studio.run import Options, Studio
 from tests.studio_fakes import NOW, TODAY, FakeRenderer, FakeRunner, FakeTools, fake_publisher
 from tests.test_contracts import errors, validator
 
-SHIPPED = sc.load()
+
+def _pinned() -> sc.StudioConfig:
+    """The settings the tests were written for: a ten-day plan, a four-day lead, six days between runs. What is shipped
+    today is checked on its own (`test_the_shipped_settings_keep_the_calendar_filled`)."""
+    data = sc.load().model_dump()
+    data["plan"]["horizon_days"] = 10
+    data["schedule"].update(lead_days=4, min_days_between=6)
+    return sc.StudioConfig.model_validate(data)
+
+
+SHIPPED = _pinned()
 ALL_REELS = SHIPPED.with_plan(format_rotation=[])  # the 150-posts scenario: three reels a day, no rotation
 
 
@@ -1454,3 +1464,16 @@ def test_the_reminder_job_runs_the_remind_command_and_installing_adds_it_beside_
         "reminder"
     )
     assert schedule.uninstall(tmp_path / "check.plist") and not list(tmp_path.glob("*.plist"))
+
+
+def test_the_shipped_settings_keep_the_calendar_filled_and_the_plan_short(tmp_path):
+    import shutil
+
+    shipped = sc.load()
+    assert shipped.plan.horizon_days == 5 and shipped.schedule.lead_days == 2 and shipped.schedule.min_days_between == 3
+    assert shipped.with_plan(horizon_days=1).plan.horizon_days == 1  # a one-off `--days 1` is still allowed
+    shutil.copytree(sc.CONFIG_DIR, tmp_path / "cfg")
+    sched = tmp_path / "cfg" / "schedule.yaml"
+    sched.write_text(sched.read_text().replace("min_days_between: 3 ", "min_days_between: 4 "))
+    with pytest.raises(sc.StudioConfigError, match="calendar would run dry"):
+        sc.load(tmp_path / "cfg")
