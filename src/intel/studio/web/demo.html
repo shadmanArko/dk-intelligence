@@ -19,6 +19,7 @@
 <section class="card"><h2>1 · Machine learning: from the data to a deployed model</h2><div id="flow"></div></section>
 <section class="card"><h2>The seven models</h2><div id="models"></div></section>
 <section class="card"><h2>2 · Agents: the orchestrator, its agents, the MCP servers and their tools</h2><div id="map"></div></section>
+<section class="card"><h2>Where the agents use RAG</h2><div id="rag"></div></section>
 <section class="card"><h2>Every agent call</h2><div id="calls"></div></section>
 </div>
 <aside class="card dr" id="drawer" hidden></aside>
@@ -41,7 +42,7 @@ function draw(){if(!M||!S)return;
  $('sAg').textContent=A.reduce((a,v)=>a+v.calls,0);$('sTool').textContent=S.layers.tools.reduce((a,x)=>a+x.by_agents,0);$('sCode').textContent=S.layers.tools.reduce((a,x)=>a+x.by_code,0);
  $('sTok').textContent=k(A.reduce((a,v)=>a+(v.tokens_in||0)+(v.tokens_out||0),0));$('sDr').textContent=TM?TM.ideas_done+' ideas':'0';
  renderMlFlow($('flow'),M,key=>{ML.sel=key;draw()});renderMlModels($('models'),M,n=>openModel(n,M.models.find(x=>x.name===n)));
- renderSystemMap($('map'),S,ctx.select);renderAllCalls($('calls'),S,ctx);
+ renderSystemMap($('map'),S,ctx.select);renderRag($('rag'),S);renderAllCalls($('calls'),S,ctx);
  const d=$('drawer');if(!SYS.sel&&!SYS.callId&&!ML.sel){d.hidden=true;return}
  d.hidden=false;const body=SYS.callData?callView(SYS.callData):SYS.sel?drawerHtml(S,SYS.sel):stepHtml(M,ML.sel);
  d.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="grow"></span><button class="btn" id="closeDr">close ✕</button></div>`+body;

@@ -57,6 +57,13 @@ confusion matrix and every judge gate. *Demo* (`/demo`) plays a made-up whole ru
 tokens and no real data (`/system?demo=1`, `/ml?demo=1` show each half). The console now needs its own host and a session token
 for every button.
 
+**Showing how it fits together.** [HOW_IT_WORKS.md](HOW_IT_WORKS.md) (also the **How it works** page of the console) is a guided
+tour with exact files and line numbers: where each agent is defined (one Markdown file each), where the orchestrator is, the
+`claude -p` command that connects an agent to Claude Code and to MCP servers, where the agent system uses RAG (the orchestrator
+retrieves once with `grounding_pack`; agents read cited evidence; code checks the citations), and how it runs on time (launchd,
+not Claude Code's cron). The **Agent system** page has a RAG box on the map and a section "Where the agents use RAG" with the live
+numbers of the last run.
+
 **Stop, and one model alone (ADR 0041).** *Stop* (Operations, Runs, Mission control) asks the studio run and the ML run to end
 cleanly: they write "stopped by the owner", keep what is finished, and end their own agents and renderers; it takes seconds. A
 stopped studio run is never restarted by the schedule; *Resume* on the Runs page continues it without redoing finished calls. A

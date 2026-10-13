@@ -238,7 +238,7 @@ def test_the_console_only_answers_its_own_host_and_only_obeys_posts_with_its_tok
 
 def test_every_page_has_the_top_bar_and_the_token_and_the_pages_for_the_whole_machine_exist():
     c = _client()
-    for url in ("/", "/ops", "/system", "/ml", "/demo", "/live", "/runs", "/guide"):
+    for url in ("/", "/ops", "/system", "/ml", "/demo", "/live", "/runs", "/guide", "/how"):
         html = c.get(url).text
         assert "id=topbar" in html and "intel-token" in html, url
     for name in ("common.js", "system.js", "ml.js", "common.css"):
@@ -393,3 +393,43 @@ def test_the_stop_endpoint_needs_the_token_and_says_when_nothing_runs(monkeypatc
     assert c.post("/api/ops/stop").status_code == 409
     monkeypatch.setattr(console_system.ops, "stop_all", lambda *a, **k: ["the studio run"])
     assert c.post("/api/ops/stop").json() == {"stopped": ["the studio run"]}
+
+
+# ---------- RAG in the agent system, and the walkthrough ----------
+
+
+def test_the_page_says_where_the_agents_use_rag_from_the_pack_and_the_run(tmp_path):
+    pack = tmp_path / "knowledge"
+    (pack / "kp-1").mkdir(parents=True)
+    (pack / "ACTIVE").write_text("kp-1\n")
+    (pack / "kp-1" / "manifest.json").write_text(json.dumps({
+        "pack_id": "kp-1", "built_at": "2026-10-13T13:42:53+00:00", "pull": "p1", "market_snapshot": "m1",
+        "collections": {"reviews": 13589, "own_posts": 471},
+        "embedder": {"name": "onnx:harrier-0.6b", "dim": 1024}}))  # fmt: skip
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "inputs.json").write_text(json.dumps({"pack": {
+        "competitor_gaps": [{"cite": "R-1", "text": "slow"}], "our_best_posts": [{"cite": "P-1", "text": "ours"}],
+        "brand_reminders": ["a", "b"], "trust": "x"}}))  # fmt: skip
+    (run / "state.json").write_text(json.dumps({"ideas": {
+        "d01i1": {"angle": "a", "sources": ["R-1", "P-1"]}, "d01i2": {"angle": "b", "sources": []},
+        "d01i3": {}}}))  # fmt: skip
+    events = [
+        {"ms": 5, "node": "code:inputs", "kind": "code_call", "tool": "grounding_pack", "took_ms": 900, "ok": True}
+    ]
+    r = trace.rag(pack, run, events)
+    assert r["pack"]["id"] == "kp-1" and r["pack"]["collections"]["reviews"] == 13589 and r["pack"]["dim"] == 1024
+    assert r["retrieval"]["took_ms"] == 900 and r["retrieval"]["cite_ids"] == 2
+    assert r["retrieval"]["parts"]["competitor_gaps"] == {"n": 1, "from": "reviews"}
+    assert r["use"] == {"ideas": 3, "angled": 2, "with_sources": 1, "citations": 2, "distinct": 2}
+    assert trace.rag(None, None, []) == {"pack": None, "retrieval": None, "use": None}  # no pack, no run: says so
+    assert trace.rag_demo(0)["retrieval"] is None and trace.rag_demo(80000)["use"]["with_sources"] > 0
+
+
+def test_the_system_page_data_carries_the_rag_layer_and_the_walkthrough_is_served():
+    c = _client()
+    assert set(c.get("/api/system/demo?tick=60").json()["rag"]) == {"pack", "retrieval", "use"}
+    assert set(c.get("/api/system").json()["rag"]) == {"pack", "retrieval", "use"}
+    how = c.get("/how").text
+    assert "id=topbar" in how and "Where the agent system uses RAG" in how and "ClaudeRunner" in how
+    assert "launchd" in how and "not Claude Code" in how  # the schedule is explained as launchd, not Claude Code's cron

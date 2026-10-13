@@ -257,6 +257,116 @@ def _server_of(tools: dict[str, dict[str, Any]], tool: str) -> str:
     return "?"
 
 
+# ---------- reading: where the agent system uses RAG ----------
+
+RAG_PARTS = {  # what the grounding pack holds, and which collection of the knowledge pack it is retrieved from
+    "competitor_gaps": "reviews", "our_best_posts": "own_posts", "opportunities": "own_posts + reviews",
+    "what_works": "trends table", "brand_reminders": "brand and rules files", "calendar": "intel-api (occasions)",
+    "gap_areas": "intel-api (community map)",
+}  # fmt: skip
+
+
+def _count(value: Any) -> int:
+    return len(value) if isinstance(value, (list, dict)) else 1
+
+
+def rag(pack_dir: Path | None, run_folder: Path | None, events: list[dict[str, Any]]) -> dict[str, Any]:
+    """The retrieval layer as this run used it. Agents never query the knowledge pack themselves: the orchestrator's
+    code does it once (`grounding_pack`), the agents get cited evidence in their task, and code checks every citation.
+
+    pack      the active knowledge pack (from its manifest): what it holds and how it is searched
+    retrieval the grounding_pack call of this run and what came back, by part
+    use       how much of that evidence the strategist's angles cited, from the run's state
+    """
+    out: dict[str, Any] = {"pack": None, "retrieval": None, "use": None}
+    if pack_dir is not None:
+        try:
+            active = (pack_dir / "ACTIVE").read_text().strip()
+            m = json.loads((pack_dir / active / "manifest.json").read_text())
+            emb = m.get("embedder") or {}
+            out["pack"] = {"id": m.get("pack_id"), "built_at": m.get("built_at"), "pull": m.get("pull"),
+                           "market": m.get("market_snapshot"), "collections": m.get("collections") or {},
+                           "embedder": emb.get("name"), "dim": emb.get("dim"), "masks": m.get("masks"),
+                           "duplicates_collapsed": m.get("duplicates_collapsed")}  # fmt: skip
+        except (OSError, ValueError):
+            pass
+    call = next((e for e in events if e.get("kind") == "code_call" and e.get("tool") == "grounding_pack"), None)
+    inputs = None
+    if run_folder is not None and (run_folder / "inputs.json").exists():
+        try:
+            inputs = json.loads((run_folder / "inputs.json").read_text()).get("pack")
+        except ValueError:
+            inputs = None
+    if call or inputs:
+        parts = {k: {"n": _count(v), "from": RAG_PARTS[k]} for k, v in (inputs or {}).items() if k in RAG_PARTS}
+        cites = set(_cites(inputs or {}))
+        out["retrieval"] = {"tool": "dk_intel_planner.grounding_pack", "took_ms": (call or {}).get("took_ms"),
+                            "ok": (call or {}).get("ok", True), "parts": parts, "cite_ids": len(cites)}  # fmt: skip
+    if run_folder is not None and (run_folder / "state.json").exists():
+        try:
+            ideas = json.loads((run_folder / "state.json").read_text()).get("ideas") or {}
+        except ValueError:
+            ideas = {}
+        used = [c for r in ideas.values() for c in (r.get("sources") or [])]
+        angled = [r for r in ideas.values() if r.get("angle")]
+        cited = sum(1 for r in angled if r.get("sources"))
+        out["use"] = {
+            "ideas": len(ideas),
+            "angled": len(angled),
+            "with_sources": cited,
+            "citations": len(used),
+            "distinct": len(set(used)),
+        }
+    return out
+
+
+def _cites(x: Any) -> list[str]:
+    found: list[str] = []
+    if isinstance(x, dict):
+        if isinstance(x.get("cite"), str):
+            found.append(x["cite"])
+        for v in x.values():
+            found += _cites(v)
+    elif isinstance(x, list):
+        for v in x:
+            found += _cites(v)
+    return found
+
+
+def rag_demo(clock_ms: int) -> dict[str, Any]:
+    """The same shape for the demo run: made-up numbers, same story."""
+    began = clock_ms > 9000
+    return {
+        "pack": {
+            "id": "kp-demo",
+            "built_at": "2026-10-11T10:02:00+00:00",
+            "pull": "demo",
+            "market": "demo",
+            "collections": {"brand": 9, "creator_posts": 2210, "own_posts": 471, "reviews": 13589, "rules": 10},
+            "embedder": "onnx:harrier-0.6b",
+            "dim": 1024,
+            "masks": ["email", "handle", "link", "phone"],
+            "duplicates_collapsed": 109,
+        },  # fmt: skip
+        "retrieval": {
+            "tool": "dk_intel_planner.grounding_pack",
+            "took_ms": 900,
+            "ok": True,
+            "cite_ids": 14,
+            "parts": {k: {"n": 3, "from": v} for k, v in RAG_PARTS.items()},
+        }
+        if began
+        else None,  # fmt: skip
+        "use": {
+            "ideas": 12,
+            "angled": 12 if clock_ms > 70000 else 0,
+            "with_sources": 11 if clock_ms > 70000 else 0,
+            "citations": 19 if clock_ms > 70000 else 0,
+            "distinct": 9 if clock_ms > 70000 else 0,
+        },  # fmt: skip
+    }
+
+
 # ---------- reading: every unit of work, and one in full ----------
 
 
