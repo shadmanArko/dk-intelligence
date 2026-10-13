@@ -781,3 +781,58 @@ end in 1.3 days) and is installed only on the owner's say-so.
 **Trade-off I would defend.** I did not build auto-approval even though the owner's goal is fewer clicks: there are 2 decisions
 to learn from, and approval is the one thing that makes this a system the owner can trust. The report says when a kind has earned
 it; the switch stays theirs.
+
+## S6b · A laptop that is often closed, and the work that must still happen
+
+**Situation.** The studio runs on the owner's laptop, which is closed at night and sometimes crashes. My first schedule fired once
+a day at a fixed time. launchd does not run a missed calendar job if the Mac was powered off, and a run that dies halfway leaves
+a lock file that made the console say "running" forever. The owner asked for exactly the opposite: do the day's work whenever the
+Mac is next on, and finish an operation that did not complete.
+
+**Task.** Make "done" something the system can tell, and make an interrupted run finish by itself without paying twice, without
+looping, and without starting a second plan on top.
+
+**Action.**
+- **A frequent cheap check that decides, instead of a timer that acts.** At login and every 30 minutes it reads the calendar
+  (no AI) and picks one of: nothing, finish a cut-off run, or start a new one. A new run waits for 09:30; a cut-off run does not.
+- **Defined "cut off" from evidence:** the run's own log has no end event and its lock names a process that is gone. A run that
+  wrote its own end, even a failed one, is final and is never retried: otherwise a bad input would loop and burn tokens.
+- **Bounded the retry:** three tries, then one notification and a marker file. A run cut off for more than 36 hours is dropped,
+  because its posting slots have passed.
+- **Reused the resume I had built for the budget guard:** state and inputs are saved per idea, so finished calls are not made again.
+- **Tests that simulate the failure,** then a real one: I started a real run, killed the process group with SIGKILL while a render
+  was in flight, and let the scheduled check pick it up.
+
+**Result.** The cut came at 95 s with 10 calls and 71,127 tokens already paid. The next check said "would resume" and finished the
+run in 35 s: 3 of 3 ideas, 12 of 12 posts, none of the 10 finished calls repeated; only the 2 designer calls and the render that
+were in flight were redone. Writing the tests first found four bugs I would not have seen otherwise: a half-written log line
+swallowed the next event, the resumed run's clock restarted at zero, calls left open were drawn as still working, and the calendar
+read could stop short of later days.
+
+**Trade-off I would defend.** I did not build a resident process, wake-from-power-off, or automatic retry of failed runs. A
+30-minute check does the job with nothing to keep alive; waking a Mac needs an admin password and is the owner's call; and
+retrying a run that failed for a reason (budget, a refusal) would repeat the failure at a cost. The price of the simple design is
+that the cut run's in-flight work is paid twice, which I measured and wrote down instead of hiding.
+
+## S6c · Planning the next 10 days from what already exists, and a dashboard that tells the truth
+
+**Situation.** After the first 10-day run, the plan still started "tomorrow", so a second run would have redone the same ten
+days and spent about 650,000 tokens on drafts that already existed. Separately, the owner called my first run animation shallow:
+pretty, but it said nothing about progress or where the time went.
+
+**Task.** Start each plan after what is already scheduled, with a date the owner can override; and show a run the way an engineer
+would read it.
+
+**Action.**
+- **Scheduled-days check:** read the studio's own posts a week at a time (one big read silently stops at the publisher's page size),
+  say "scheduled through Fri 23 Oct, a new plan starts Sat 24 Oct", and freeze the start into the run's inputs so a replay or
+  resume plans the same days. Tested against the real Calendar the same day.
+- **Mission control built only from the run's own events:** progress with an estimate that shows only once it can be honest,
+  a pipeline with waiting, working and done counts, a Gantt of every agent call, an idea-by-stage matrix, tokens by agent. The demo
+  is synthetic events fed through the same function, so it cannot show something the real page cannot.
+
+**Result.** Run on the real 10-day run, it shows the real bottleneck at a glance: renders go one at a time, so 27 designs wait on
+a single renderer while the agents finish early. That is a finding I could not see from the old view.
+
+**Trade-off I would defend.** I removed the animation instead of adding numbers beside it: a decoration that carries no
+information trains people to ignore the screen.
