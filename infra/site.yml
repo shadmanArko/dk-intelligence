@@ -176,6 +176,41 @@
       when: not in_container and (item.target ~ '"') not in ts.stdout
       changed_when: true
 
+    # ---------------------------------------------------------------- boot order: Caddy before tailscaled
+    # Postmortem 2026-10-13: after a reboot tailscaled took <tailnet-ip>:443 first, Caddy could not bind 0.0.0.0:443
+    # and stayed down, so the ordering API was offline. Now tailscaled waits for Docker and for port 443 to be held
+    # (at most 120 s, then it starts anyway, so a broken Caddy can never keep the tailnet down).
+    - name: "Boot order: drop-in directory"
+      ansible.builtin.file:
+        path: /etc/systemd/system/tailscaled.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: not in_container
+
+    - name: "Boot order: tailscaled starts after Docker and after Caddy holds 443"
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/tailscaled.service.d/after-caddy.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by infra/site.yml (dk-intelligence). See docs/postmortems/2026-10-13-reboot-caddy-port-443.md
+          [Unit]
+          After=docker.service
+          Wants=docker.service
+          [Service]
+          ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 60 ]; do ss -ltn "sport = :443" | grep -q "0.0.0.0:443" && exit 0; i=$((i+1)); sleep 2; done; exit 0'
+          TimeoutStartSec=150
+      register: ts_dropin
+      when: not in_container
+
+    - name: "Boot order: reload systemd when the drop-in changed (takes effect at the next boot, no restart now)"
+      ansible.builtin.command: systemctl daemon-reload
+      when: not in_container and ts_dropin is changed
+      changed_when: true
+
     # ---------------------------------------------------------------- checks (never written by this playbook)
     - name: "Check: Docker is installed (managed with the harness, not here)"
       ansible.builtin.command: docker --version
