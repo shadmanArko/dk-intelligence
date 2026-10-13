@@ -22,6 +22,7 @@ from intel.studio.ports import AgentResult, ToolPort
 from intel.studio.runlog import RunLog, short
 
 AGENTS_DIR = Path(__file__).resolve().parent / "agents"
+TRACE_CHARS = 12000  # how much of a task, a tool input or output, a thought the log keeps (the trace page shows it)
 
 
 def agent_spec(name: str, directory: Path = AGENTS_DIR) -> dict[str, Any]:
@@ -96,7 +97,7 @@ class ClaudeRunner:
         if hidden:
             cmd += ["--disallowedTools", ",".join(hidden)]
         self.log.emit(node, "start", agent=agent, model=spec["model"], tools=spec["tools"], hidden=len(hidden),
-                      task=short(task, 600))  # fmt: skip
+                      task=short(task, TRACE_CHARS))  # fmt: skip
         work = Path(tempfile.mkdtemp(prefix="dk-agent-"))  # outside the repo: no CLAUDE.md, no memory, nothing to read
         for name, src in (files or {}).items():
             shutil.copyfile(src, work / name)
@@ -121,10 +122,10 @@ class ClaudeRunner:
                             names.append(c["name"].split("__")[-1])
                             server = c["name"].split("__")[1] if c["name"].startswith("mcp__") else "built-in"
                             self.log.emit(node, "tool_call", tool=c["name"].split("__")[-1], server=server,
-                                          input=short(c.get("input")))  # fmt: skip
+                                          input=short(c.get("input"), TRACE_CHARS))  # fmt: skip
                         elif c.get("type") == "text" and c.get("text", "").strip():
                             last_text = c["text"]
-                            self.log.emit(node, "thought", text=short(c["text"], 400))
+                            self.log.emit(node, "thought", text=short(c["text"], TRACE_CHARS))
                 elif e.get("type") == "user":
                     for c in e["message"].get("content", []):
                         if c.get("type") == "tool_result":
@@ -132,7 +133,7 @@ class ClaudeRunner:
                             self.log.emit(node, "tool_result", tool=name.split("__")[-1],
                                           is_error=bool(c.get("is_error")),
                                           took_ms=round((time.monotonic() - t_call) * 1000),
-                                          output=short(c.get("content")))  # fmt: skip
+                                          output=short(c.get("content"), TRACE_CHARS))  # fmt: skip
                 elif e.get("type") == "result":
                     final = e
             proc.wait(timeout=self.timeout_s)

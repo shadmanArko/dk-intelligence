@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio: ML pipeline</title>
+<link rel="stylesheet" href="/static/common.css">
+<style>.dr{position:fixed;right:12px;top:58px;bottom:12px;width:min(520px,94vw);z-index:40;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.stats{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:12px}.stat span{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}.stat b{font-size:19px;font-weight:600}
+@media(max-width:1000px){div[style*="repeat(4"]{grid-template-columns:1fr 1fr!important}}</style></head><body>
+<!--NAV-->
+<div class="wrap">
+<section class="card">
+ <div class="row"><h1 id="title">ML pipeline</h1><span class="pill" id="status">…</span><span class="pill demo" id="demo" hidden>demo: a made-up run, drawn the same way</span><span class="grow"></span><a class="btn" id="demoLink" href="?demo=1">Show a demo</a><a class="btn" href="/ops">Run it →</a></div>
+ <div class="meta" style="margin-top:6px">From the data to a deployed model: every step of the Sunday run, what it did, and the numbers behind each of the seven models. Click a step or a model.</div>
+ <div class="bar" id="pbar" style="margin-top:12px"><i style="width:0"></i><b id="ptext">0%</b></div>
+ <div class="stats"><div class="stat"><span>Steps done</span><b id="sDone">0</b></div><div class="stat"><span>Working on</span><b id="sCur">–</b></div><div class="stat"><span>Started</span><b id="sStart" class="mono" style="font-size:14px">–</b></div><div class="stat"><span>Models judged</span><b id="sJudged">0</b></div></div>
+</section>
+<section class="card"><h2>The pipeline, step by step</h2><div id="flow"></div></section>
+<section class="card"><h2>The models</h2><div id="models"></div></section>
+<section class="card"><h2>Earlier runs</h2><div id="hist"></div></section>
+<section class="card"><h2>Log of the run</h2><div class="mono meta" id="log" style="max-height:260px;overflow:auto;white-space:pre-wrap"></div></section>
+</div>
+<aside class="card dr" id="drawer" hidden></aside>
+<script src="/static/common.js"></script><script src="/static/ml.js"></script>
+<script>
+const demo=q.get('demo')==='1';let M=null,tick=+(q.get('tick')||0);
+if(demo){$('demo').hidden=false;$('demoLink').textContent='Back to the real data';$('demoLink').href='/ml'}
+function select(key){ML.sel=key;draw()}
+function draw(){if(!M)return;const h=mlHeader(M);
+ $('title').textContent=h.title;$('status').className='pill '+h.cls;$('status').textContent=h.state;
+ $('pbar').className='bar'+(M.run.running?' on':'');$('pbar').firstChild.style.width=h.percent+'%';$('ptext').textContent=h.percent.toFixed(0)+'%';
+ $('sDone').textContent=`${h.done} / ${h.total}`;$('sCur').textContent=h.current||'–';$('sStart').textContent=(M.run.started_at||'').slice(0,16).replace('T',' ')||'–';
+ $('sJudged').textContent=M.models.filter(m=>m.run&&m.run.verdict).length+' / '+M.models.length;
+ renderMlFlow($('flow'),M,select);renderMlModels($('models'),M,n=>openModel(n,demo?M.models.find(x=>x.name===n):null));
+ const d=$('drawer');if(!ML.sel){d.hidden=true}else{d.hidden=false;d.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="grow"></span><button class="btn" id="closeDr">close ✕</button></div>`+stepHtml(M,ML.sel);$('closeDr').onclick=()=>{ML.sel=null;draw()}}
+ $('hist').innerHTML=M.history.length?`<table><thead><tr><th>run</th><th>status</th><th>failed step</th><th class="n">new</th><th class="n">current</th></tr></thead><tbody>`+M.history.map(r=>`<tr><td class="mono">${esc(r.run_id)}</td><td>${esc(r.status)}</td><td>${esc(r.failed_step||'')}</td><td class="n">${r.new??''}</td><td class="n">${r.current??''}</td></tr>`).join('')+'</tbody></table>':'<div class="meta">no earlier runs</div>';
+ $('log').textContent=(M.log||[]).join('\n')||'no log yet'}
+async function load(){M=await api(demo?`/api/ml/demo?tick=${tick++}`:'/api/ml');draw()}
+every(demo?900:3000,load);
+</script></body></html>

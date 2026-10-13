@@ -493,7 +493,7 @@ def test_the_console_shows_a_run_idea_by_idea_and_never_starts_drafts_without_co
     world.runner.fail = {"copywriter:d02i1", "copywriter:d02i1-retry"}
     world.go("dry-run")
     monkeypatch.setattr(console, "DATA", world.data)
-    c = TestClient(console.app)
+    c = TestClient(console.app, base_url="http://127.0.0.1:8771", headers={"x-intel-token": console.TOKEN})
     (summary,) = c.get("/api/runs").json()
     assert summary["status"] == "done" and summary["ideas"] == "29/30" and summary["publish"] == "dry-run"
     run = c.get(f"/api/runs/{summary['id']}").json()
@@ -1419,7 +1419,7 @@ def test_the_console_serves_every_page_with_one_top_bar_and_only_plain_ids_reach
     monkeypatch.setattr(
         console, "_run_npm", lambda *a: (seen.append(a), type("R", (), {"returncode": 0, "stderr": ""})())[1]
     )
-    c = TestClient(console.app)
+    c = TestClient(console.app, base_url="http://127.0.0.1:8771", headers={"x-intel-token": console.TOKEN})
     pages = {u: c.get(u).text for u in ("/", "/live", "/runs", "/guide")}
     assert all("id=topbar" in html for html in pages.values())  # the same top bar on every page
     assert "Studio: Today" in pages["/"] and "Mission control" in pages["/live"] and "Run now" in pages["/runs"]

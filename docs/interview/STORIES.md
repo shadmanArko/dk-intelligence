@@ -836,3 +836,33 @@ a single renderer while the agents finish early. That is a finding I could not s
 
 **Trade-off I would defend.** I removed the animation instead of adding numbers beside it: a decoration that carries no
 information trains people to ignore the screen.
+
+## S7 · Making a system's depth visible, and not trusting a page with a "Run" button
+
+**Situation.** The studio is an orchestrator that calls agents, which call MCP servers, which expose tools, next to a machine-learning
+pipeline that trains seven models every week. The owner has to show it to people and said, in effect: the first dashboard looks nice and
+tells me nothing; I want every layer, every call, every number, and one click to run any part.
+
+**Task.** One place that shows the whole machine layer by layer with real numbers, starts any part safely, and can be demoed without
+spending a token.
+
+**Action.**
+- **Asked before building:** what "run everything" includes, where it should live, and how deep the agent detail goes. The answers
+  (ML then agents, one app, full traces plus an architecture map plus per-model detail plus a demo) set the scope.
+- **Found what was missing before drawing anything.** The ML side already wrote rich per-step and per-model files; the agent side
+  logged agents' calls but not the 17 MCP calls the orchestrator's own code makes between agents, and it cut a task to 600
+  characters. I wrapped the orchestrator's ports so every code-level call and publisher call is an event, and raised the log to keep a
+  whole call.
+- **One reader per layer, over files that already exist,** so the pages cannot disagree with the run. The demo is synthetic events
+  through the same readers, so it cannot show something a real run cannot.
+- **Treated "a page that starts runs" as a security problem:** a fixed list of action ids (page input never becomes a command line),
+  a Host check against DNS rebinding, a per-start token on every POST. That also fixed the older buttons, which had none.
+- **Verified on real runs:** the pull from the page, a real one-day run recorded end to end, the guard from the command line.
+
+**Result.** On a real one-day run, two thirds of the MCP calls were made by code, not by agents: a fact that was true by design and
+invisible until the trace existed. A one-day log is 124 KB, so keeping whole calls is cheap. Every page was opened on real data and
+on the demo.
+
+**Trade-off I would defend.** I did not build a stop button, single-model runs or the market-data refresh button: each needs a change
+in another program, and a button that kills a run half way is the exact failure the resume logic exists to survive. I listed them
+instead of faking them.

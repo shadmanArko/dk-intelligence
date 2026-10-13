@@ -11,17 +11,18 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from intel.studio import config as studio_config
-from intel.studio import coverage, handover, telemetry, today
+from intel.studio import console_system, coverage, handover, telemetry, today
 from intel.studio.config import REPO
 from intel.studio.runlog import read_events
 
@@ -29,6 +30,29 @@ DATA = REPO / "data" / "studio"
 PORT = 8771
 RUN_ID = re.compile(r"^[0-9]{8}T[0-9]{6}Z$")
 app = FastAPI(title="Studio Console", docs_url=None, redoc_url=None)
+
+# A page you visit must not be able to start a run on this Mac: the Host header must be this machine's own (DNS
+# rebinding), and every POST needs a token that only the console's own pages are given (each start of the console
+# makes a new one). Same rules as the Control Room.
+TOKEN = secrets.token_urlsafe(24)
+ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next: Any) -> Any:
+    if request.headers.get("host") not in ALLOWED_HOSTS:
+        return JSONResponse({"detail": "wrong host"}, status_code=400)
+    if request.method == "POST" and not secrets.compare_digest(request.headers.get("x-intel-token", ""), TOKEN):
+        return JSONResponse({"detail": "missing or wrong token"}, status_code=403)
+    resp = await call_next(request)
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+app.include_router(console_system.router)
 
 
 def _folder(run_id: str) -> Path:
@@ -99,7 +123,9 @@ def run(run_id: str) -> dict[str, Any]:
 @app.get("/api/runs/{run_id}/events")
 def events(run_id: str, after: int = 0) -> dict[str, Any]:
     ev = read_events(_folder(run_id) / "events.jsonl")
-    return {"next": len(ev), "events": [e for e in ev[after:] if e["kind"] != "thought"][-200:]}
+    rows = [e for e in ev[after:] if e["kind"] != "thought"][-200:]
+    small = [{k: (v[:240] + "…" if isinstance(v, str) and len(v) > 240 else v) for k, v in e.items()} for e in rows]
+    return {"next": len(ev), "events": small}  # the feed shows lines: a full task is the trace page's job
 
 
 @app.get("/api/runs/{run_id}/thumb/{name}")
@@ -302,7 +328,16 @@ def performance_analyst() -> dict[str, Any]:
     return {"message": "writing the note: data/performance/<latest>/analyst.md"}
 
 
-NAV = (("/", "Today"), ("/live", "Mission control"), ("/runs", "Runs"), ("/guide", "Guide"))
+NAV = (
+    ("/", "Today"),
+    ("/ops", "Operations"),
+    ("/system", "Agent system"),
+    ("/ml", "ML pipeline"),
+    ("/live", "Mission control"),
+    ("/runs", "Runs"),
+    ("/demo", "Demo"),
+    ("/guide", "Guide"),
+)
 
 
 def _nav(active: str) -> str:
@@ -318,6 +353,11 @@ def _nav(active: str) -> str:
         "#topbar a{color:#d9c9b0;text-decoration:none;padding:6px 12px;border-radius:8px}"
         "#topbar a:hover{background:#2b1013;color:#fff}#topbar a.on{background:#f4b02e;color:#1a0a0b;font-weight:600}"
         "#topbar .sp{flex:1}</style>"
+        f"<meta name=intel-token content='{TOKEN}'>"
+        "<script>(()=>{const t=document.querySelector('meta[name=intel-token]').content,f=window.fetch;"
+        "window.fetch=(u,o={})=>{if((o.method||'GET')!=='GET')"
+        "o.headers={...(o.headers||{}),'x-intel-token':t};return f(u,o)}})()"
+        "</script>"
     )
 
 
@@ -334,6 +374,37 @@ def guide() -> str:
     head = "<!doctype html><meta charset=utf-8><title>Studio guide</title>"
     body = f"<body style='margin:0;background:#f6f4ef;color:#1d1b16'>{_nav('/guide')}"
     return f"{head}{body}<main style='{style}'><pre style='white-space:pre-wrap;font:inherit'>{esc}</pre></main></body>"
+
+
+@app.get("/ops", response_class=HTMLResponse)
+def ops_page() -> str:
+    return _page("ops.html", "/ops")
+
+
+@app.get("/system", response_class=HTMLResponse)
+def system_page() -> str:
+    return _page("system.html", "/system")
+
+
+@app.get("/ml", response_class=HTMLResponse)
+def ml_page() -> str:
+    return _page("ml.html", "/ml")
+
+
+@app.get("/demo", response_class=HTMLResponse)
+def demo_page() -> str:
+    return _page("demo.html", "/demo")
+
+
+STATIC = {"common.js": "text/javascript", "system.js": "text/javascript", "ml.js": "text/javascript",
+          "common.css": "text/css"}  # fmt: skip
+
+
+@app.get("/static/{name}")
+def static_file(name: str) -> FileResponse:
+    if name not in STATIC:
+        raise HTTPException(404, "no such file")
+    return FileResponse(WEB / name, media_type=STATIC[name])
 
 
 @app.get("/live", response_class=HTMLResponse)
