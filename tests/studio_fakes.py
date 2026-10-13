@@ -28,7 +28,71 @@ PACK: dict[str, Any] = {
     "opportunities": [],
     "brand_reminders": ["always say: Kacchi, Berlin"],
 }
-VOCAB = {"video_categories": ["Eating"], "music_cultures": ["desi"], "music_moods": ["hip-hop"],
+REGISTRY = {  # what the reels engine's template registry reports (S5)
+    "beat-reel": {
+        "name": "beat-reel",
+        "family": "video",
+        "formats": ["9:16", "4:5"],
+        "variants": [],
+        "summary": "cuts to the beat",
+        "music": "beat-synced",
+        "needs": "footage",
+        "duration_s": [10, 30],
+        "designer_brief": "",
+    },
+    "kinetic-text": {
+        "name": "kinetic-text",
+        "family": "video",
+        "formats": ["9:16", "4:5", "1:1", "16:9"],
+        "variants": ["pop", "swipe", "bar"],
+        "summary": "big moving words",
+        "music": "ambient",
+        "needs": "footage",
+        "duration_s": [6, 15],
+        "designer_brief": "Give 2-6 short lines.",
+    },
+    "one-take": {
+        "name": "one-take",
+        "family": "video",
+        "formats": ["9:16", "4:5", "16:9"],
+        "variants": ["slow", "hold"],
+        "summary": "one hero clip",
+        "music": "ambient",
+        "needs": "footage",
+        "duration_s": [8, 20],
+        "designer_brief": "One clip, one caption.",
+    },
+    "photo-motion": {
+        "name": "photo-motion",
+        "family": "video",
+        "formats": ["9:16", "16:9"],
+        "variants": ["push", "drift"],
+        "summary": "a slideshow video",
+        "music": "beat-synced",
+        "needs": "photos",
+        "duration_s": [6, 30],
+        "designer_brief": "2-8 photos.",
+        "example": "specs/examples/photo-motion.json",
+    },
+    "photo": {
+        "name": "photo",
+        "family": "slides",
+        "formats": ["carousel", "album", "story"],
+        "variants": [],
+        "summary": "a photo slide",
+        "needs": "photos",
+    },
+    "collage": {
+        "name": "collage",
+        "family": "slides",
+        "formats": ["carousel", "album", "story"],
+        "variants": ["grid", "tilt"],
+        "summary": "photos in a grid",
+        "needs": "photos",
+    },
+}
+VOCAB = {"template_registry": REGISTRY, "video_categories": ["Eating"], "music_cultures": ["desi"],
+         "music_moods": ["hip-hop"],
          "templates": {"slides": {"photo": "x"}}, "contracts": {"content_spec": 1, "manifest": 1}}  # fmt: skip
 INVENTORY = {"video": {"Pot opening": "3, 1 key moments"}, "photo": {"Eating": "2"}}
 # the publisher's spec as the real one states it, plus the youtube description the real spec has
@@ -112,7 +176,7 @@ class FakeRunner:
         self._lock = threading.Lock()
         self._strategist_calls = 0
 
-    def run(self, node: str, agent: str, task: str) -> AgentResult:
+    def run(self, node: str, agent: str, task: str, files: dict[str, Path] | None = None) -> AgentResult:
         t = json.loads(task)
         with self._lock:
             self.calls.append({"node": node, "agent": agent, "task": t})
@@ -145,6 +209,25 @@ class FakeRunner:
                 }
             )  # `id`, as the real planner once answered
         return {"slots": slots}
+
+    def _director(self, t: dict[str, Any]) -> dict[str, Any]:
+        """Wants the same look for every idea (the lazy answer): code must still vary the plan."""
+        self.directed_days = getattr(self, "directed_days", 0) + 1
+        out = []
+        for i in t["ideas"]:
+            names = [x["template"] for x in i["templates"]]
+            want = "kinetic-text" if "kinetic-text" in names else names[0]
+            out.append(
+                {
+                    "idea_id": i["idea_id"],
+                    "template": want,
+                    "variant": "pop",
+                    "music": {"culture": "desi", "mood": ["happy"]},
+                    "pace": "steady",
+                    "why": "it fits",
+                }
+            )
+        return {"ideas": out}
 
     def _copywriter(self, t: dict[str, Any]) -> dict[str, Any]:
         return {"slot_id": t["slot_id"], "caption": f"Samstag Kacchi in Berlin {t['slot_id']}", "verdict": "keep",
@@ -229,11 +312,14 @@ class FakeRenderer:
         plan, texts = self._plan(spec)
         file = {"width": 1080, "height": 1920, "bytes": 1, "sha256": "a" * 64}
         if spec["content"]["kind"] == "video":
-            (folder / f"{jid}_9x16.mp4").write_bytes(b"video-" + jid.encode())
-            files = [{"path": f"{jid}_9x16.mp4", "kind": "video", "format": "9:16", **file}]
-            kind, template = "video", "beat-reel"
+            fmt = spec["content"]["formats"][0]
+            name = f"{jid}_{fmt.replace(':', 'x')}.mp4"
+            (folder / name).write_bytes(b"video-" + jid.encode())
+            files = [{"path": name, "kind": "video", "format": fmt, **file}]
+            kind, template = "video", spec["content"]["template"]
         else:
-            names = [f"{jid}-{k + 1:02d}.jpg" for k in range(1 if spec["content"]["size"] == "album" else 2)]
+            one = spec["content"]["size"] in ("album", "story")
+            names = [f"{jid}-{k + 1:02d}.jpg" for k in range(1 if one else 2)]
             for x in names:
                 (folder / x).write_bytes(b"img-" + x.encode())
             files = [{"path": x, "kind": "image", "size": spec["content"]["size"], **file} for x in names]

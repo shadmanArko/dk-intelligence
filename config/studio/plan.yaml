@@ -13,7 +13,17 @@ primary_platform: instagram   # the platform whose content scorer and grounding 
 # The format of idea 1, 2, 3 of each day. reel = a 9:16 video for all five platforms. carousel = slides for Instagram
 # and Facebook only (2 posts); image = one picture for Instagram, Facebook and Threads (3 posts). TikTok and YouTube
 # post video only (routes.yaml), so every non-reel idea makes fewer than 5 posts. All reels = 150 posts per 10 days.
-format_mix: [reel, reel, reel]
+format_mix: [reel, reel, reel]    # used when format_rotation below is empty
+
+# Different surfaces on different days, so the feed does not look the same every day (one row per day, three formats per
+# row, then it repeats). Idea 1 and 2 are the videos that reach everyone; idea 3 rotates the surface:
+#   carousel = slides for Instagram and Facebook · image = one picture for Instagram, Facebook, Threads
+#   story = one 9:16 picture for Instagram Stories · landscape = 16:9 video for YouTube and Facebook
+format_rotation:
+  - [reel, reel, carousel]
+  - [reel, reel, story]
+  - [reel, reel, image]
+  - [reel, reel, landscape]
 
 # What the ideas are about. The strategist tags each idea with one pillar; no pillar may take more than max_pillar_share
 # of a run (code checks this and tells the strategist the counts so far).

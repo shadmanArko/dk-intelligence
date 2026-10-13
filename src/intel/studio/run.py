@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from intel.studio import checks, handover, media, slots
+from intel.studio import checks, director, handover, media, slots
 from intel.studio.ai import AI
 from intel.studio.budget import Budget
 from intel.studio.config import StudioConfig
@@ -122,6 +122,7 @@ class Studio:
     def _run(self, folder: Path, run_id: str) -> int:
         o, cfg, log, state = self.opts, self.cfg, self.log, self.state
         self.phase_seconds: dict[str, float] = {}
+        self.assets_by_job: dict[str, list[str]] = {}
         self.t0 = time.monotonic()
         self.hcfg = cfg.handover_cfg()
         self.mledger = handover.MediaLedger(self.data_dir / "media-ledger.json", fresh_days=cfg.plan.horizon_days + 4)
@@ -179,6 +180,22 @@ class Studio:
                 ideas,
                 inputs["pack"],
                 inputs.get("unavailable", []),
+                inputs.get("performance"),
+            )
+
+        # 4b. the look of each idea: the creative director (one call per day), settled by code
+        self.variety = director.Variety(self.data_dir / "template-ledger.json", cfg.craft.director.recent_window)
+        self.registry = director.template_registry(inputs["vocab"])
+        with self.phase("director", ideas=len(ideas)):
+            director.plan_treatments(
+                self.ai,
+                cfg,
+                state,
+                log,
+                ideas,
+                self.registry,
+                self.variety,
+                inputs.get("inventory", {}),
                 inputs.get("performance"),
             )
 
@@ -313,7 +330,9 @@ class Studio:
         """None when prepared, else (hold code, reason, the problems in the designer's own words)."""
         state, i = self.state, idea.idea_id
         st = state.idea(i)
-        platforms = [p for p in idea.slots if p in st.get("captions", {}) or p in st.get("options", {})]
+        platforms = [p for p in idea.slots if p in self.crew.platforms_ok(i)]
+        route = self.cfg.routes.formats[idea.format]
+        treatment = st.get("treatment") or {}
         with self.prep_lock:  # the footage avoid-list grows idea by idea, so ideas don't share clips
             avoid = self.aledger.recent() + [a for a in self.planned_assets if a not in self.aledger.recent()]
             spec, why = media.finalize_idea_spec(
@@ -321,6 +340,9 @@ class Studio:
                 slots={p: idea.slots[p] for p in platforms}, captions=st.get("captions", {}),
                 options=st.get("options", {}), avoid=avoid, week_label=idea.job_id.split("-")[0],
                 prices=self.inputs.get("prices", []),
+                video_format=route.render[1] if route.make == "video" else "9:16",
+                template=treatment.get("template") if route.make == "video" else None,
+                variant=treatment.get("variant") or None,
             )  # fmt: skip
             if spec is None:
                 return "no_spec", why, [why]
@@ -357,7 +379,11 @@ class Studio:
                         state.hold(i, f"the render failed its quality checks: {failed}", code="qa_failed")
                     else:
                         thumb = folder / f"{idea.job_id}.jpg"
-                        self.aledger.record(idea.job_id, media.assets_used(manifest))
+                        self.assets_by_job[idea.job_id] = media.assets_used(manifest)
+                        self.aledger.record(idea.job_id, self.assets_by_job[idea.job_id])
+                        t = row.get("treatment") or {}
+                        if t.get("template"):
+                            self.variety.record(idea.job_id, t["template"], t.get("variant") or None)
                         state.update(i, stage="rendered", manifest=out["manifest"], render_seconds=took,
                                      thumb=thumb.name if self.renderer.thumbnail(manifest, Path(out["manifest"]).parent,
                                                                                  thumb) else None)  # fmt: skip
@@ -378,7 +404,7 @@ class Studio:
                 manifest = json.loads(Path(row["manifest"]).read_text())
                 t0 = time.monotonic()
                 done = handover.warm_uploads(self.publisher, manifest, Path(row["manifest"]).parent,  # type: ignore[arg-type]
-                                             self.publish_spec, self.hcfg, self.mledger)  # fmt: skip
+                                             self.publish_spec, self.hcfg, self.mledger, self.now())  # fmt: skip
                 self.log.emit(i, "upload", files=len(done), seconds=round(time.monotonic() - t0, 1))
             except Exception as ex:  # noqa: BLE001 - the final handover uploads whatever is missing, once more
                 self.log.emit(i, "upload", status="failed", error=short(str(ex), 200))
@@ -401,7 +427,7 @@ class Studio:
         by_job = {slots.idea_from_dict(state.idea(i)["idea"]).job_id: i for i in ready}
         try:
             report = handover.submit(self.publisher, jobs, publish_spec, self.hcfg, self.mledger,  # type: ignore[arg-type]
-                                     dry_run=o.publish == "dry-run")  # fmt: skip
+                                     now=self.now(), dry_run=o.publish == "dry-run")  # fmt: skip
         except handover.PublishError as ex:  # every idea it affected is named, never dropped silently
             for i in ready:
                 state.hold(i, f"the handover failed: {short(str(ex), 200)}; the renders are kept: resume the run",
@@ -427,13 +453,24 @@ class Studio:
 
     def _ok_platforms(self, idea_id: str) -> list[str]:
         st = self.state.idea(idea_id)
-        return [
-            p
-            for p in slots.idea_from_dict(st["idea"]).slots
-            if p in st.get("captions", {}) or p in st.get("options", {})
-        ]
+        return [p for p in slots.idea_from_dict(st["idea"]).slots if p in self.crew.platforms_ok(idea_id)]
 
     # ---------- report ----------
+
+    def _looks(self, ideas: list[slots.Idea]) -> dict[str, Any]:
+        """How varied the plan is: posts per template and per format, and how often the same footage was reused."""
+        templates: Counter[str] = Counter()
+        formats: Counter[str] = Counter()
+        uses: Counter[str] = Counter()
+        for i in ideas:
+            row = self.state.idea(i.idea_id)
+            if row.get("outcome"):
+                formats[i.format] += 1
+                templates[f"{(row.get('treatment') or {}).get('template', '?')}"] += 1
+            for a in self.assets_by_job.get(i.job_id, []):
+                uses[a] += 1
+        return {"templates": dict(templates), "formats": dict(formats), "assets_used": sum(uses.values()),
+                "assets_unique": len(uses), "assets_reused": sum(1 for n in uses.values() if n > 1)}  # fmt: skip
 
     def _finish(self, ideas: list[slots.Idea], folder: Path, run_id: str) -> int:
         state = self.state
@@ -472,6 +509,7 @@ class Studio:
                        "per_post": round(tokens / variants_ok) if variants_ok else None},
             "seconds": {"total": total_s, "phases": self.phase_seconds},
             "pillars": dict(Counter((state.idea(i.idea_id).get("pillar") or "?") for i in ideas)),
+            "looks": self._looks(ideas),
             "handover": getattr(self, "report", None),
         }  # fmt: skip
         (folder / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))

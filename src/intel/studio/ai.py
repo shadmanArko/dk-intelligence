@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from intel.studio.budget import Budget
@@ -25,23 +26,26 @@ class AI:
         task: dict[str, Any],
         idea_id: str | None = None,
         valid: Callable[[dict[str, Any]], bool] | None = None,
+        files: dict[str, Path] | None = None,
     ) -> AgentResult:
         """Run one agent unless the budget says no. An answer that is missing, not JSON, or fails `valid` is asked for
         once more (found in a real run: 1 call in 40 answered without JSON). A refused call is an AgentResult with no
         answer and the reason in `error` (it starts with 'budget:'), so the caller reports the idea, never loses it."""
-        result = self._once(node, agent, task, idea_id)
+        result = self._once(node, agent, task, idea_id, files)
         usable = result.answer is not None and (valid is None or valid(result.answer))
         if not usable and not result.error.startswith("budget:"):
             self.log.emit(node, "retry", reason=result.error or "the answer was not usable")
-            result = self._once(f"{node}-retry", agent, task, idea_id)
+            result = self._once(f"{node}-retry", agent, task, idea_id, files)
         return result
 
-    def _once(self, node: str, agent: str, task: dict[str, Any], idea_id: str | None) -> AgentResult:
+    def _once(
+        self, node: str, agent: str, task: dict[str, Any], idea_id: str | None, files: dict[str, Path] | None = None
+    ) -> AgentResult:
         why = self.budget.allow(idea_id)
         if why:
             self.log.emit(node, "budget_stop", agent=agent, reason=why)
             return AgentResult(None, error=f"budget: {why}")
-        result = self.runner.run(node, agent, json.dumps(task, ensure_ascii=False))
+        result = self.runner.run(node, agent, json.dumps(task, ensure_ascii=False), files)
         if self.budget.charge(result.tokens, idea_id):
             self.log.emit("orchestrator", "budget_alert", used=self.budget.used, cap=self.budget.max_tokens,
                           share=round(self.budget.share, 3))  # fmt: skip

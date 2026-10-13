@@ -1,0 +1,32 @@
+# The creative director's craft: how a senior social-media director makes each kind of post for each platform, written as
+# data the director agent reads (only the slices for the platforms an idea goes to). These are craft heuristics the
+# owner can edit, NOT brand rules (dk_intel owns those) and NOT platform limits (the publisher's /v1/spec owns those).
+
+director:
+  max_template_share: 0.4     # no template may take more than this share of the plan (code enforces it)
+  recent_window: 30           # the director is told which templates the last N posts used, so looks don't repeat
+  defaults: {video: beat-reel, slides: photo}   # used when the template registry has nothing better
+
+platforms:
+  instagram:
+    role: "the shop window: polished, visual, saved and shared; reels bring new people, carousels and stories keep followers"
+    reel: "9:16, 7-25 s. Hook in the first 1.5 s (movement or a striking close-up, words on screen). Cut on the beat or move continuously. Key text between 14% and 78% of the height. Sound on."
+    carousel: "3:4, 3-6 slides that tell one small story: slide 1 is the hook, the last asks for the order. One idea per slide, big type, same look throughout."
+    feed: "one 4:5 picture that works as a thumbnail: one subject, clear contrast."
+    story: "9:16, one frame, 3 seconds of attention: one line of text, nothing in the top 14% or bottom 20%. Casual, behind the scenes, not polished."
+  facebook:
+    role: "neighbours and families: longer attention, shares in groups; video and albums, a warmer and plainer voice"
+    video: "9:16, 4:5 or 16:9, 10-45 s. Works without sound: captions on screen. A real moment beats a clever edit."
+    photo: "1-10 pictures as an album; people and food together; the caption carries the story."
+    text: "a short plain post; a question or a Saturday reminder."
+  tiktok:
+    role: "discovery: raw, fast, native; the hook is spoken or shown in the first second, not a logo"
+    video: "9:16, 7-20 s. No intro, no logo before the hook, text large and short, cuts every 1-2 s or one strong continuous moment, a trend-neutral royalty-free sound. Right edge and bottom 25% stay free (buttons, caption)."
+  youtube:
+    role: "search and evergreen: Shorts for reach, landscape for a story that lasts"
+    short: "9:16 up to 60 s; the title does the SEO work (what you will see, Berlin, kacchi); the first second must show the food."
+    video: "16:9, 20-60 s, a calm one-take or a slow slideshow with a clear title card; description names the dish and Berlin."
+  threads:
+    role: "conversation: one casual thought; a picture or a short clip is a bonus"
+    image: "one 4:5 picture with one line; no hashtags."
+    video: "9:16, under 20 s, informal."

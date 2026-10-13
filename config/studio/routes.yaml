@@ -13,6 +13,16 @@ formats:
     render: [slides, carousel]
     content_type: carousel
     targets: {instagram: carousel, facebook: photo}   # Threads takes one image only (publisher spec: image max 1)
+  story:     # one 9:16 picture for Instagram Stories (the publisher's story format takes one file and has no caption)
+    make: story
+    render: [slides, story]
+    content_type: image
+    targets: {instagram: story}
+  landscape: # a 16:9 video for YouTube and Facebook
+    make: video
+    render: [video, "16:9"]
+    content_type: video
+    targets: {facebook: video, youtube: video}
   image:     # one picture
     make: image
     render: [slides, album]

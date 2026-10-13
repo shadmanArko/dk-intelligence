@@ -105,6 +105,49 @@ def status(run_id: str | None = typer.Argument(None, help="a run id (default: th
     typer.echo(report.read_text() if report.exists() else f"{folder.name}: still running, or stopped (resume it)")
 
 
+@studio_app.command("curate")
+def curate_cmd(
+    scope: str = typer.Option("new", help="new: files with no knowledge yet · enrich: catalogued files without mood"),
+    limit: int = typer.Option(5, min=1, max=20, help="items per run (about 8k tokens each)"),
+) -> None:
+    """The footage curator looks at contact sheets and PROPOSES knowledge for new or unlabelled media. Nothing
+    is accepted here: you approve in the reels repo with `npm run curate -- --list` and `--accept-all`."""
+    from intel.studio import curator as curator_mod
+    from intel.studio.ai import AI
+    from intel.studio.budget import Budget
+    from intel.studio.runlog import RunLog
+
+    cfg = _load(None, None, None, None)
+    studio, hub = build(cfg, need_publisher=False)
+    try:
+        stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+        log = RunLog(DATA / "curation" / stamp, stamp)
+        ai = AI(studio.make_runner(log), Budget(cfg.budgets.max_tokens_per_run, cfg.budgets.alert_at, 99), log)
+        report = curator_mod.curate(hub, ai, scope, limit)
+        report["tokens"] = ai.budget.used
+    finally:
+        hub.close()
+    typer.echo(json.dumps(report, indent=1, ensure_ascii=False))
+    if report["proposed"]:
+        typer.echo(
+            "Proposed, not accepted. In the reels repo: npm run curate -- --list, then --accept-all (or --accept <id>)."
+        )
+
+
+@studio_app.command("requests")
+def requests_cmd() -> None:
+    """What the creative director and the designer said no template could do, most asked first: the next templates to
+    build (a person builds them in the reels repo, under its gates)."""
+    from intel.studio import requests as style_requests
+
+    rows = style_requests.read()
+    if not rows:
+        typer.echo("no style requests yet")
+        return
+    for text, n in style_requests.tally(rows)[:20]:
+        typer.echo(f"{n:>3}x  {text}")
+
+
 # ---------- eval ----------
 
 EVAL = DATA / "eval"

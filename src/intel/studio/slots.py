@@ -39,6 +39,11 @@ class Idea:
     job_id: str  # the publisher's post_key: one post per idea, one variant per platform
     score: float | None = None  # the scorer's chance for the primary slot (None: not scorable)
 
+    def lead(self, primary: str) -> str:
+        """The platform whose rules write and time this idea: the plan's primary one, or the first it reaches when the
+        format does not go there (a 16:9 video goes to YouTube and Facebook, not Instagram)."""
+        return primary if primary in self.slots else next(iter(self.slots))
+
     @property
     def weekday(self) -> str:
         return WEEKDAYS[self.date.weekday()]
@@ -74,7 +79,12 @@ def plan_days(cfg: StudioConfig, today: dt.date) -> list[dt.date]:
     return [start + dt.timedelta(days=i) for i in range(n_days)]
 
 
-def format_of(cfg: StudioConfig, n: int) -> str:
+def format_of(cfg: StudioConfig, n: int, day_index: int = 0) -> str:
+    """The format of idea n on the plan's day number day_index (0-based): the rotation row for that day if there is one
+    have one (so the days differ), else the same mix every day."""
+    rotation = cfg.plan.format_rotation
+    if rotation:
+        return rotation[day_index % len(rotation)][n - 1]
     mix = cfg.plan.format_mix
     return mix[(n - 1) % len(mix)]
 
@@ -99,10 +109,10 @@ Probe = tuple[dt.date, str, str]  # (date, format, window)
 def probes(cfg: StudioConfig, days: list[dt.date]) -> list[Probe]:
     """Every (day, format, window) the assignment may need, once each."""
     seen: dict[Probe, None] = {}
-    for day in days:
+    for d_index, day in enumerate(days):
         for n in range(1, cfg.plan.ideas_per_day + 1):
             for window in cfg.slots.windows:
-                seen[(day, format_of(cfg, n), window)] = None
+                seen[(day, format_of(cfg, n, d_index), window)] = None
     return list(seen)
 
 
@@ -151,7 +161,7 @@ def assign(
     dropped: list[Dropped] = []
     windows = cfg.slots.windows
     for d_index, day in enumerate(days, start=1):
-        formats = [(n, format_of(cfg, n)) for n in range(1, cfg.plan.ideas_per_day + 1)]
+        formats = [(n, format_of(cfg, n, d_index - 1)) for n in range(1, cfg.plan.ideas_per_day + 1)]
 
         def rank(
             perm: tuple[str, ...], day: dt.date = day, formats: list[tuple[int, str]] = formats

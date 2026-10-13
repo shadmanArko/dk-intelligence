@@ -26,6 +26,8 @@ def server_specs(reels: Path) -> dict[str, dict[str, Any]]:
     return {
         "dk_intel_planner": {"command": "uv", "args": [*intel, "planner"]},
         "dk_intel_writer": {"command": "uv", "args": [*intel, "writer"]},
+        "dk_reels_curator": {"command": "npm", "args": ["--prefix", str(reels), "run", "-s", "mcp", "--",
+                                                        "--profile", "curator", "--root", str(reels)]},
         "dk_reels_creative": {"command": "npm", "args": ["--prefix", str(reels), "run", "-s", "mcp", "--",
                                                          "--profile", "creative", "--root", str(reels)]},
     }  # fmt: skip
