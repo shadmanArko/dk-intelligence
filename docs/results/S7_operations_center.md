@@ -38,7 +38,7 @@ input or result to 300; now 12,000, so a whole call can be read.
 ## The guard
 Running things from a page needs more care than showing them. Measured from the command line against the live console:
 no token 403, wrong token 403, a foreign Host header 400. The older buttons (run, curate, schedule, analyst) had no token before
-and are covered now. The test file `tests/test_operations.py` (12 tests) covers recording, the trace readers, the ML reader, the
+and are covered now. The test file `tests/test_operations.py` (11 tests) covers recording, the trace readers, the ML reader, the
 driver (order, stop at first failure, a dead driver shown as stopped), the fixed action list, the guard and every page.
 
 ## What is not there
