@@ -221,6 +221,16 @@ def _pgid(pid: int) -> int | None:
         return None
 
 
+def _driver_pid(ops_dir: Path, alive: Callable[[int], bool] = _alive) -> int | None:
+    """The pid of the operation's driver, if its state file says it is running and that process is alive."""
+    try:
+        data = json.loads((ops_dir / "current.json").read_text())
+        pid = int(data.get("pid") or 0)
+    except (OSError, ValueError):
+        return None
+    return pid if data.get("state") == "running" and pid and alive(pid) else None
+
+
 def _lock_pid(path: Path, alive: Callable[[int], bool] = _alive) -> int | None:
     """The process named by a lock file (`<pid> <run>` or just `<pid>`), if it is alive."""
     try:
@@ -254,8 +264,7 @@ def stop_all(
     me = os.getpgid(0)
     stopped: list[str] = []
     targets = [("the studio run", _lock_pid(studio_lock, alive)), ("the ML run", _lock_pid(ml_lock_pid, alive))]
-    now = current(ops_dir)
-    driver = int(now["pid"]) if now and now.get("state") == "running" and alive(int(now.get("pid") or 0)) else None
+    driver = _driver_pid(ops_dir, alive)
     groups: set[int] = set()
     for name, pid in [*targets, ("the operation", driver)]:
         if pid is None:
