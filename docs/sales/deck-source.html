@@ -149,11 +149,35 @@ input[type=range]{width:100%;accent-color:var(--copper)} input[type=number]{font
 .cta{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;background:var(--ink);color:#fff;border-radius:12px;padding:26px 28px;margin-top:20px}
 .cta h3{font-size:34px;max-width:22ch}.cta p{color:#B9C6DB;max-width:52ch;font-size:15px}
 .cta .who{font:500 13px var(--mono);color:#fff;border:1px dashed #5A6E8C;padding:10px 14px;border-radius:6px}
+/* bonus: chat agent */
+.bonus{border-top:2px dashed var(--copper)}
+.chat{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:grid;grid-template-rows:auto auto 1fr}
+.chat .hd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--paper-2);font:500 12px var(--mono);color:var(--ink-2)}
+.chat .qs{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-bottom:1px solid var(--paper-2)}
+.chat .qs button{font:500 13px var(--body);padding:7px 12px;border-radius:99px;border:1px solid var(--blue);background:var(--blue-soft);color:var(--blue);cursor:pointer;text-align:left}
+.chat .qs button.on{background:var(--blue);color:#fff}.chat .qs button:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+.chat .log2{padding:14px;display:grid;gap:10px;align-content:start;min-height:230px}
+.msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:15px;line-height:1.45}
+.msg.u{justify-self:end;background:var(--ink);color:#fff;border-bottom-right-radius:3px}
+.msg.b{justify-self:start;background:var(--paper);border:1px solid var(--line);border-bottom-left-radius:3px}
+.msg.b.hand{border-color:var(--amber);background:var(--amber-soft)}
+.srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.hint{color:var(--ink-3);font:400 13px var(--mono)}
+.flow{display:grid;gap:0}
+.flow .st{display:grid;grid-template-columns:34px 1fr;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.flow .st:last-child{border:0}
+.flow .st .n{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--copper);color:var(--copper);display:grid;place-items:center;font:500 13px var(--mono)}
+.flow .st b{display:block}.flow .st span{color:var(--ink-2);font-size:14px}
+.chk{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.chk li{display:grid;grid-template-columns:22px 1fr;gap:8px;font-size:15px;color:var(--ink-2)}
+.chk li:before{content:"";width:14px;height:14px;margin-top:4px;border:1.5px solid var(--copper);border-radius:3px}
+.chk.done li:before{background:var(--green);border-color:var(--green)}
+.chk.done li:before{content:"✓";color:#fff;font:700 11px/14px var(--mono);text-align:center}
 @media print{#bar{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 </style>
 
-<div id="bar"><b>AI-NATIVE MARKETING DEPT.</b><span class="pill hot">MVP v1.0</span><div id="dots" role="tablist" aria-label="Slides"></div><span id="sheetno" class="num">SHEET 1 / 12</span><button class="btn ghost" id="present" type="button">Present</button></div>
+<div id="bar"><b>AI-NATIVE MARKETING DEPT.</b><span class="pill hot">MVP v1.0</span><div id="dots" role="tablist" aria-label="Slides"></div><span id="sheetno" class="num">SHEET 1 / 14</span><button class="btn ghost" id="present" type="button">Present</button></div>
 
 <div class="wrap">
 
@@ -379,7 +403,75 @@ input[type=range]{width:100%;accent-color:var(--copper)} input[type=number]{font
     <div class="card"><h3>What you keep</h3><ul><li>Full control: nothing goes out without your approval.</li><li>Your data stays in your accounts and servers.</li><li>Every decision of the system is logged and explainable.</li></ul></div>
   </div>
   <div class="cta"><div><h3>Want to see it run on your brand?</h3><p>Results depend on your content and audience. We show the numbers on your own data in the pilot, and you decide after.</p></div><div class="who">Shadman Arko · Dhaka Kacchi Berlin<br>contact details here</div></div>
-  <div class="titleblock"><span>AI-Native Marketing Department · summary</span><span>Sheet 12 of 12 · all figures measured on real runs, 13 Oct 2026, unless marked as an example</span></div>
+  <div class="titleblock"><span>AI-Native Marketing Department · summary</span><span>Sheet 12 of 12, then 2 bonus sheets · all figures measured on real runs, 13 Oct 2026, unless marked as an example</span></div>
+</section>
+
+<!-- BONUS B1 CHAT AGENT -->
+<section class="slide bonus" data-title="Bonus: chat agent">
+  <div class="head"><div class="eyebrow">Bonus · customer chat agent</div>
+  <h2>Customers ask. It answers from your facts, and says so when it does not know.</h2>
+  <p class="lead">The same idea as the studio, pointed at customers: an agent decides what to look up, retrieval finds it in your own knowledge base, and the answer comes back with its source, or an honest hand-over to your team.</p>
+  <div><span class="pill warn">IN TESTING · NOT LIVE YET</span> <span class="pill">built by a team member · agent + retrieval (RAG)</span></div></div>
+  <div class="arch">
+    <div class="chat" aria-label="Illustration of the chat agent">
+      <div class="hd"><span>ILLUSTRATION · scripted answers showing the target behaviour</span><span>not the live bot</span></div>
+      <div class="qs" id="chatqs"></div>
+      <div class="log2" id="chatlog" aria-live="polite"><div class="hint">Pick a customer question above.</div></div>
+    </div>
+    <div class="card">
+      <h3>How it answers</h3>
+      <div class="flow">
+        <div class="st"><div class="n">1</div><div><b>Question arrives</b><span>From the website or WhatsApp, in plain language.</span></div></div>
+        <div class="st"><div class="n">2</div><div><b>The agent decides what to look up</b><span>Price? Menu? Delivery? It picks the right source instead of guessing.</span></div></div>
+        <div class="st"><div class="n">3</div><div><b>Retrieval from your knowledge base</b><span>The confirmed facts file first (prices, what you sell), then the brand book and past answers.</span></div></div>
+        <div class="st"><div class="n">4</div><div><b>Answer only from what was found</b><span>The source is named next to the answer.</span></div></div>
+        <div class="st"><div class="n">5</div><div><b>Nothing confirmed? It says so</b><span>It hands the customer to a person instead of inventing an answer.</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="tile"><div class="lab">status</div><div class="big" style="color:var(--amber)">Testing</div><p>Being tested by the team before any customer sees it.</p></div>
+    <div class="tile"><div class="lab">runs on</div><div class="big" style="font-size:30px">A team PC</div><p>So it only answers while that computer is on. It is not on the company server yet.</p></div>
+    <div class="tile"><div class="lab">results</div><div class="big" style="font-size:30px">Not measured</div><p>No accuracy numbers are claimed. They are added after a proper test.</p></div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · bonus</span><span>Bonus sheet B1 of B2 · answers shown are an illustration; prices from the confirmed facts file, 13 Oct 2026</span></div>
+</section>
+
+<!-- BONUS B2 PATH TO LAUNCH -->
+<section class="slide bonus" data-title="Bonus: path to launch">
+  <div class="head"><div class="eyebrow">Bonus · from test to live</div>
+  <h2>One knowledge base, two jobs.</h2>
+  <p class="lead">The marketing studio and the chat agent can read the same confirmed facts. Change a price once and the posts and the chat both follow, so they cannot contradict each other.</p></div>
+  <div class="calc">
+    <div class="card"><svg viewBox="0 0 520 260" role="img" aria-label="One confirmed knowledge base feeds both the content studio and the chat agent" style="width:100%;height:auto;display:block">
+      <rect x="130" y="100" width="260" height="62" rx="8" fill="#E2EBF9" stroke="#1D5CC4" stroke-width="2"/>
+      <text x="260" y="126" text-anchor="middle" font-size="14" fill="#0E1A2B" font-weight="600">KNOWLEDGE BASE</text>
+      <text x="260" y="146" text-anchor="middle" font-size="11" fill="#465671">facts · brand · reviews · posts</text>
+      <rect x="6" y="20" width="200" height="56" rx="8" fill="#fff" stroke="#C2531A" stroke-width="2"/>
+      <text x="106" y="44" text-anchor="middle" font-size="13" fill="#0E1A2B" font-weight="600">CONTENT STUDIO</text>
+      <text x="106" y="62" text-anchor="middle" font-size="11" fill="#465671">writes posts for you</text>
+      <rect x="314" y="20" width="200" height="56" rx="8" fill="#fff" stroke="#C2531A" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="414" y="44" text-anchor="middle" font-size="13" fill="#0E1A2B" font-weight="600">CHAT AGENT</text>
+      <text x="414" y="62" text-anchor="middle" font-size="11" fill="#C2531A">for customers · testing</text>
+      <path d="M200 100 L130 78" stroke="#1D5CC4" stroke-width="2" fill="none"/><path d="M320 100 L390 78" stroke="#1D5CC4" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+      <rect x="130" y="200" width="260" height="46" rx="8" fill="#DAF1E6" stroke="#14855A" stroke-width="2"/>
+      <text x="260" y="222" text-anchor="middle" font-size="13" fill="#0E1A2B" font-weight="600">OWNER'S FACTS FILE</text>
+      <text x="260" y="238" text-anchor="middle" font-size="11" fill="#465671">one place to change a price</text>
+      <path d="M260 200 L260 164" stroke="#14855A" stroke-width="2" fill="none"/>
+    </svg></div>
+    <div class="card">
+      <h3>Before it goes live (proposed)</h3>
+      <ul class="chk">
+        <li>A test list of real customer questions, with a pass mark agreed with you.</li>
+        <li>Every price, menu and policy answer taken from the confirmed facts file.</li>
+        <li>Health, allergen and legal questions always handed to a person.</li>
+        <li>Moved from a team PC to the company server, behind HTTPS and always on.</li>
+        <li>Every conversation logged and reviewed in the first weeks.</li>
+      </ul>
+      <p class="note" style="margin-top:12px">These steps are a proposal for the launch. None of them is claimed as done.</p>
+    </div>
+  </div>
+  <div class="titleblock"><span>AI-Native Marketing Department · bonus</span><span>Bonus sheet B2 of B2</span></div>
 </section>
 
 </div>
@@ -616,6 +708,36 @@ $('#gates').innerHTML=[['p','data','post counts match the previous pull'],['p','
     var save=handC-total;$('#r_save').textContent=(save<0?'−':'')+eur(Math.abs(save));$('#r_hours').textContent=fmt(handH-apprH,0)+' h';
   }
   ids.forEach(function(k){$('#c_'+k).addEventListener('input',calc)});calc();
+})();
+
+/* ---------- bonus: scripted chat illustration (no network, fixed text) ---------- */
+(function(){
+  var QA=[
+    {q:'How much is a regular box?',a:'A Regular Box (1 litre) is €15, and prices include VAT. The Tok-Jhal-Mishti chutney comes free with it.',src:['facts · menu','facts · VAT']},
+    {q:'Do you have lamb or beef?',a:'No. We only serve mutton kacchi biryani and Shahi Borhani (500 ml, €6).',src:['facts · menu']},
+    {q:'Does the Taster Box come with chutney?',a:'No, the chutney is included with the Regular Box only. The Taster Box (750 ml) is €10.',src:['facts · menu note']},
+    {q:'What is the order deadline on Friday?',a:'I do not have a confirmed answer for that and I do not want to guess. I am passing you to the team on WhatsApp.',src:[],hand:true}
+  ];
+  var qs=$('#chatqs'),log=$('#chatlog'),timer=0;
+  if(!qs||!log)return;
+  QA.forEach(function(x,i){var b=document.createElement('button');b.type='button';b.textContent=x.q;b.onclick=function(){ask(i)};qs.appendChild(b)});
+  function msg(cls,text){var d=document.createElement('div');d.className='msg '+cls;d.textContent=text;log.appendChild(d);return d}
+  function ask(i){
+    clearTimeout(timer);var x=QA[i];log.innerHTML='';
+    $$('#chatqs button').forEach(function(b,k){b.classList.toggle('on',k===i)});
+    msg('u',x.q);
+    var t=msg('b','…');
+    timer=setTimeout(function(){
+      t.textContent='';if(x.hand)t.classList.add('hand');
+      var n=0;function step(){n=reduce?x.a.length:Math.min(x.a.length,n+2);t.textContent=x.a.slice(0,n);
+        if(n<x.a.length){timer=setTimeout(step,14)}else{finish()}}
+      function finish(){
+        var w=document.createElement('div');w.className='srcs';
+        if(x.hand){var p=document.createElement('span');p.className='pill warn';p.textContent='no confirmed fact → hand over to a person';w.appendChild(p)}
+        else x.src.forEach(function(sx){var p=document.createElement('span');p.className='pill ok';p.textContent='source: '+sx;w.appendChild(p)});
+        log.appendChild(w)}
+      step()},reduce?0:450);
+  }
 })();
 })();
 </script>
