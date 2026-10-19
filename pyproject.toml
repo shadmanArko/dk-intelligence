@@ -7,7 +7,7 @@ dependencies = [
     "fastapi>=0.115,<1",
     "httpx>=0.28,<1",
     "joblib==1.6.0",
-    "numpy==2.5.3",
+    "numpy==2.5.4",
     "pandas==3.0.6",
     "prometheus-client>=0.21,<1",
     "psycopg[binary]>=3.2,<4",
@@ -39,20 +39,20 @@ train = [
 ]          # Mac only; the VPS image installs without it
 bench = [            # Mac only, opt-in (`--group bench`): embedding and reranker benchmarks; never in any image
     "sentence-transformers==6.1.0",
-    "torch==2.14.0",
-    "transformers==5.17.0",
+    "torch==2.14.1",
+    "transformers==5.20.0",
 ]
 rag = [              # the serving side of RAG: ONNX runtime, no torch
-    "onnxruntime==1.30.0",
-    "tokenizers==0.23.2",
+    "onnxruntime==1.31.0",
+    "tokenizers==0.23.3",
 ]
 mcp = [
-    "fastmcp==4.0.11",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
+    "fastmcp==4.1.0",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
 ]
 clients = [
     "langchain-ollama==1.1.0",
-    "langchain[mcp]==1.4.3",
-    "openai-agents==0.23.1",
+    "langchain[mcp]==1.4.6",
+    "openai-agents==0.24.0",
 ]
 
 [tool.uv]
