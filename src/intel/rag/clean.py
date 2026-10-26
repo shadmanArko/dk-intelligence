@@ -91,8 +91,9 @@ def residual_pii(text: str) -> list[str]:
     # an IBAN has 2 letters, 2 check digits and mostly digits after (a code like "SF1OG SS26" does not)
     if any(_digits(m) >= 12 for m in re.findall(r"\b[A-Z]{2}\d{2}[A-Z0-9 ]{12,}\b", text)):
         found.append("iban")
-    # dates ("13.02.2024") are removed first, so "13.02.2024 / 23 Uhr" isn't read as a phone number
-    undated = re.sub(r"\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b", " ", text)
+    # dates ("13.02.2024", ISO "2026-10-02") and clock times ("09:04") are removed first, so "13.02.2024 / 23 Uhr" or
+    # "(2026-10-02 09:04 UTC)" isn't read as a phone number (a real post's timestamp refused a whole pack, 2026-10-24)
+    undated = re.sub(r"\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}(?::\d{2})?\b", " ", text)
     if any(_digits(m) >= 9 for m in re.findall(r"[\d][\d\s()./+-]{7,}\d", undated)):
         found.append("phone")
     return found

@@ -47,7 +47,7 @@ rag = [              # the serving side of RAG: ONNX runtime, no torch
     "tokenizers==0.23.2",
 ]
 mcp = [
-    "fastmcp==4.0.11",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
+    "fastmcp==4.1.2",  # exact pin (ADR 0025); a default group, so `uv run intel mcp serve` always has it
 ]
 clients = [
     "langchain-ollama==1.1.0",
