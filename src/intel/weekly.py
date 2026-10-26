@@ -746,6 +746,13 @@ def _run_weekly(
     out = d / "weekly" / f"weekly-{rep['run_id']}.run.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rep, indent=2, default=str) + "\n")
+    try:  # the VPS silently drops a report that doesn't fit its schema: say so here, where the owner can see it
+        from intel.serve.runs import RunReport
+
+        RunReport.model_validate(json.loads(out.read_text()))
+    except Exception as e:  # noqa: BLE001 - a warning, never a failure of the run
+        log(f"WARNING: the VPS will REJECT this run report ({type(e).__name__}: {str(e)[:300]}); fix the schema")
+        rep["report_invalid"] = True
     if upload and not stopped and s.dk_inbox_ssh and s.dk_inbox_ssh_key:
         prog.start("report")
         try:

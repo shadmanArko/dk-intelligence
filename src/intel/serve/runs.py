@@ -107,7 +107,8 @@ class RunReport(BaseModel):
     market_id: str | None = Field(default=None, max_length=40)
     market_fallback: bool = False
     version: str | None = Field(default=None, max_length=80)
-    package: str | None = Field(default=None, max_length=160)
+    package: str | None = Field(default=None, max_length=1000)  # every model's package, comma-joined (was 160: with 6
+    # models a successful run's report was rejected from 2026-10-09 and the VPS believed the Mac had stopped training)
     posts: int | None = None
     challenger: Scores | None = None
     champion: Scores | None = None
@@ -119,6 +120,15 @@ class RunReport(BaseModel):
     skew: Skew | None = None
     references: list[str] = Field(default_factory=list, max_length=10)
     knowledge: KnowledgePack | None = None
+
+
+TELL_WITHIN = dt.timedelta(days=3)
+
+
+def worth_telling(rep: RunReport, now: dt.datetime | None = None) -> bool:
+    """A report is announced on Telegram only while it is news. One found late (a backlog that had been rejected, or
+    a Mac that was offline) is still recorded, so the 14-day reminder and the overdue alert see it, but quietly."""
+    return (now or dt.datetime.now(dt.UTC)) - rep.finished_at <= TELL_WITHIN
 
 
 def scan_run_reports(dsn: str, inbox: Path) -> list[RunReport]:

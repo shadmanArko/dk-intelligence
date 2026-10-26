@@ -34,7 +34,15 @@ from intel.serve.monitor import run_monitor, scan_references
 from intel.serve.observability import JsonFormatter, Metrics, StateCollector, instrument
 from intel.serve.read_api import register_read_routes
 from intel.serve.registry import REASON_CODES, Registry, RegistryError, load_bundle
-from intel.serve.runs import coming_up_lines, report_tick, run_message, scan_run_reports, scan_status, training_overview
+from intel.serve.runs import (
+    coming_up_lines,
+    report_tick,
+    run_message,
+    scan_run_reports,
+    scan_status,
+    training_overview,
+    worth_telling,
+)
 from intel.serve.telegram import Bot, Telegram, approval_buttons, approval_text
 from intel.serve.views import (
     BERLIN,
@@ -210,7 +218,7 @@ def inbox_loop(state: AppState, stop: threading.Event) -> None:
             scan_status(state.dsn, s.intel_inbox_dir)
             reports = scan_run_reports(state.dsn, s.intel_inbox_dir)  # before packages: summary first
             for rep in reports:
-                if state.telegram:
+                if state.telegram and worth_telling(rep):
                     state.telegram.send(run_message(rep))
             if scan_references(state.dsn, s.intel_inbox_dir):  # new reference profile (ADR 0018): judge again now
                 state.monitoring = run_monitor(state.dsn, active_scorers(state.models))
