@@ -68,6 +68,10 @@ The diagram comes from `src/intel/pipeline.py`; add a step or a node there and i
 - **Mac:** launchd `com.dhakakacchi.intel.weekly` (`scripts/com.dhakakacchi.intel.weekly.plist`) runs
   `scripts/weekly.sh --if-due` at login, every hour and on Sundays 12:00. A run starts once per week; if the Mac
   was off on Sunday, it starts within an hour of being turned on. Logs: `data/logs/weekly_*.log`.
+  Before a due run starts, `scripts/preflight.sh` checks Tailscale and the `dk-rag` and `mip-postgres` Docker
+  databases, starts what is missing and waits for it. If something stays down, the run does not start (a failed run
+  would pause for 6 hours) and you get a macOS notification, at most once a day; launchd tries again an hour later.
+  Turn on *Launch at login* in Tailscale and Docker Desktop so this rarely matters.
 - **VPS page** (tailnet): https://vmd206122.tailc055f3.ts.net. *Approvals* · *Posts* (predicted vs real per post)
   · *Try a draft* · *Training* (live step-by-step progress, history, deployed version).
 - **Telegram:** `/status`, `/training`, `/rollback`; run results after every Sunday run; Monday 09:00 report.
