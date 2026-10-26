@@ -63,10 +63,12 @@ def test_messages_for_pass_and_error():
 
 def test_monday_report_once_per_week_and_reminder(intel):  # noqa: F811
     tg = Tg()
-    log_event(intel, "api_started", workers=[])
-    with connect(intel) as c:
-        c.execute("update event_log set at = now() - interval '20 days' where kind = 'api_started'")
     sunday = dt.datetime(2026, 10, 11, 12, tzinfo=dt.UTC)
+    log_event(intel, "api_started", workers=[])
+    with connect(
+        intel
+    ) as c:  # relative to the simulated clock below, never the real one (it broke 2 weeks after it was written)
+        c.execute("update event_log set at = %s where kind = 'api_started'", (sunday - dt.timedelta(days=20),))
     monday_8 = dt.datetime(2026, 10, 12, 6, tzinfo=dt.UTC)  # 08:00 Berlin
     monday_930 = dt.datetime(2026, 10, 12, 7, 30, tzinfo=dt.UTC)  # 09:30 Berlin
     assert report_tick(intel, tg, "https://x.ts.net", sunday) == ["reminder"]
