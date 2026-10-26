@@ -286,3 +286,22 @@ def test_the_knowledge_pack_step_reaches_the_sunday_message():
     err = RunReport.model_validate(report(knowledge={"status": "error", "error": "OSError: <disk>"}))
     assert "&lt;disk&gt;" in run_message(err)  # escaped for Telegram HTML
     assert RunReport.model_validate(report()).knowledge is None and knowledge_line(None) is None  # older Macs
+
+
+def test_old_reports_are_recorded_quietly_so_the_reminder_and_the_overdue_alert_clear(intel, tmp_path):  # noqa: F811
+    """After the 160-character `package` limit was lifted the VPS found a backlog of rejected reports: all are
+    recorded (the 14-day reminder reads the newest), but only a recent one is worth a Telegram message."""
+    from intel.serve.runs import worth_telling
+
+    package = ", ".join(f"model_{i}-20261026T0710{i:02d}-abcdefabcdef.tar.gz" for i in range(6))
+    old = report(run_id="20261009T072800Z", status="pass", finished_at="2026-10-09T07:30:00+00:00", package=package)
+    new = report(run_id="20261026T070917Z", status="pass", finished_at="2026-10-26T07:11:00+00:00", package=package)
+    (tmp_path / "weekly-20261009T072800Z.run.json").write_text(json.dumps(old))
+    (tmp_path / "weekly-20261026T070917Z.run.json").write_text(json.dumps(new))
+    got = scan_run_reports(intel, tmp_path)
+    assert [r.run_id for r in got] == ["20261009T072800Z", "20261026T070917Z"]
+    now = dt.datetime(2026, 10, 26, 9, 0, tzinfo=dt.UTC)
+    assert [worth_telling(r, now) for r in got] == [False, True]
+    with connect(intel) as c:
+        assert c.execute("select count(*) n from training_run").fetchone()["n"] == 2
+        assert c.execute("select count(*) n from event_log where kind='run_report_invalid'").fetchone()["n"] == 0
