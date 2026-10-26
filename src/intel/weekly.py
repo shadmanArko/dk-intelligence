@@ -716,6 +716,7 @@ def _run_weekly(
             rep["knowledge"] = {key: v for key, v in k.items() if key != "gate"} | {
                 "gate_passed": (k.get("gate") or {}).get("passed"),
                 "gate_lost": (k.get("gate") or {}).get("lost"),
+                "gate_reasons": [str(x)[:150] for x in ((k.get("gate") or {}).get("reasons") or [])[:5]],
             }
             if k["status"] == "skipped":
                 prog.skip("knowledge", k["why"])
