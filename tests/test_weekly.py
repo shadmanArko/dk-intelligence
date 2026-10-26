@@ -279,7 +279,12 @@ def test_the_knowledge_pack_step_reaches_the_sunday_message():
     kept = RunReport.model_validate(
         report(knowledge={"status": "kept_previous", "pack": "kp-2", "gate_lost": ["q03", "q08"]})
     )
-    assert "refused by its gate (lost q03, q08)" in run_message(kept)
+    assert "refused by its gate (lost answers to q03, q08)" in run_message(kept)
+    pii = RunReport.model_validate(
+        report(knowledge={"status": "kept_previous", "pack": "kp-3", "gate_reasons": ["residual PII found: phone"]})
+    )
+    msg_pii = run_message(pii)
+    assert "refused by its gate (residual PII found: phone)" in msg_pii and "lost ?" not in msg_pii
     assert "skipped: no db" in knowledge_line(
         RunReport.model_validate(report(knowledge={"status": "skipped", "why": "no db"})).knowledge
     )
@@ -305,3 +310,42 @@ def test_old_reports_are_recorded_quietly_so_the_reminder_and_the_overdue_alert_
     with connect(intel) as c:
         assert c.execute("select count(*) n from training_run").fetchone()["n"] == 2
         assert c.execute("select count(*) n from event_log where kind='run_report_invalid'").fetchone()["n"] == 0
+
+
+def _models(*rows):  # (name, verdict, failed_gates)
+    return [{"name": n, "verdict": v, "new": 0.7, "current": 0.6, "failed_gates": g} for n, v, g in rows]
+
+
+INSIGHTS = [("weakness_miner", "pass", []), ("community_map", "pass", [])]
+
+
+def test_the_message_says_what_applies_by_itself_and_what_needs_the_owner():
+    from intel.serve.runs import RunReport
+
+    only_insights = RunReport.model_validate(
+        report(
+            status="pass",
+            models=_models(
+                *INSIGHTS,
+                ("content_scorer", "kept_active", ["not clearly better"]),
+                ("reach_scorer", "fail", ["better", "calibrated"]),
+            ),
+        )  # fmt: skip
+    )
+    m = run_message(only_insights)
+    assert "2 of 4 models updated" in m and "Updated and live (2): weakness_miner, community_map" in m
+    reasons = (
+        "content_scorer (not clearly better); reach_scorer (not better than the current model, not well calibrated)"
+    )
+    assert f"Kept as before (2): {reasons}" in m
+    assert "Nothing for you to do" in m and "approval message follows" not in m
+
+    scorer = RunReport.model_validate(
+        report(
+            status="pass",
+            models=_models(*INSIGHTS, ("content_scorer", "pass", []), ("reach_scorer", "fail", ["better"])),
+        )
+    )
+    m = run_message(scorer)
+    assert "a new prediction model passed" in m and "Waiting for your approval: content_scorer" in m
+    assert "approval message follows" in m and "Nothing for you to do" not in m

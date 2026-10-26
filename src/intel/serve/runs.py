@@ -74,6 +74,7 @@ class KnowledgePack(BaseModel):
     newly_embedded: int | None = None
     gate_passed: bool | None = None
     gate_lost: list[str] | None = Field(default=None, max_length=50)
+    gate_reasons: list[str] | None = Field(default=None, max_length=10)  # why the gate said no (e.g. residual PII)
     shipped: bool | None = None  # sent to the VPS through the inbox (only when the owner opted in)
     why: str | None = Field(default=None, max_length=200)
     error: str | None = Field(default=None, max_length=300)
@@ -87,8 +88,13 @@ def knowledge_line(k: KnowledgePack | None) -> str | None:
         sent = " and sent to the VPS" if k.shipped else (" (upload to the VPS failed)" if k.shipped is False else "")
         return f"📚 Knowledge pack <code>{H(k.pack or '?')}</code> is live (gate passed{new}){sent}"
     if k.status == "kept_previous":
-        lost = ", ".join(k.gate_lost or []) or "?"
-        return f"📚 Knowledge pack refused by its gate (lost {H(lost)}): last week's stays live"
+        if k.gate_reasons:
+            why = "; ".join(x[:120] for x in k.gate_reasons)
+        elif k.gate_lost:
+            why = "lost answers to " + ", ".join(k.gate_lost)
+        else:
+            why = "no reason recorded"
+        return f"📚 Knowledge pack refused by its gate ({H(why)}): last week's stays live, nothing is broken"
     if k.status == "skipped":
         return f"📚 Knowledge pack skipped: {H(k.why or '?')}"
     return f"⚠️ Knowledge pack step failed: <code>{H((k.error or '')[:150])}</code> (last week's stays live)"
@@ -165,6 +171,40 @@ def _pct(x: float | None) -> str:
     return "–" if x is None else f"{x:.3f}"
 
 
+SCORER_NAMES = frozenset({"content_scorer", "reach_scorer"})  # weekly.SCORERS: these need the owner's approval
+GATE_WORDS = {  # what the judge's gate codes mean, in plain words
+    "better": "not better than the current model",
+    "no_platform_worse": "worse on one platform",
+    "calibrated": "not well calibrated",
+}
+
+
+def outcome_summary(r: RunReport) -> tuple[str, str] | None:
+    """(headline, plain-words summary) for a run that passed, or None when the report has no per-model results.
+    Only a prediction model needs approval; the insight models apply themselves once the owner approved the first."""
+    if not r.models:
+        return None
+    live = [m.name for m in r.models if m.verdict == "pass" and m.name not in SCORER_NAMES]
+    waiting = [m.name for m in r.models if m.verdict == "pass" and m.name in SCORER_NAMES]
+    kept = [m for m in r.models if m.verdict != "pass"]
+    lines = []
+    if live:
+        lines.append(f"✔️ Updated and live ({len(live)}): {H(', '.join(live))}")
+    if waiting:
+        lines.append(f"🕑 Waiting for your approval: {H(', '.join(waiting))} (the approval message follows)")
+    if kept:
+        why = [f"{H(m.name)} ({H(', '.join(GATE_WORDS.get(g, g) for g in m.failed_gates) or m.verdict)})" for m in kept]
+        lines.append(f"➖ Kept as before ({len(kept)}): " + "; ".join(why))
+    if not waiting:
+        lines.append("Nothing for you to do.")
+    head = (
+        "🚀 <b>Sunday training: a new prediction model passed</b>"
+        if waiting
+        else f"✅ <b>Sunday training finished: {len(live)} of {len(r.models)} models updated</b>"
+    )
+    return head, "\n".join(lines)
+
+
 def run_message(r: RunReport) -> str:
     when = r.finished_at.strftime("%a %d %b %H:%M UTC")
     if r.status == "error":
@@ -202,6 +242,9 @@ def run_message(r: RunReport) -> str:
             for m in r.models
         )
     if r.status == "pass":
+        if (summary := outcome_summary(r)) is not None:
+            head, body = summary
+            return f"{head} ({when}).\n{body}\n{sc.lstrip()}{live}{extra}"
         return (
             f"🚀 <b>Sunday training: a better model passed</b> ({when}). The approval message follows.{sc}{live}{extra}"
         )
