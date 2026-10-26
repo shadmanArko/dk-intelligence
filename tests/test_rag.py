@@ -81,6 +81,12 @@ def test_residual_scan_is_independent():
     assert "iban" in residual_pii("DE89 3704 0044 0532 0130 00")
     assert residual_pii("Techno @ Hase 01.02.2024 / 23:00 Uhr; SF1OG SS26 RUNWAY SHOW 02.06.25 8PM") == []
     assert residual_pii("am 01.02.2024 unter 030 1234 5678") == ["phone"]
+    # timestamps are not phone numbers (a real test post, "(2026-10-02 09:04 UTC)", refused a whole knowledge pack) ...
+    assert residual_pii("DK Publishing test post (2026-10-02 09:04 UTC). Safe to delete.") == []
+    assert residual_pii("Stand 2026-10-02T09:04:32 und 12:30:15 Uhr") == []
+    # ... and a real number next to one is still caught
+    assert residual_pii("2026-10-02 09:04 call 0176 1234 5678") == ["phone"]
+    assert residual_pii("um 18:00 unter 030 1234 5678") == ["phone"]
 
 
 # ---------- chunking ----------
