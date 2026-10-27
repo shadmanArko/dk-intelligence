@@ -26,6 +26,9 @@ platforms:
     role: "search and evergreen: Shorts for reach, landscape for a story that lasts"
     short: "9:16 up to 60 s; the title does the SEO work (what you will see, Berlin, kacchi); the first second must show the food."
     video: "16:9, 20-60 s, a calm one-take or a slow slideshow with a clear title card; description names the dish and Berlin."
+  linkedin:
+    role: "the company's professional face: calm, credible, behind the scenes; formal, no hype; the post is read, not scrolled past"
+    image: "1-6 pictures as a swipeable set (4:5 portrait works best) or one picture: a person at work, the pot, the kitchen, a clean title slide. Plain and well lit, little text, no sales banners."
   threads:
     role: "conversation: one casual thought; a picture or a short clip is a bonus"
     image: "one 4:5 picture with one line; no hashtags."

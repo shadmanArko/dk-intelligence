@@ -7,17 +7,18 @@ max_ideas_per_run: 30     # a hard cap on ideas in one run, whatever the two lin
 chunk_ideas: 10           # the strategist plans this many ideas per call (about 3 days), so its context stays small
 
 # One idea becomes one native post per platform below (its own caption and options), from ONE master render.
-platforms: [instagram, facebook, tiktok, youtube, threads]
+platforms: [instagram, facebook, tiktok, youtube, threads, linkedin]
 primary_platform: instagram   # the platform whose content scorer and grounding pack plan an idea
 
-# The format of idea 1, 2, 3 of each day. reel = a 9:16 video for all five platforms. carousel = slides for Instagram
-# and Facebook only (2 posts); image = one picture for Instagram, Facebook and Threads (3 posts). TikTok and YouTube
-# post video only (routes.yaml), so every non-reel idea makes fewer than 5 posts. All reels = 150 posts per 10 days.
+# The format of idea 1, 2, 3 of each day. reel = a 9:16 video for the five video platforms (LinkedIn is not one: it
+# takes slides). carousel = slides for Instagram, Facebook and LinkedIn (3 posts); image = one picture for Instagram,
+# Facebook, Threads and LinkedIn (4 posts). TikTok and YouTube post video only (routes.yaml), so every non-reel idea
+# makes fewer than 5 posts. All reels = 150 posts per 10 days.
 format_mix: [reel, reel, reel]    # used when format_rotation below is empty
 
 # Different surfaces on different days, so the feed does not look the same every day (one row per day, three formats per
 # row, then it repeats). Idea 1 and 2 are the videos that reach everyone; idea 3 rotates the surface:
-#   carousel = slides for Instagram and Facebook · image = one picture for Instagram, Facebook, Threads
+#   carousel = slides for Instagram, Facebook, LinkedIn · image = one picture for Instagram, Facebook, Threads, LinkedIn
 #   story = one 9:16 picture for Instagram Stories · landscape = 16:9 video for YouTube and Facebook
 format_rotation:
   - [reel, reel, carousel]

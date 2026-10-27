@@ -12,7 +12,7 @@ formats:
     make: carousel
     render: [slides, carousel]
     content_type: carousel
-    targets: {instagram: carousel, facebook: photo}   # Threads takes one image only (publisher spec: image max 1)
+    targets: {instagram: carousel, facebook: photo, linkedin: image}   # Threads takes one image only (publisher spec: image max 1)
     gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
   story:     # one 9:16 picture for Instagram Stories (the publisher's story format takes one file and has no caption)
     make: story
@@ -30,7 +30,7 @@ formats:
     make: image
     render: [slides, album]
     content_type: image
-    targets: {instagram: carousel, facebook: photo, threads: image}   # one file turns "carousel" into a feed post
+    targets: {instagram: carousel, facebook: photo, threads: image, linkedin: image}   # one file turns "carousel" into a feed post
     gate: false      # the scorer ranks the windows but never drops this surface (the owner wants it in the mix)
 
 # Options code sets on every post of a platform. The AI never writes these (a safe default until the owner decides).
@@ -50,6 +50,12 @@ feel:
   tiktok: "short and punchy; the first words are the hook, written the way you would say it"
   youtube: "no caption: a clear title that says what you will see, and a short description that says what and where"
   threads: "one casual thought, like a message to a friend; short; no '#' symbol (one topic word without '#' at most)"
+  linkedin: "formal and calm, the voice of a company that knows its craft: polite 'Sie' or neutral, never 'du'; no hype, no slang, no exclamation marks, no engagement bait; at most 2 emojis"
+
+# The shape of a caption where it differs from the default (a German first line, one English line, a few hashtags).
+# The adapter follows it instead; the brand checker's rules (a German first line, Kacchi, Berlin, no claims) still apply.
+shape:
+  linkedin: "800 to 1500 characters in four parts: (1) one German first line, at most 140 characters, that states the point; (2) a short German paragraph of 2 to 4 sentences in a formal register (behind the scenes: what we do and why, only facts from the task); (3) one English sentence that summarises it; (4) at most 3 hashtags on a last line. Write no link (a link goes into the first comment, which the owner adds)."
 
 # A language that needs a native speaker's check before its on-screen text may go out (en and de never do).
 reviewed_languages: []

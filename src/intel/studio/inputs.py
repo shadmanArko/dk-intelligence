@@ -156,6 +156,7 @@ def platform_slices(cfg: StudioConfig, publish_spec: dict[str, Any], hashtags: d
             "emoji_max": limits.get("emoji_max"),
             "option_fields": {k: {"max_length": v.get("max_length")} for k, v in options.items() if k in allowed},
             "feel": cfg.routes.feel.get(p, ""),
+            "caption_shape": cfg.routes.shape.get(p, ""),
             "what_worked": (performance or {}).get(p),
         }
     return out

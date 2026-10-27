@@ -82,6 +82,7 @@ class RoutesCfg(_Strict):
     defaults: dict[str, dict[str, Any]] = {}
     adapter_options: dict[str, list[str]] = {}
     feel: dict[str, str] = {}
+    shape: dict[str, str] = {}
     reviewed_languages: list[str] = []
 
 

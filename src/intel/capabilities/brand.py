@@ -22,6 +22,20 @@ CAPTION_LIMIT: dict[str, int] = {
 }
 FIRST_LINE_MAX = 60
 EMOJI_MAX = 4
+# Where a platform reads differently from the default: LinkedIn's hook is a full formal sentence, and a company
+# voice there uses few emojis.
+FIRST_LINE_MAX_BY = {"linkedin": 140}
+EMOJI_MAX_BY = {"linkedin": 2}
+
+
+def first_line_max(platform: str) -> int:
+    return FIRST_LINE_MAX_BY.get(platform, FIRST_LINE_MAX)
+
+
+def emoji_max(platform: str) -> int:
+    return EMOJI_MAX_BY.get(platform, EMOJI_MAX)
+
+
 FACT_GROUPS = ("menu", "ordering", "fulfilment", "claims_status")
 ALLERGEN_REPLY = "We can't answer allergen questions here; please ask us directly."
 
@@ -67,8 +81,8 @@ def brand_rules(
             "cadence": plan,
             "windows": pb.get("windows") or {},
             "caption_max_chars": CAPTION_LIMIT[platform],
-            "first_line_max": FIRST_LINE_MAX,
-            "emoji_max": EMOJI_MAX,
+            "first_line_max": first_line_max(platform),
+            "emoji_max": emoji_max(platform),
             "formats": {f: formats.get(f) for f in chosen if f in formats},
             "audio": (pb.get("audio") or {}).get(platform),
             "occasions_allowed": platform not in (pb.get("no_occasion_platforms") or []),

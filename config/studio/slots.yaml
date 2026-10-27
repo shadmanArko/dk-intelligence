@@ -15,3 +15,4 @@ times:
   tiktok:    {pre_dinner: "17:30", lunch: "11:15", evening: "20:15"}
   youtube:   {pre_dinner: "16:45", lunch: "11:20", evening: "20:30"}
   threads:   {pre_dinner: "16:30", lunch: "11:00", evening: "20:45"}
+  linkedin:  {pre_dinner: "17:45", lunch: "11:50", evening: "20:05"}   # the playbook's LinkedIn window is lunch

@@ -43,13 +43,15 @@ ALL_REELS = SHIPPED.with_plan(format_rotation=[])  # the 150-posts scenario: thr
 
 def test_the_shipped_settings_load_and_describe_150_posts():
     p = SHIPPED.plan
-    assert (p.horizon_days, p.ideas_per_day, len(p.platforms)) == (10, 3, 5)
+    assert (p.horizon_days, p.ideas_per_day, len(p.platforms)) == (10, 3, 6)
     assert p.horizon_days * p.ideas_per_day * len(SHIPPED.platforms_for("reel")) == 150
     assert SHIPPED.platforms_for("carousel") == [
         "instagram",
         "facebook",
+        "linkedin",
     ]  # TikTok, YouTube: video only; Threads: 1 image
-    assert SHIPPED.platforms_for("image") == ["instagram", "facebook", "threads"]
+    assert SHIPPED.platforms_for("image") == ["instagram", "facebook", "threads", "linkedin"]
+    assert "linkedin" not in SHIPPED.platforms_for("reel")  # LinkedIn takes slides, so 150 posts still holds
     assert SHIPPED.routes_table()[("video", "9:16")]["tiktok"] == "video"
     assert SHIPPED.handover_cfg()["defaults"]["tiktok"] == {"privacy_level": "only_me"}  # safe until the owner decides
     assert SHIPPED.budgets.max_tokens_per_run == 4_000_000
@@ -70,7 +72,7 @@ def _write(tmp_path: Path, **patch: Any) -> Path:
     [
         ({"plan": {"horizon_dayz": 10}}, "horizon_dayz"),  # a typo is refused, never ignored
         ({"plan": {"ideas_per_day": 4}}, "ideas_per_day"),
-        ({"plan": {"primary_platform": "linkedin"}}, "not in platforms"),
+        ({"plan": {"primary_platform": "reddit"}}, "not in platforms"),
         ({"plan": {"format_mix": ["podcast"]}}, "format_mix"),
         ({"slots": {"times": {"instagram": {"lunch": "11:30", "pre_dinner": "5pm", "evening": "20:00"}}}}, "HH:MM"),
         ({"budgets": {"max_turns": {"strategist": 3}}}, "max_turns"),
@@ -108,7 +110,7 @@ def test_the_ideas_of_ten_days_get_distinct_valid_post_keys_and_a_time_per_platf
     assert keys[0] == "2026w42-tue13-i1"
     first_day = [i for i in ideas if i.date == dt.date(2026, 10, 13)]
     assert sorted(i.window for i in first_day) == ["evening", "lunch", "pre_dinner"]  # one idea per window
-    assert all(set(i.slots) == set(ALL_REELS.plan.platforms) for i in ideas)
+    assert all(set(i.slots) == set(ALL_REELS.platforms_for("reel")) for i in ideas)  # LinkedIn takes slides, not reels
     assert slots.job_id(dt.date(2026, 10, 13), 1, "R-2") == "2026w42-tue13-i1-r2"  # a redo needs a new key
 
 
@@ -236,7 +238,7 @@ def test_every_spec_sent_to_the_renderer_is_a_valid_content_spec_with_all_platfo
     for path in specs:
         spec = json.loads(path.read_text())
         assert not errors(v, spec), path.name
-        assert set(spec["publish"]["slots"]) == set(SHIPPED.plan.platforms) and spec["publish"]["at"] == min(
+        assert set(spec["publish"]["slots"]) == set(SHIPPED.platforms_for("reel")) and spec["publish"]["at"] == min(
             spec["publish"]["slots"].values()
         )
         assert "instagram" in spec["captions"] and "youtube" not in spec["captions"]
@@ -250,14 +252,19 @@ def test_carousels_reach_only_the_platforms_that_take_slides(tmp_path):
     w = World(tmp_path, SHIPPED.with_plan(horizon_days=2, format_rotation=[], format_mix=["reel", "carousel", "image"]))
     assert w.go("drafts") == 0
     s = w.summary()
-    assert s["variants"] == {"planned": 2 * (5 + 2 + 3), "made": 20, "held_reasons": {}}
+    assert s["variants"] == {"planned": 2 * (5 + 3 + 4), "made": 24, "held_reasons": {}}
     carousel = w.fake.posts["2026w42-tue13-i2"]
-    assert {v["platform"]: v["format"] for v in carousel["variants"]} == {"instagram": "carousel", "facebook": "photo"}
+    assert {v["platform"]: v["format"] for v in carousel["variants"]} == {
+        "instagram": "carousel",
+        "facebook": "photo",
+        "linkedin": "image",
+    }
     image = w.fake.posts["2026w42-tue13-i3"]  # one picture: Threads takes it too, and Instagram makes it a feed post
     assert {v["platform"]: v["format"] for v in image["variants"]} == {
         "instagram": "feed",
         "facebook": "photo",
         "threads": "image",
+        "linkedin": "image",
     }
 
 
@@ -422,6 +429,7 @@ def test_the_adapter_is_told_each_platforms_rules_from_the_publisher_never_from_
     world.go("render")
     task = next(c["task"] for c in world.runner.calls if c["agent"] == "adapter")
     p = task["platforms"]
+    assert not p["instagram"]["caption_shape"]  # the default two-line shape needs no override
     assert (
         p["threads"]["caption_max"] == 500
         and p["threads"]["hashtags"] == [0, 1]
@@ -514,7 +522,9 @@ def test_the_console_shows_a_run_idea_by_idea_and_never_starts_drafts_without_co
     assert held["holds"]["*"]["code"] == "agent_failed" and held["outcome"] is None
     ok = next(i for i in run["ideas"] if i["id"] == "d01i1")
     assert (
-        set(ok["outcome"]["platforms"]) == set(SHIPPED.plan.platforms) and ok["angle"] and ok["captions"]["instagram"]
+        set(ok["outcome"]["platforms"]) == set(SHIPPED.platforms_for("reel"))
+        and ok["angle"]
+        and ok["captions"]["instagram"]
     )
     assert [p["phase"] for p in run["phases"] if p["status"] == "end"] == [
         "inputs",
@@ -734,7 +744,7 @@ def test_the_days_rotate_surfaces_and_each_reaches_only_the_platforms_that_take_
     assert w.go("drafts") == 0
     s = w.summary()
     assert s["looks"]["formats"] == {"reel": 8, "carousel": 1, "story": 1, "image": 1, "landscape": 1}
-    assert s["variants"]["planned"] == 8 * 5 + 2 + 1 + 3 + 2 == s["variants"]["made"]
+    assert s["variants"]["planned"] == 8 * 5 + 3 + 1 + 4 + 2 == s["variants"]["made"]
     posts = w.fake.posts
     story = next(
         p
@@ -1477,3 +1487,14 @@ def test_the_shipped_settings_keep_the_calendar_filled_and_the_plan_short(tmp_pa
     sched.write_text(sched.read_text().replace("min_days_between: 3 ", "min_days_between: 4 "))
     with pytest.raises(sc.StudioConfigError, match="calendar would run dry"):
         sc.load(tmp_path / "cfg")
+
+
+def test_linkedin_gets_a_formal_caption_shape_and_slides_only(tmp_path):
+    w = World(tmp_path, SHIPPED.with_plan(horizon_days=2, format_rotation=[], format_mix=["reel", "carousel", "image"]))
+    assert w.go("drafts") == 0
+    task = next(c["task"] for c in w.runner.calls if c["agent"] == "adapter" and "linkedin" in c["task"]["platforms"])
+    li = task["platforms"]["linkedin"]
+    assert li["format"] == "image" and li["caption_max"] == 3000
+    assert "800 to 1500" in li["caption_shape"] and "formal" in li["feel"] and "Sie" in li["feel"]
+    reel_tasks = [c["task"] for c in w.runner.calls if c["agent"] == "adapter" and "tiktok" in c["task"]["platforms"]]
+    assert reel_tasks and all("linkedin" not in t["platforms"] for t in reel_tasks)

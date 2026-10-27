@@ -16,7 +16,7 @@ import httpx
 from intel.studio import handover
 from intel.studio.ports import AgentResult
 from intel.studio.runlog import RunLog
-from tests.test_lab_handover import KEY, SPEC, FakePublisher
+from tests.test_lab_handover import KEY, SPEC, FakePublisher, _fmt
 
 NOW = dt.datetime(2026, 10, 12, 18, 0, tzinfo=dt.UTC)
 TODAY = dt.date(2026, 10, 12)
@@ -100,6 +100,10 @@ PUBLISH_SPEC = copy.deepcopy(SPEC)
 PUBLISH_SPEC["platforms"]["youtube"]["formats"]["video"]["options"]["description"] = {
     "kind": "text", "required": False, "max_length": 5000}  # fmt: skip
 PUBLISH_SPEC["platforms"]["threads"]["formats"]["video"]["caption"]["max_length"] = 500
+PUBLISH_SPEC["platforms"]["linkedin"] = {  # handed to the owner on Telegram (dk-publishing, assisted)
+    "mode": "assisted",
+    "formats": {"text": _fmt(0, 0, 3000), "image": _fmt(1, 9, 3000), "video": _fmt(1, 1, 3000)},
+}
 
 
 class FakeTools:
