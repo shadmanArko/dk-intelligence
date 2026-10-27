@@ -284,3 +284,16 @@ def test_instagram_over_five_hashtags_blocks_and_unknown_formats_are_refused(sou
     with pytest.raises(ToolProblem) as e:
         checks.check_drafts(source, [Draft(platform="instagram", format="hologram", caption=GOOD)])
     assert "reel" in e.value.hint
+
+
+def test_linkedin_has_its_own_first_line_and_emoji_limits(source):
+    hook = "Hinter den Kulissen: wie wir in Berlin jede Woche die Kacchi ansetzen und warum wir uns dafür Zeit nehmen"
+    assert 60 < len(hook) <= 140
+    caption = f"{hook}\nOne English line about Kacchi in Berlin. #kacchibiryani"
+    assert "FIRST_LINE_LONG" not in _codes(source, platform="linkedin", format=None, caption=caption)
+    assert "FIRST_LINE_LONG" in _codes(source, platform="instagram", format=None, caption=caption)
+    assert "EMOJIS" in _codes(source, platform="linkedin", format=None, caption=caption + " 🍛🍛🍛")
+    rules = brand.brand_rules(source, platform="linkedin")["platform"]
+    assert (rules["first_line_max"], rules["emoji_max"]) == (140, 2)
+    rules = brand.brand_rules(source, platform="instagram")["platform"]
+    assert (rules["first_line_max"], rules["emoji_max"]) == (60, 4)

@@ -22,7 +22,7 @@ All in `config/studio/`, one comment per line:
 |---|---|
 | `plan.yaml` | days per run, ideas per day, which platforms, the format of idea 1, 2, 3 of a day, the pillars |
 | `slots.yaml` | the three posting windows and each platform's clock time in each window |
-| `routes.yaml` | which publishing format a master becomes on each platform; TikTok privacy and YouTube kids defaults; how a post "feels" on each platform |
+| `routes.yaml` | which publishing format a master becomes on each platform; TikTok privacy and YouTube kids defaults; how a post "feels" on each platform; a different caption `shape` where needed (LinkedIn, ADR 0043) |
 | `budgets.yaml` | the token cap per run (4,000,000), the alert level, turns per agent, how many ideas run at once |
 
 A typo is refused with the line to fix before anything runs.

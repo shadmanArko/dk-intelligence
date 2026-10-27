@@ -12,7 +12,15 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from intel.capabilities.brand import CAPTION_LIMIT, EMOJI_MAX, FIRST_LINE_MAX, get_facts, platform_formats
+from intel.capabilities.brand import (
+    CAPTION_LIMIT,
+    EMOJI_MAX,
+    FIRST_LINE_MAX,
+    emoji_max,
+    first_line_max,
+    get_facts,
+    platform_formats,
+)
 from intel.capabilities.ports import BrandPack, BrandSource
 from intel.capabilities.types import Draft, ToolProblem, prov, refs
 
@@ -211,8 +219,8 @@ def check_one(
         hit("MISSING_KACCHI")
     if "berlin" not in low:
         hit("MISSING_BERLIN")
-    if len(first) > FIRST_LINE_MAX:
-        hit("FIRST_LINE_LONG", detail=f"{len(first)} characters")
+    if len(first) > first_line_max(d.platform):
+        hit("FIRST_LINE_LONG", detail=f"{len(first)} characters, max {first_line_max(d.platform)}")
     if len(text) > CAPTION_LIMIT[d.platform]:
         hit("LENGTH_OVER_API", detail=f"{len(text)} > {CAPTION_LIMIT[d.platform]}")
     if d.platform == "threads":
@@ -221,8 +229,8 @@ def check_one(
     elif (rng := _hashtag_range(pack, d.platform, d.format)) is not None and not rng[0] <= len(tags) <= rng[1]:
         severity: Severity = "block" if d.platform == "instagram" and len(tags) > 5 else "warn"
         hit("HASHTAGS", severity=severity, detail=f"{len(tags)}, playbook {rng[0]}-{rng[1]}")
-    if (n := _emojis(text)) > EMOJI_MAX:
-        hit("EMOJIS", detail=str(n))
+    if (n := _emojis(text)) > emoji_max(d.platform):
+        hit("EMOJIS", detail=f"{n}, max {emoji_max(d.platform)}")
     if not GERMAN.search(first):
         hit("LANG_ORDER")
     if d.paid and not re.match(r"\s*(werbung|anzeige)\b", low):

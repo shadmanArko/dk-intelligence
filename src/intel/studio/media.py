@@ -25,7 +25,7 @@ REELS = Path(
     os.environ.get("DK_REELS_DIR") or REPO.parent / "dhaka-kacchi-reels"
 )  # a sibling folder; the path has spaces
 LEDGER = REPO / "data" / "lab" / "asset-ledger.json"
-SHORT = {"instagram": "ig", "facebook": "fb", "tiktok": "tt", "youtube": "yt", "threads": "th"}
+SHORT = {"instagram": "ig", "facebook": "fb", "tiktok": "tt", "youtube": "yt", "threads": "th", "linkedin": "li"}
 CONTENT_SPEC_VERSION = 1  # contracts/registry.yaml reels.content_spec
 MANIFEST_VERSION = 1  # contracts/registry.yaml reels.manifest
 RECENT_JOBS = 12  # footage used in the last 12 jobs is avoided when something else fits
