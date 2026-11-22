@@ -100,6 +100,8 @@ def plan(
         if o["occasion_type"] in SPEC["skip_types"] or o["community_id"] == "all":
             continue
         people = float(o.get("berlin_citizens") or 0)
+        if math.isnan(people):  # a missing count in the market snapshot is no reach, not a crash
+            people = 0.0
         cc = [c for c in _list(o.get("countries")) if c]
         per = country_people.get(o["community_id"], {})
         if cc and len(per) > 1:  # e.g. Canadian Thanksgiving is not an occasion for every British/American Berliner
