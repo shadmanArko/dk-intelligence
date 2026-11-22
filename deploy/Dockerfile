@@ -1,7 +1,7 @@
 # intel-api image (ADR 0014) and, from the same commit, the intel-mcp image (target `mcp`, ADR 0030). Two stages each: a builder with uv resolves the locked runtime dependencies; the runtime stage
 # gets only the virtualenv and the code. No compiler, no uv, no pip and no download cache in the final image.
 # Every image is pinned by digest (both stages use the same base); Dependabot proposes updates.
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS builder
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -12,13 +12,17 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --no-editable
 
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS runtime
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS runtime
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="dk-intelligence intel-api" \
       org.opencontainers.image.source="https://github.com/shadmanArko/dk-intelligence" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}"
+# Debian fixes for the base image's HIGH CVEs (apt 3.0.3, zlib1g; scan gate, CVE-2026-109518 / CVE-2026-85091).
+RUN apt-get update \
+ && apt-get install -y --only-upgrade apt zlib1g \
+ && rm -rf /var/lib/apt/lists/*
 # pip (with its vendored urllib3 / msgpack) is not used at runtime: removing it removes its vulnerabilities too.
 RUN python -m pip uninstall -y pip \
  && rm -rf /usr/local/lib/python3.13/ensurepip /root/.cache \
@@ -39,7 +43,7 @@ CMD ["python", "-m", "intel.serve.app"]
 # Built from the same commit with only the `mcp` and `rag` groups (FastMCP, onnxruntime, tokenizers; no torch), so
 # intel-api's image above keeps its dependencies and its scan surface. Models and knowledge packs are NOT in the image:
 # they arrive through the upload-only inbox into the read-only knowledge volume.
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS mcp-builder
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS mcp-builder
 COPY --from=ghcr.io/astral-sh/uv:0.11@sha256:77280f2f771df71f90786c314fe1bbc1e023feac652969bbf139c280babf2eb7 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
@@ -50,13 +54,16 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group mcp --group rag --no-editable
 
-FROM python:3.13-slim@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c AS mcp
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS mcp
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="dk-intelligence intel-mcp" \
       org.opencontainers.image.source="https://github.com/shadmanArko/dk-intelligence" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}"
+RUN apt-get update \
+ && apt-get install -y --only-upgrade apt zlib1g \
+ && rm -rf /var/lib/apt/lists/*
 RUN python -m pip uninstall -y pip \
  && rm -rf /usr/local/lib/python3.13/ensurepip /root/.cache \
  && useradd --uid 10001 --create-home intel \
