@@ -431,6 +431,21 @@ def contracts_sync(
         raise typer.Exit(1)
 
 
+@app.command("server-preflight")
+def server_preflight() -> None:
+    """Homelab server (ADR 0044): check what the Sunday run needs before it starts. Exit 75 = not ready (systemd
+    tries again later); prints no secrets."""
+    from intel.server import preflight
+    from intel.settings import McpSettings
+
+    problems = preflight(get_settings(), McpSettings())
+    for p in problems:
+        typer.secho(f"preflight: {p}", fg="red")
+    if problems:
+        raise typer.Exit(75)
+    typer.secho("preflight ok: data platform status, mip, knowledge db, intel-api and both door keys", fg="green")
+
+
 @app.command("weekly-status")
 def weekly_status() -> None:
     """Show the current/last Sunday run step by step, recent runs, and whether this week's run is due."""

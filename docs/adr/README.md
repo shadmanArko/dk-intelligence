@@ -47,5 +47,6 @@ edited after acceptance; a changed decision gets a new record that **supersedes*
 | [0041](0041-stopping-a-run-and-training-one-model.md) | Stopping a run cleanly, and training one model on its own | Accepted |
 | [0042](0042-keeping-the-disks-from-filling-up.md) | Keeping the disks from filling up: delete what nothing needs, and plan fewer days | Accepted |
 | [0043](0043-linkedin-as-the-sixth-platform.md) | LinkedIn as the sixth platform, handed to the owner on Telegram | Accepted |
+| [0044](0044-the-homelab-server-runs-the-sunday-training.md) | The homelab server runs the Sunday training, through the same doors with its own keys | Accepted |
 
 Template: [0000-template.md](0000-template.md).

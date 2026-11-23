@@ -1,0 +1,74 @@
+# dk-intelligence Sunday training on the homelab server (ADR 0044). A batch job started by systemd
+# (intel-weekly.timer), never a long-running service: no ports, nothing published.
+name: intel-weekly
+services:
+  weekly:
+    build:
+      context: ../..
+      dockerfile: deploy/server/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:?set GIT_SHA in the env file}
+    image: intel-weekly:${GIT_SHA:?set GIT_SHA in the env file}
+    hostname: intel-weekly
+    user: "10004:10004"
+    restart: "no"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g
+    cpus: 4
+    mem_limit: 6g
+    memswap_limit: 6g
+    pids_limit: 512
+    environment:
+      MIP_PG_HOST: ${MIP_PG_HOST:?}
+      RAG_PG_HOST: ${RAG_PG_HOST:?}
+      INTEL_API_URL: ${INTEL_API_URL:?}
+      DK_WAREHOUSE_SSH: ${DK_WAREHOUSE_SSH:?}
+      DK_INBOX_SSH: ${DK_INBOX_SSH:?}
+      INTEL_SHIP_KNOWLEDGE: ${INTEL_SHIP_KNOWLEDGE:-false}
+    secrets:
+      - mip_reader_password
+      - rag_builder_password
+      - dk_warehouse_dsn
+      - dk_warehouse_ssh_key
+      - dk_inbox_ssh_key
+    volumes:
+      - ${INTEL_WEEKLY_DATA:-/srv/data/dk-intelligence}:/data
+      - ${MIP_REPO:-/srv/apps/mip-weekly/repo}:/mip-repo:ro
+      - ${MIP_DATA:-/srv/data/mip-weekly}:/mip-data:ro
+      - ${INTEL_WEEKLY_KNOWN_HOSTS:?}:/home/intel/.ssh/known_hosts:ro
+    networks: [mipdb, ragdb, egress]
+    healthcheck:
+      test: ["CMD", "intel", "weekly-status"]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+secrets:
+  mip_reader_password:
+    file: "${INTEL_WEEKLY_SECRETS:-./secrets}/mip_reader_password"
+  rag_builder_password:
+    file: "${INTEL_WEEKLY_SECRETS:-./secrets}/rag_builder_password"
+  dk_warehouse_dsn:
+    file: "${INTEL_WEEKLY_SECRETS:-./secrets}/dk_warehouse_dsn"
+  dk_warehouse_ssh_key:
+    file: "${INTEL_WEEKLY_SECRETS:-./secrets}/dk_warehouse_ssh_key"
+  dk_inbox_ssh_key:
+    file: "${INTEL_WEEKLY_SECRETS:-./secrets}/dk_inbox_ssh_key"
+
+networks:
+  mipdb:
+    external: true
+    name: ${MIP_DB_NETWORK:?}
+  ragdb:
+    external: true
+    name: ${RAG_DB_NETWORK:?}
+  egress: {}   # VPS over the host's Tailscale (intel-api, doors 1 and 2)

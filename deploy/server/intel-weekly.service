@@ -1,0 +1,22 @@
+# dk-intelligence Sunday training (ADR 0044). Started by intel-weekly.timer every hour: the container checks "is this
+# week's run due?" first and exits 0 at once when it is not, like the Mac's launchd catch-up. A failed run is retried
+# by the next due check (after 6 h, intel.weekly.RETRY_AFTER).
+[Unit]
+Description=dk-intelligence Sunday training (homelab server)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=shadmanarko
+Group=docker
+WorkingDirectory=/srv/apps/intel-weekly/repo/deploy/server
+ExecStartPre=/usr/bin/docker compose --env-file /srv/apps/intel-weekly/weekly.env config --quiet
+ExecStart=/usr/bin/docker compose --env-file /srv/apps/intel-weekly/weekly.env run --rm --no-deps --name intel-weekly-run weekly
+ExecStopPost=-/usr/bin/docker rm -f intel-weekly-run
+SuccessExitStatus=75
+# waits up to 8 h for the data platform + about 1 h of work
+TimeoutStartSec=10h
+TimeoutStopSec=3min
+KillMode=mixed
+Nice=5

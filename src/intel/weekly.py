@@ -44,13 +44,59 @@ def mip_refresh_running() -> bool:
     return r.returncode == 0
 
 
-def wait_for_mip(max_wait_s: int, log: Callable[[str], None], poll_s: int = 300) -> int:
+def last_sunday_midnight(now: dt.datetime) -> dt.datetime:
+    """Most recent Sunday 00:00 Europe/Berlin at or before `now`: the data platform's week starts here (its job runs
+    Sunday 01:00 Berlin)."""
+    from zoneinfo import ZoneInfo
+
+    local = now.astimezone(ZoneInfo("Europe/Berlin"))
+    start = (local - dt.timedelta(days=local.isoweekday() % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(dt.UTC)
+
+
+def mip_week_status(path: Path, now: dt.datetime | None = None) -> str:
+    """This week's data platform refresh as seen in its status file: 'success', 'failed' (it retries by itself),
+    'pending' (no run of this week finished yet) or 'missing' (no status file: wrong mount or never ran)."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return "missing"
+    kv = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+    try:
+        started = dt.datetime.fromisoformat(kv.get("started_at", "").replace("Z", "+00:00"))
+    except ValueError:
+        return "pending"
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=dt.UTC)
+    if started < last_sunday_midnight(now or dt.datetime.now(dt.UTC)):
+        return "pending"  # last week's result: this week's run has not finished yet
+    return "success" if kv.get("result") == "success" else "failed"
+
+
+def wait_for_mip(
+    max_wait_s: int, log: Callable[[str], None], poll_s: int = 300, status_file: Path | None = None
+) -> int:
+    """Mac: wait while the data platform's weekly_refresh.sh process runs. Server (`status_file` set): wait until this
+    week's refresh has SUCCEEDED; a failed or unfinished week past `max_wait_s` fails the step (and the run is retried
+    later), so the models never train on a half-rebuilt market."""
     waited = 0
-    while mip_refresh_running():
+    if status_file is None:
+        while mip_refresh_running():
+            if waited >= max_wait_s:
+                raise RuntimeError(f"data platform weekly refresh still running after {max_wait_s // 3600} h")
+            if waited == 0:
+                log("data platform weekly refresh is running; waiting for it to finish")
+            time.sleep(poll_s)
+            waited += poll_s
+        return waited
+    while (state := mip_week_status(status_file)) != "success":
         if waited >= max_wait_s:
-            raise RuntimeError(f"data platform weekly refresh still running after {max_wait_s // 3600} h")
+            raise RuntimeError(
+                f"this week's data platform refresh has not succeeded after {max_wait_s // 3600} h "
+                f"(status: {state}, file {status_file})"
+            )
         if waited == 0:
-            log("data platform weekly refresh is running; waiting for it to finish")
+            log(f"waiting for this week's data platform refresh to succeed (status: {state})")
         time.sleep(poll_s)
         waited += poll_s
     return waited
@@ -492,10 +538,12 @@ def _run_weekly(
     ledger: list[dict[str, Any]] | None = None
     try:
         prog.start("wait")
-        waited = wait_for_mip(wait_max_s, log)
+        waited = wait_for_mip(wait_max_s, log, status_file=s.mip_status_file)
         prog.done(
             "wait",
-            f"waited {waited // 60} min" if waited else "data refresh not running",
+            f"waited {waited // 60} min"
+            if waited
+            else ("data refresh succeeded this week" if s.mip_status_file else "data refresh not running"),
             {"waited_minutes": waited // 60},
         )
 
