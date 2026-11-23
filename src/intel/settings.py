@@ -46,10 +46,19 @@ class Settings(BaseSettings):
     telegram_polling: bool = True
     harness_dir: Path = Path("../dhaka_kacchi_ai_harness")
     mip_dir: Path = Path("../MarketIntelligence Data Platform")
+    # On the homelab server the data platform's weekly job is a container, not a Mac process: the Sunday run waits
+    # for its status file (logs/weekly_last_status: result=success|failed, started_at=...) instead of `pgrep`.
+    mip_status_file: Path | None = None
     intel_keep_pulls: int = Field(default=12, ge=1)
 
     @field_validator(
-        "dk_warehouse_ssh_key", "dk_inbox_ssh_key", "intel_data_dir", "harness_dir", "mip_dir", mode="after"
+        "dk_warehouse_ssh_key",
+        "dk_inbox_ssh_key",
+        "intel_data_dir",
+        "harness_dir",
+        "mip_dir",
+        "mip_status_file",
+        mode="after",
     )
     @classmethod
     def _expand(cls, v: Path | None) -> Path | None:

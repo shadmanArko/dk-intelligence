@@ -1,0 +1,4 @@
+.env
+weekly.env
+secrets/
+known_hosts

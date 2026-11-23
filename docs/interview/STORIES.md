@@ -891,3 +891,27 @@ killed, resume at zero repeated calls. One model retrained in 33 seconds without
 
 **Trade-off I would defend.** A stop throws away the agent calls that were in flight (about 3 calls, a few cents of tokens) rather than
 waiting for them. Waiting is what made the first version take 26 seconds and start new work; the owner pressed Stop to stop.
+
+## S9 · Moving a scheduled ML job off a laptop without widening a single door
+
+**Situation.** The Sunday training ran on my laptop: awake, on power, on the VPN, holding two tunnels. Its only guard against
+training on a half-rebuilt market was "is the data job's process running on this machine?", which stops being true the day that job
+moves to the home server.
+
+**Task.** Run the training on the home server, start it only after the market data really succeeded, and keep the production
+VPS exactly as locked down as before.
+
+**Action.**
+- **Waited on an outcome, not a process:** the data job writes a status file; training waits until this week's run says
+  `success`. A failed week fails the wait step loudly instead of training on stale data.
+- **Same doors, new keys:** instead of loosening the VPS's IP-pinned keys, the server got its own keys with identical restrictions
+  (forward-only and write-only), pinned to its own address (ADR 0044). Revocable one machine at a time.
+- **Did not touch sealed model code:** the MLflow database stored absolute laptop paths, which only showed up when training ran in
+  the container. A one-time path rewrite fixed the data, not the code.
+- **Tested the real container** against throwaway databases and a copy of the real data: preflight, a real model trained and judged,
+  the wait failing on a failed week.
+
+**Result.** (Filled in after the first server Sunday: duration, peak memory, verdicts vs the laptop's last run.)
+
+**Trade-off I would defend.** One more machine holds door keys. A shared key would have been simpler; per-machine keys cost one
+extra line on the VPS and make "revoke the laptop" a one-line change later.

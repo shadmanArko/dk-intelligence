@@ -19,6 +19,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
 import platform
 import subprocess
 import tarfile
@@ -44,9 +45,14 @@ def code_hashes(name: str) -> dict[str, str]:
 
 def git_state(repo: Path) -> dict[str, Any]:
     def run(*a: str) -> str:
-        return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True, check=False).stdout.strip()
+        try:
+            return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True, check=False).stdout.strip()
+        except OSError:  # no git (the server's training image): the commit comes from the image build
+            return ""
 
-    return {"commit": run("rev-parse", "HEAD") or None, "dirty": bool(run("status", "--porcelain", "--", "src"))}
+    built = os.environ.get("INTEL_GIT_SHA", "")
+    commit = run("rev-parse", "HEAD") or (built if built and built != "unknown" else None)
+    return {"commit": commit, "dirty": bool(run("status", "--porcelain", "--", "src"))}
 
 
 def _calibration(run_dir: Path | None) -> list[tuple[str, int, float, float]]:

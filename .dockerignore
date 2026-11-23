@@ -5,3 +5,6 @@
 !README.md
 !src/
 src/**/__pycache__
+!deploy/server/entrypoint.sh
+!deploy/server/run-weekly.sh
+!deploy/server/rebase_mlflow.py
